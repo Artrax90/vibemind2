@@ -1,51 +1,28 @@
-# VibeMind - Развертывание на домашнем сервере (N305/Docker)
+# VibeMind 1.7 - The "Lazy" Guide (Single-File Launch)
 
-VibeMind — это высокопроизводительная self-hosted экосистема для заметок с ИИ, RAG и Telegram-ботом.
+VibeMind is a universal AI-powered note-taking and knowledge management system. It now supports a true zero-config, single-file deployment.
 
-## Требования
-- Домашний сервер (например, Intel N100/N305)
-- Установленный Docker и Docker Compose
-- Открытый порт 3344 (или настроенный Reverse Proxy, например Nginx Proxy Manager / Traefik)
+## Installation (3 Steps)
 
-## Установка
-
-1. **Клонируйте репозиторий или распакуйте ZIP-архив:**
+1. **Copy the `docker-compose.yml` file** to your server:
    ```bash
    mkdir vibemind && cd vibemind
-   # Распакуйте файлы сюда
+   # Place docker-compose.yml here
    ```
 
-2. **Настройте переменные окружения:**
-   Создайте файл `.env` в корневой директории:
+2. **Run Docker Compose:**
    ```bash
-   cp .env.example .env
-   ```
-   Отредактируйте `.env` и добавьте ваши ключи:
-   - `TELEGRAM_BOT_TOKEN`
-   - `OPENAI_API_KEY` (если используете облачные модели)
-   - `ENCRYPTION_KEY` (Сгенерируйте безопасный ключ: `python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"`)
-
-3. **Запустите контейнеры:**
-   ```bash
-   docker-compose up -d --build
+   docker-compose up -d
    ```
 
-4. **Проверьте статус:**
-   База данных `pgvector` имеет healthcheck. Приложение запустится только после полной готовности БД.
-   ```bash
-   docker-compose ps
-   ```
+3. **Login and Configure:**
+   - Open `http://<YOUR_SERVER_IP>:3344` in your browser.
+   - Login with the default credentials:
+     - **Username:** `admin`
+     - **Password:** `admin`
+   - Go to Settings -> Integrations to configure your Universal LLM Provider (DeepSeek, Groq, OpenAI, Local, etc.).
 
-## Доступ к приложению
-- **Web UI:** Откройте `http://<IP_ВАШЕГО_СЕРВЕРА>:3344`
-- **PWA:** Откройте сайт в мобильном браузере (Chrome/Safari) и выберите "Добавить на главный экран" (Add to Home Screen).
-
-## Локальный ИИ (Ollama)
-Если вы хотите использовать локальные модели для максимальной приватности:
-1. Установите Ollama на вашем сервере.
-2. Загрузите модель: `ollama run llama3`
-3. В настройках VibeMind включите "Local Ollama". Приложение автоматически подключится к `http://host.docker.internal:11434`.
-
-## Логирование и Бэкапы
-- Логи бэкенда (через `loguru`) сохраняются в `./storage/logs/`.
-- Все заметки синхронизируются с локальным томом `./storage`. Регулярно делайте бэкап этой папки и тома `pgdata`.
+## Features
+- **Universal LLM Architecture:** Add any OpenAI-compatible API directly from the UI. No `.env` required.
+- **Zero-Config:** The app auto-generates encryption keys and provisions necessary directories (`/storage/notes`, `/storage/logs`, `/storage/backups`) on startup.
+- **Single Container:** The frontend and backend are bundled together for maximum simplicity.

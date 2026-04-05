@@ -1,35 +1,14 @@
 version: '3.8'
 
 services:
-  app:
+  vibemind:
     build: .
+    container_name: vibemind_app
     ports:
       - "3344:3344"
-    environment:
-      - DATABASE_URL=postgresql://vibemind:vibemind@db:5432/vibemind
-      - REDIS_URL=redis://redis:6379/0
-      - ENCRYPTION_KEY=your-secure-encryption-key-32-bytes!
-    depends_on:
-      - db
-      - redis
-    restart: always
-
-  db:
-    image: postgres:15-alpine
-    environment:
-      - POSTGRES_USER=vibemind
-      - POSTGRES_PASSWORD=vibemind
-      - POSTGRES_DB=vibemind
     volumes:
-      - postgres_data:/var/lib/postgresql/data
-    restart: always
-
-  redis:
-    image: redis:7-alpine
-    volumes:
-      - redis_data:/data
+      - vibemind_storage:/storage
     restart: always
 
 volumes:
-  postgres_data:
-  redis_data:
+  vibemind_storage:

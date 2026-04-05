@@ -18,7 +18,7 @@ export default function Settings({ onClose }: SettingsProps) {
 
   // AI & LLM State
   const [providers, setProviders] = useState([
-    { id: '1', provider: 'openai', apiKey: '', baseUrl: '', modelName: 'gpt-4-turbo', isActive: true }
+    { id: '1', label: 'OpenAI', provider: 'openai', apiKey: '', baseUrl: 'https://api.openai.com/v1', modelName: 'gpt-4-turbo', isActive: true }
   ]);
 
   // Telegram State
@@ -126,7 +126,7 @@ export default function Settings({ onClose }: SettingsProps) {
   };
 
   const addProvider = () => {
-    setProviders([...providers, { id: Date.now().toString(), provider: 'ollama', apiKey: '', baseUrl: 'http://host.docker.internal:11434', modelName: 'llama3', isActive: false }]);
+    setProviders([...providers, { id: Date.now().toString(), label: 'New Provider', provider: 'custom', apiKey: '', baseUrl: 'https://api.example.com/v1', modelName: 'default-model', isActive: false }]);
   };
 
   const updateProvider = (id: string, field: string, value: any) => {
@@ -255,30 +255,25 @@ export default function Settings({ onClose }: SettingsProps) {
                       </div>
 
                       <div className="space-y-4 mt-2">
-                        <div>
-                          <label className="block text-sm text-muted-foreground mb-1">Provider Type</label>
-                          <select value={provider.provider} onChange={(e) => updateProvider(provider.id, 'provider', e.target.value)} className="w-full max-w-xs bg-background border border-border rounded-lg p-2 text-foreground focus:border-primary focus:ring-1 focus:ring-primary outline-none transition-all">
-                            <option value="openai">OpenAI</option>
-                            <option value="gemini">Google Gemini</option>
-                            <option value="ollama">Local Ollama</option>
-                          </select>
+                        <div className="grid grid-cols-2 gap-4">
+                          <div>
+                            <label className="block text-sm text-muted-foreground mb-1">Label</label>
+                            <input type="text" value={provider.label} onChange={(e) => updateProvider(provider.id, 'label', e.target.value)} placeholder="e.g., DeepSeek, Groq, Local" className="w-full bg-background border border-border rounded-lg p-2 text-foreground focus:border-primary focus:ring-1 focus:ring-primary outline-none transition-all" />
+                          </div>
+                          <div>
+                            <label className="block text-sm text-muted-foreground mb-1">Base URL</label>
+                            <input type="text" value={provider.baseUrl} onChange={(e) => updateProvider(provider.id, 'baseUrl', e.target.value)} placeholder="https://api.deepseek.com/v1" className="w-full bg-background border border-border rounded-lg p-2 text-foreground focus:border-primary focus:ring-1 focus:ring-primary outline-none transition-all" />
+                          </div>
                         </div>
 
                         <div className="grid grid-cols-2 gap-4">
-                          {provider.provider === 'ollama' ? (
-                            <div>
-                              <label className="block text-sm text-muted-foreground mb-1">Base URL</label>
-                              <input type="text" value={provider.baseUrl} onChange={(e) => updateProvider(provider.id, 'baseUrl', e.target.value)} placeholder="http://host.docker.internal:11434" className="w-full bg-background border border-border rounded-lg p-2 text-foreground focus:border-primary focus:ring-1 focus:ring-primary outline-none transition-all" />
-                            </div>
-                          ) : (
-                            <div>
-                              <label className="block text-sm text-muted-foreground mb-1">API Key (Encrypted)</label>
-                              <input type="password" value={provider.apiKey} onChange={(e) => updateProvider(provider.id, 'apiKey', e.target.value)} placeholder="sk-..." className="w-full bg-background border border-border rounded-lg p-2 text-foreground focus:border-primary focus:ring-1 focus:ring-primary outline-none transition-all" />
-                            </div>
-                          )}
+                          <div>
+                            <label className="block text-sm text-muted-foreground mb-1">API Key (Encrypted in DB)</label>
+                            <input type="password" value={provider.apiKey} onChange={(e) => updateProvider(provider.id, 'apiKey', e.target.value)} placeholder="sk-..." className="w-full bg-background border border-border rounded-lg p-2 text-foreground focus:border-primary focus:ring-1 focus:ring-primary outline-none transition-all" />
+                          </div>
                           <div>
                             <label className="block text-sm text-muted-foreground mb-1">Model Name</label>
-                            <input type="text" value={provider.modelName} onChange={(e) => updateProvider(provider.id, 'modelName', e.target.value)} placeholder="e.g., gpt-4, llama3" className="w-full bg-background border border-border rounded-lg p-2 text-foreground focus:border-primary focus:ring-1 focus:ring-primary outline-none transition-all" />
+                            <input type="text" value={provider.modelName} onChange={(e) => updateProvider(provider.id, 'modelName', e.target.value)} placeholder="e.g., deepseek-chat" className="w-full bg-background border border-border rounded-lg p-2 text-foreground focus:border-primary focus:ring-1 focus:ring-primary outline-none transition-all" />
                           </div>
                         </div>
                       </div>
