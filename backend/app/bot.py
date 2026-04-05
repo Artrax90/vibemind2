@@ -3,6 +3,8 @@ import logging
 from aiogram import Bot, Dispatcher, types, F
 from aiogram.filters import Command
 from aiogram.client.session.aiohttp import AiohttpSession
+from aiohttp_socks import ProxyConnector
+import aiohttp
 
 # Настройка логирования
 logging.basicConfig(level=logging.INFO)
@@ -40,19 +42,91 @@ async def handle_text(message: types.Message):
     # TODO: Сохранение note_content в PostgreSQL
     await message.answer("✅ Заметка успешно сохранена!")
 
-async def start_bot(token: str, proxy_url: str = None):
-    """Запуск бота с поддержкой прокси"""
+async def start_bot(token: str, proxy_url: str = None, proxy_config: dict = None):
+    """Запуск бота с поддержкой прокси (HTTP, SOCKS4, SOCKS5)"""
     global current_bot
     try:
-        # Настраиваем прокси для aiogram через AiohttpSession
-        session = AiohttpSession(proxy=proxy_url) if proxy_url else None
+        connector = None
+        if proxy_config and proxy_config.get("host"):
+            protocol = proxy_config.get("protocol", "http").lower()
+            host = proxy_config.get("host")
+            port = proxy_config.get("port")
+            user = proxy_config.get("username")
+            password = proxy_config.get("password")
+            
+            if protocol in ["socks4", "socks5"]:
+                proxy_type = aiohttp.ProxyType.SOCKS4 if protocol == "socks4" else aiohttp.ProxyType.SOCKS5
+                proxy_url_socks = f"{protocol}://"
+                if user and password:
+                    proxy_url_socks += f"{user}:{password}@"
+                proxy_url_socks += f"{host}:{port}"
+                connector = ProxyConnector.from_url(proxy_url_socks)
+                session = AiohttpSession(connector=connector)
+            else:
+                # HTTP Proxy
+                proxy_url_http = f"http://"
+                if user and password:
+                    proxy_url_http += f"{user}:{password}@"
+                proxy_url_http += f"{host}:{port}"
+                session = AiohttpSession(proxy=proxy_url_http)
+        elif proxy_url:
+            session = AiohttpSession(proxy=proxy_url)
+        else:
+            session = None
+            
         current_bot = Bot(token=token, session=session)
         
-        logger.info(f"Запуск Telegram бота... Прокси: {proxy_url}")
+        logger.info(f"Запуск Telegram бота... Прокси: {proxy_config or proxy_url}")
         await dp.start_polling(current_bot)
     except Exception as e:
         logger.error(f"Ошибка при запуске бота: {e}")
         current_bot = None
+
+async def test_bot_connection(token: str, admin_id: str = None, proxy_url: str = None, proxy_config: dict = None):
+    """Тестирование соединения бота и отправка сообщения"""
+    try:
+        connector = None
+        protocol = "Direct"
+        if proxy_config and proxy_config.get("host"):
+            protocol = proxy_config.get("protocol", "http").upper()
+            host = proxy_config.get("host")
+            port = proxy_config.get("port")
+            user = proxy_config.get("username")
+            password = proxy_config.get("password")
+            
+            if protocol.lower() in ["socks4", "socks5"]:
+                proxy_url_socks = f"{protocol.lower()}://"
+                if user and password:
+                    proxy_url_socks += f"{user}:{password}@"
+                proxy_url_socks += f"{host}:{port}"
+                connector = ProxyConnector.from_url(proxy_url_socks)
+                session = AiohttpSession(connector=connector)
+            else:
+                proxy_url_http = f"http://"
+                if user and password:
+                    proxy_url_http += f"{user}:{password}@"
+                proxy_url_http += f"{host}:{port}"
+                session = AiohttpSession(proxy=proxy_url_http)
+        elif proxy_url:
+            protocol = "HTTP (Legacy)"
+            session = AiohttpSession(proxy=proxy_url)
+        else:
+            session = None
+            
+        test_bot = Bot(token=token, session=session)
+        me = await test_bot.get_me()
+        
+        # Send message to admin if ID is provided
+        if admin_id:
+            try:
+                await test_bot.send_message(chat_id=admin_id, text=f"✅ VibeMind: Connection Successful! Protocol: {protocol}")
+            except Exception as msg_err:
+                logger.warning(f"Failed to send test message to admin {admin_id}: {msg_err}")
+        
+        await test_bot.session.close()
+        return True, f"✅ VibeMind: Connection Successful! Protocol: {protocol}"
+    except Exception as e:
+        return False, f"❌ Connection Failed: {str(e)}"
 
 async def stop_bot():
     """Остановка текущего инстанса бота"""
@@ -62,7 +136,7 @@ async def stop_bot():
         await current_bot.session.close()
         current_bot = None
 
-async def restart_bot(token: str, proxy_url: str = None):
+async def restart_bot(token: str, proxy_url: str = None, proxy_config: dict = None):
     """Динамический перезапуск бота (вызывается из FastAPI)"""
     global bot_task
     
@@ -79,4 +153,4 @@ async def restart_bot(token: str, proxy_url: str = None):
             
     # Запускаем новую задачу, если передан токен
     if token:
-        bot_task = asyncio.create_task(start_bot(token, proxy_url))
+        bot_task = asyncio.create_task(start_bot(token, proxy_url, proxy_config))

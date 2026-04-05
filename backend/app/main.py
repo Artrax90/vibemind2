@@ -9,12 +9,19 @@ import asyncio
 import os
 import logging
 from passlib.hash import bcrypt
+from jose import jwt
+from datetime import datetime, timedelta
 
 from .models import Base, Config, User
-from .bot import restart_bot, current_bot
+from .bot import restart_bot, current_bot, test_bot_connection
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+# JWT Settings
+SECRET_KEY = os.getenv("ENCRYPTION_KEY", "fallback-zero-config-secret-key-change-in-production")
+ALGORITHM = "HS256"
+ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24 # 24 hours
 
 # 4. DIRECTORY AUTO-PROVISIONING
 directories = ['/storage/notes', '/storage/logs', '/storage/backups']
@@ -53,6 +60,28 @@ class SettingsUpdate(BaseModel):
     proxy_url: str | None = None
     base_url: str | None = None
     model_name: str | None = None
+    proxy_config: dict | None = None
+
+class LoginRequest(BaseModel):
+    username: str
+    password: str
+
+class ExternalDBRequest(BaseModel):
+    db_type: str
+    display_name: str
+    connection_string: str
+
+@app.post("/api/auth/login")
+async def login(req: LoginRequest, db: Session = Depends(get_db)):
+    user = db.query(User).filter(User.username == req.username).first()
+    if not user or not bcrypt.verify(req.password, user.hashed_password):
+        raise HTTPException(status_code=401, detail="Invalid credentials")
+    
+    expire = datetime.utcnow() + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+    to_encode = {"sub": user.username, "exp": expire}
+    encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
+    
+    return {"access_token": encoded_jwt, "token_type": "bearer"}
 
 @app.post("/api/settings")
 async def update_settings(settings: SettingsUpdate, db: Session = Depends(get_db)):
@@ -70,15 +99,55 @@ async def update_settings(settings: SettingsUpdate, db: Session = Depends(get_db
     if settings.proxy_url is not None: config.proxy_url = settings.proxy_url
     if settings.base_url is not None: config.base_url = settings.base_url
     if settings.model_name is not None: config.model_name = settings.model_name
+    if settings.proxy_config is not None: config.proxy_config = settings.proxy_config
     
     db.commit()
     
     # Динамически перезапускаем бота с новыми настройками
     if config.tg_token:
         # Запускаем перезапуск как фоновую задачу, чтобы не блокировать HTTP ответ
-        asyncio.create_task(restart_bot(config.tg_token, config.proxy_url))
+        asyncio.create_task(restart_bot(config.tg_token, config.proxy_url, config.proxy_config))
         
     return {"status": "success", "message": "Настройки сохранены, бот перезапускается"}
+
+@app.post("/api/bot/test")
+async def test_bot(db: Session = Depends(get_db)):
+    config = db.query(Config).first()
+    if not config or not config.tg_token:
+        raise HTTPException(status_code=400, detail="Bot token not configured")
+    
+    success, message = await test_bot_connection(config.tg_token, config.proxy_url, config.proxy_config)
+    if success:
+        return {"status": "success", "message": message}
+    else:
+        raise HTTPException(status_code=500, detail=message)
+
+@app.post("/api/external-db")
+async def add_external_db(req: ExternalDBRequest, db: Session = Depends(get_db)):
+    config = db.query(Config).first()
+    if not config:
+        config = Config()
+        db.add(config)
+    
+    if not config.external_dbs:
+        config.external_dbs = []
+    
+    # Create a copy to trigger SQLAlchemy change detection for JSON column
+    new_dbs = list(config.external_dbs)
+    new_dbs.append({
+        "type": req.db_type,
+        "name": req.display_name,
+        "connection_string": req.connection_string
+    })
+    config.external_dbs = new_dbs
+    
+    db.commit()
+    return {"status": "success", "message": "External DB added", "dbs": config.external_dbs}
+
+@app.get("/api/external-db")
+async def get_external_dbs(db: Session = Depends(get_db)):
+    config = db.query(Config).first()
+    return {"dbs": config.external_dbs if config and config.external_dbs else []}
 
 @app.get("/api/bot/status")
 async def get_bot_status():
@@ -108,7 +177,7 @@ async def startup_event():
             logger.info("Токен Telegram не найден в БД. Бот находится в статусе 'Idle'. Пожалуйста, настройте его через Web UI.")
         else:
             logger.info("Найден токен Telegram. Запускаем бота...")
-            asyncio.create_task(restart_bot(config.tg_token, config.proxy_url))
+            asyncio.create_task(restart_bot(config.tg_token, config.proxy_url, config.proxy_config))
     except Exception as e:
         logger.error(f"Ошибка при запуске: {e}")
     finally:

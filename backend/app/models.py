@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Text
+from sqlalchemy import Column, Integer, String, Text, JSON
 from sqlalchemy.ext.declarative import declarative_base
 
 Base = declarative_base()
@@ -11,7 +11,9 @@ class Config(Base):
     tg_admin_id = Column(String, nullable=True)
     llm_provider = Column(String, nullable=True)
     api_key = Column(String, nullable=True)
-    proxy_url = Column(String, nullable=True)
+    proxy_url = Column(String, nullable=True) # Keep for backward compatibility
+    proxy_config = Column(JSON, nullable=True) # {protocol, host, port, username, password}
+    external_dbs = Column(JSON, nullable=True) # List of {type, name, connection_string}
 
 class User(Base):
     __tablename__ = "users"

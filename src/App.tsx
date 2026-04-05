@@ -5,6 +5,7 @@ import Chat from './components/Chat';
 import Settings from './components/Settings';
 import GraphView from './components/GraphView';
 import ShareModal from './components/ShareModal';
+import Login from './pages/Login';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Network, Edit3, Eye, Search, X, Menu, Maximize2, Minimize2, Sun, Moon } from 'lucide-react';
 import { useLanguage } from './contexts/LanguageContext';
@@ -24,6 +25,7 @@ export type Folder = {
 
 export default function App() {
   const { t } = useLanguage();
+  const [token, setToken] = useState<string | null>(localStorage.getItem('access_token'));
   const [notes, setNotes] = useState<Note[]>([
     { id: '1', title: 'Welcome to VibeMind', content: '# VibeMind\n\nYour cyberpunk AI note-taking ecosystem.\n\nTry [[Wiki-links]] and #tags.\n\n```python\nprint("Hello World")\n```' },
     { id: '2', title: 'Ideas', content: 'Some ideas for the project.\n\nCheck out [[Welcome to VibeMind]]' }
@@ -135,6 +137,10 @@ export default function App() {
     setShareResource({ id, type, name });
     setShareModalOpen(true);
   };
+
+  if (!token) {
+    return <Login onLogin={(newToken) => setToken(newToken)} />;
+  }
 
   return (
     <div className="flex h-screen w-full font-sans overflow-hidden bg-background text-foreground">

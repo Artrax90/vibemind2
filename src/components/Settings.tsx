@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { X, Globe, Shield, User, Download, Cpu, Webhook, MessageSquare, Plus, Save, Trash2, CheckCircle, AlertCircle, Database, Edit2 } from 'lucide-react';
+import { X, Globe, Shield, User, Download, Cpu, Webhook, MessageSquare, Plus, Save, Trash2, CheckCircle, AlertCircle, Database, Edit2, Server, Lock, Key } from 'lucide-react';
 import CreateUserModal from './modals/CreateUserModal';
+import AddDBModal from './modals/AddDBModal';
 import { api } from '../api/client';
 import { useLanguage } from '../contexts/LanguageContext';
 import { updateSettings, getBotStatus } from '../api/settings';
@@ -12,8 +13,16 @@ type SettingsProps = {
 export default function Settings({ onClose }: SettingsProps) {
   const { language, setLanguage, t } = useLanguage();
   const [activeTab, setActiveTab] = useState<'general' | 'integrations' | 'bots' | 'users'>('general');
-  const [proxyType, setProxyType] = useState<'HTTP' | 'SOCKS5'>('HTTP');
-  const [proxyUrl, setProxyUrl] = useState('');
+  
+  // Proxy State
+  const [proxyConfig, setProxyConfig] = useState({
+    protocol: 'HTTP',
+    host: '',
+    port: '',
+    username: '',
+    password: ''
+  });
+  
   const [webhookUrl, setWebhookUrl] = useState('');
 
   // AI & LLM State
@@ -21,11 +30,16 @@ export default function Settings({ onClose }: SettingsProps) {
     { id: '1', label: 'OpenAI', provider: 'openai', apiKey: '', baseUrl: 'https://api.openai.com/v1', modelName: 'gpt-4-turbo', isActive: true }
   ]);
 
+  // External DB State
+  const [externalDbs, setExternalDbs] = useState<any[]>([]);
+  const [isAddDBOpen, setIsAddDBOpen] = useState(false);
+
   // Telegram State
   const [botToken, setBotToken] = useState('');
   const [adminId, setAdminId] = useState('');
   const [botStatus, setBotStatus] = useState<'disconnected' | 'connected' | 'error'>('disconnected');
   const [isSaving, setIsSaving] = useState(false);
+  const [isTesting, setIsTesting] = useState(false);
 
   // Users State
   const [users, setUsers] = useState<any[]>([]);
@@ -35,6 +49,12 @@ export default function Settings({ onClose }: SettingsProps) {
   useEffect(() => {
     if (activeTab === 'users') {
       api.getUsers().then(setUsers).catch(console.error);
+    }
+    if (activeTab === 'integrations') {
+      fetch('/api/external-db')
+        .then(res => res.json())
+        .then(data => setExternalDbs(data.dbs))
+        .catch(console.error);
     }
   }, [activeTab]);
 
@@ -61,9 +81,11 @@ export default function Settings({ onClose }: SettingsProps) {
       await updateSettings({
         tg_token: botToken,
         tg_admin_id: adminId,
-        proxy_url: proxyUrl,
-        llm_provider: providers[0]?.provider,
-        api_key: providers[0]?.apiKey
+        proxy_config: proxyConfig,
+        llm_provider: providers.find(p => p.isActive)?.provider,
+        api_key: providers.find(p => p.isActive)?.apiKey,
+        base_url: providers.find(p => p.isActive)?.baseUrl,
+        model_name: providers.find(p => p.isActive)?.modelName
       });
       alert('Settings saved! The backend bot is restarting with the new configuration.');
     } catch (e) {
@@ -75,39 +97,56 @@ export default function Settings({ onClose }: SettingsProps) {
   };
 
   const handleTestBot = async () => {
-    if (!botToken || !adminId) {
+    if (!botToken) {
       setBotStatus('error');
       return;
     }
     
+    setIsTesting(true);
     try {
-      const response = await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
+      const response = await fetch('/api/bot/test', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          chat_id: adminId,
-          text: '✅ Test message from VibeMind! Your bot is successfully connected.',
-        }),
+        headers: { 'Content-Type': 'application/json' }
       });
 
+      const data = await response.json();
       if (response.ok) {
         setBotStatus('connected');
-        alert(`Test message successfully sent to Telegram ID: ${adminId}`);
+        alert(data.message || '✅ Connection Successful!');
       } else {
-        const data = await response.json();
-        console.error('Telegram API Error:', data);
         setBotStatus('error');
-        alert(`Failed to send message: ${data.description || 'Unknown error'}`);
+        alert(`❌ Failed: ${data.detail || 'Unknown error'}`);
       }
     } catch (error) {
       console.error('Network Error:', error);
       setBotStatus('error');
-      alert('Failed to connect to Telegram API. Check your network or token.');
+      alert('Failed to connect to VibeMind API.');
+    } finally {
+      setIsTesting(false);
     }
     
     setTimeout(() => setBotStatus('disconnected'), 5000);
+  };
+
+  const handleAddExternalDB = async (dbData: any) => {
+    try {
+      const response = await fetch('/api/external-db', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(dbData)
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        setExternalDbs(data.dbs);
+        alert('External Database connected successfully!');
+      } else {
+        alert('Failed to connect external database.');
+      }
+    } catch (e) {
+      console.error(e);
+      alert('Error connecting to external database.');
+    }
   };
 
   const handleCreateUser = async (user: any) => {
@@ -195,18 +234,71 @@ export default function Settings({ onClose }: SettingsProps) {
 
                 <section className="space-y-4">
                   <h3 className="text-lg font-semibold text-foreground">{t('settings.proxy')}</h3>
-                  <div className="bg-card p-4 rounded-lg border border-border/50 space-y-4 glass">
-                    <select value={proxyType} onChange={(e) => setProxyType(e.target.value as 'HTTP' | 'SOCKS5')} className="w-full bg-background border border-border rounded-lg p-2 text-foreground focus:border-primary focus:ring-1 focus:ring-primary outline-none transition-all">
-                      <option value="HTTP">HTTP Proxy</option>
-                      <option value="SOCKS5">SOCKS5 Proxy</option>
-                    </select>
-                    <input 
-                      type="text" 
-                      placeholder="http://user:pass@proxy:port" 
-                      value={proxyUrl}
-                      onChange={(e) => setProxyUrl(e.target.value)}
-                      className="w-full bg-background border border-border rounded-lg p-2 text-foreground focus:border-primary focus:ring-1 focus:ring-primary outline-none transition-all" 
-                    />
+                  <div className="bg-card p-6 rounded-lg border border-border/50 space-y-6 glass">
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-xs font-mono uppercase tracking-wider text-muted-foreground mb-2">Protocol</label>
+                        <select 
+                          value={proxyConfig.protocol} 
+                          onChange={(e) => setProxyConfig({...proxyConfig, protocol: e.target.value})} 
+                          className="w-full bg-background border border-border rounded-lg p-2.5 text-foreground focus:border-primary focus:ring-1 focus:ring-primary outline-none transition-all"
+                        >
+                          <option value="HTTP">HTTP</option>
+                          <option value="SOCKS4">SOCKS4</option>
+                          <option value="SOCKS5">SOCKS5</option>
+                        </select>
+                      </div>
+                      <div className="grid grid-cols-3 gap-2">
+                        <div className="col-span-2">
+                          <label className="block text-xs font-mono uppercase tracking-wider text-muted-foreground mb-2">Host</label>
+                          <input 
+                            type="text" 
+                            placeholder="127.0.0.1" 
+                            value={proxyConfig.host}
+                            onChange={(e) => setProxyConfig({...proxyConfig, host: e.target.value})}
+                            className="w-full bg-background border border-border rounded-lg p-2 text-foreground focus:border-primary focus:ring-1 focus:ring-primary outline-none transition-all" 
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-xs font-mono uppercase tracking-wider text-muted-foreground mb-2">Port</label>
+                          <input 
+                            type="text" 
+                            placeholder="8080" 
+                            value={proxyConfig.port}
+                            onChange={(e) => setProxyConfig({...proxyConfig, port: e.target.value})}
+                            className="w-full bg-background border border-border rounded-lg p-2 text-foreground focus:border-primary focus:ring-1 focus:ring-primary outline-none transition-all" 
+                          />
+                        </div>
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-xs font-mono uppercase tracking-wider text-muted-foreground mb-2">Username (Optional)</label>
+                        <div className="relative">
+                          <User className="absolute left-3 top-2.5 w-4 h-4 text-muted-foreground" />
+                          <input 
+                            type="text" 
+                            placeholder="user" 
+                            value={proxyConfig.username}
+                            onChange={(e) => setProxyConfig({...proxyConfig, username: e.target.value})}
+                            className="w-full bg-background border border-border rounded-lg p-2 pl-10 text-foreground focus:border-primary focus:ring-1 focus:ring-primary outline-none transition-all" 
+                          />
+                        </div>
+                      </div>
+                      <div>
+                        <label className="block text-xs font-mono uppercase tracking-wider text-muted-foreground mb-2">Password (Optional)</label>
+                        <div className="relative">
+                          <Lock className="absolute left-3 top-2.5 w-4 h-4 text-muted-foreground" />
+                          <input 
+                            type="password" 
+                            placeholder="••••" 
+                            value={proxyConfig.password}
+                            onChange={(e) => setProxyConfig({...proxyConfig, password: e.target.value})}
+                            className="w-full bg-background border border-border rounded-lg p-2 pl-10 text-foreground focus:border-primary focus:ring-1 focus:ring-primary outline-none transition-all" 
+                          />
+                        </div>
+                      </div>
+                    </div>
                   </div>
                 </section>
 
@@ -283,14 +375,47 @@ export default function Settings({ onClose }: SettingsProps) {
 
                 <section className="space-y-4">
                   <div className="flex items-center justify-between">
-                    <h3 className="text-lg font-semibold text-foreground">External Databases</h3>
-                    <button className="flex items-center px-3 py-1.5 bg-secondary text-foreground hover:bg-secondary/80 rounded-lg border border-border/50 hover:border-primary hover:glow-border transition-all">
+                    <div>
+                      <h3 className="text-lg font-semibold text-foreground">External Databases</h3>
+                      <p className="text-xs text-muted-foreground mt-1">
+                        Your system database is managed automatically. Add external DBs here to index them for AI RAG analysis.
+                      </p>
+                    </div>
+                    <button 
+                      onClick={() => setIsAddDBOpen(true)}
+                      className="flex items-center px-3 py-1.5 bg-secondary text-foreground hover:bg-secondary/80 rounded-lg border border-border/50 hover:border-primary hover:glow-border transition-all"
+                    >
                       <Plus size={16} className="mr-2" /> Add DB
                     </button>
                   </div>
-                  <div className="bg-card p-6 rounded-lg border border-border/50 text-center text-muted-foreground glass">
-                    <Database size={32} className="mx-auto mb-2 opacity-50" />
-                    <p>Connect external PostgreSQL or MongoDB databases for RAG.</p>
+                  
+                  <div className="space-y-3">
+                    {externalDbs.length > 0 ? (
+                      externalDbs.map((db, idx) => (
+                        <div key={idx} className="bg-card p-4 rounded-lg border border-border/50 flex items-center justify-between glass">
+                          <div className="flex items-center space-x-3">
+                            <div className="p-2 bg-primary/10 rounded-lg">
+                              <Database className="text-primary w-5 h-5" />
+                            </div>
+                            <div>
+                              <div className="text-foreground font-medium">{db.name}</div>
+                              <div className="text-xs text-muted-foreground font-mono">{db.type.toUpperCase()} // {db.connection_string.split('@')[1] || 'Local'}</div>
+                            </div>
+                          </div>
+                          <button 
+                            onClick={() => setExternalDbs(externalDbs.filter((_, i) => i !== idx))}
+                            className="p-2 text-muted-foreground hover:text-destructive transition-colors"
+                          >
+                            <Trash2 size={16} />
+                          </button>
+                        </div>
+                      ))
+                    ) : (
+                      <div className="bg-card p-6 rounded-lg border border-border/50 text-center text-muted-foreground glass">
+                        <Database size={32} className="mx-auto mb-2 opacity-50" />
+                        <p>No external databases connected.</p>
+                      </div>
+                    )}
                   </div>
                 </section>
               </div>
@@ -317,8 +442,8 @@ export default function Settings({ onClose }: SettingsProps) {
                       {botStatus === 'error' && <span className="flex items-center text-destructive text-sm"><AlertCircle size={16} className="mr-1" /> Error</span>}
                       {botStatus === 'disconnected' && <span className="text-muted-foreground text-sm">Disconnected</span>}
                     </div>
-                    <button onClick={handleTestBot} className="px-4 py-2 bg-secondary text-foreground hover:bg-secondary/80 rounded-lg border border-border/50 hover:border-primary hover:glow-border transition-all">
-                      Test Connection
+                    <button onClick={handleTestBot} disabled={isTesting} className="px-4 py-2 bg-secondary text-foreground hover:bg-secondary/80 rounded-lg border border-border/50 hover:border-primary hover:glow-border transition-all disabled:opacity-50">
+                      {isTesting ? 'Testing...' : 'Test Connection'}
                     </button>
                   </div>
                 </div>
@@ -393,6 +518,12 @@ export default function Settings({ onClose }: SettingsProps) {
         onClose={() => { setIsCreateUserOpen(false); setEditingUser(null); }} 
         onCreate={handleCreateUser} 
         initialData={editingUser}
+      />
+
+      <AddDBModal
+        isOpen={isAddDBOpen}
+        onClose={() => setIsAddDBOpen(false)}
+        onConnect={handleAddExternalDB}
       />
     </div>
   );

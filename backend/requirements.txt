@@ -16,3 +16,5 @@ cryptography
 passlib[bcrypt]
 httpx
 pydantic[email]
+aiohttp-socks
+python-jose[cryptography]
