@@ -1,11 +1,51 @@
-<div align="center">
+# VibeMind - Развертывание на домашнем сервере (N305/Docker)
 
-<img width="1200" height="475" alt="GHBanner" src="https://github.com/user-attachments/assets/0aa67016-6eaf-458a-adb2-6e31a0763ed6" />
+VibeMind — это высокопроизводительная self-hosted экосистема для заметок с ИИ, RAG и Telegram-ботом.
 
-  <h1>Built with AI Studio</h2>
+## Требования
+- Домашний сервер (например, Intel N100/N305)
+- Установленный Docker и Docker Compose
+- Открытый порт 3344 (или настроенный Reverse Proxy, например Nginx Proxy Manager / Traefik)
 
-  <p>The fastest path from prompt to production with Gemini.</p>
+## Установка
 
-  <a href="https://aistudio.google.com/apps">Start building</a>
+1. **Клонируйте репозиторий или распакуйте ZIP-архив:**
+   ```bash
+   mkdir vibemind && cd vibemind
+   # Распакуйте файлы сюда
+   ```
 
-</div>
+2. **Настройте переменные окружения:**
+   Создайте файл `.env` в корневой директории:
+   ```bash
+   cp .env.example .env
+   ```
+   Отредактируйте `.env` и добавьте ваши ключи:
+   - `TELEGRAM_BOT_TOKEN`
+   - `OPENAI_API_KEY` (если используете облачные модели)
+   - `ENCRYPTION_KEY` (Сгенерируйте безопасный ключ: `python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"`)
+
+3. **Запустите контейнеры:**
+   ```bash
+   docker-compose up -d --build
+   ```
+
+4. **Проверьте статус:**
+   База данных `pgvector` имеет healthcheck. Приложение запустится только после полной готовности БД.
+   ```bash
+   docker-compose ps
+   ```
+
+## Доступ к приложению
+- **Web UI:** Откройте `http://<IP_ВАШЕГО_СЕРВЕРА>:3344`
+- **PWA:** Откройте сайт в мобильном браузере (Chrome/Safari) и выберите "Добавить на главный экран" (Add to Home Screen).
+
+## Локальный ИИ (Ollama)
+Если вы хотите использовать локальные модели для максимальной приватности:
+1. Установите Ollama на вашем сервере.
+2. Загрузите модель: `ollama run llama3`
+3. В настройках VibeMind включите "Local Ollama". Приложение автоматически подключится к `http://host.docker.internal:11434`.
+
+## Логирование и Бэкапы
+- Логи бэкенда (через `loguru`) сохраняются в `./storage/logs/`.
+- Все заметки синхронизируются с локальным томом `./storage`. Регулярно делайте бэкап этой папки и тома `pgdata`.

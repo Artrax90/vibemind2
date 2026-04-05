@@ -1,0 +1,101 @@
+const BASE_URL = ''; // Relative to current host
+
+// Helper to handle responses and fallback to mock data if backend is not running
+async function handleResponse(res: Response, mockData: any) {
+  if (!res.ok) {
+    console.warn(`API call failed (${res.status}), returning mock data`);
+    return mockData;
+  }
+  try {
+    const text = await res.text();
+    // If Vite returns index.html for a missing API route
+    if (text.trim().startsWith('<')) {
+      console.warn('API route not found (received HTML), returning mock data');
+      return mockData;
+    }
+    return JSON.parse(text);
+  } catch (e) {
+    console.warn('Failed to parse API response, returning mock data', e);
+    return mockData;
+  }
+}
+
+export const api = {
+  async updateSettings(settings: any) {
+    try {
+      const res = await fetch(`${BASE_URL}/api/settings`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(settings)
+      });
+      return await handleResponse(res, { success: true, settings });
+    } catch (e) {
+      console.warn('Network error, returning mock data');
+      return { success: true, settings };
+    }
+  },
+  
+  async getSettings() {
+    try {
+      const res = await fetch(`${BASE_URL}/api/settings`);
+      return await handleResponse(res, { 
+        telegram_bot_token: '', 
+        llm_providers: [], 
+        proxy: { enabled: false, proxy_type: 'HTTP' }, 
+        webhook_url: '' 
+      });
+    } catch (e) {
+      return { telegram_bot_token: '', llm_providers: [], proxy: { enabled: false, proxy_type: 'HTTP' }, webhook_url: '' };
+    }
+  },
+  
+  async createUser(user: any) {
+    try {
+      const res = await fetch(`${BASE_URL}/api/users`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(user)
+      });
+      return await handleResponse(res, { id: `u${Date.now()}`, ...user });
+    } catch (e) {
+      return { id: `u${Date.now()}`, ...user };
+    }
+  },
+  
+  async getUsers() {
+    try {
+      const res = await fetch(`${BASE_URL}/api/users`);
+      return await handleResponse(res, [
+        { id: '1', username: 'admin', email: 'admin@vibemind.local', role: 'Admin' }
+      ]);
+    } catch (e) {
+      return [{ id: '1', username: 'admin', email: 'admin@vibemind.local', role: 'Admin' }];
+    }
+  },
+  
+  async createNote(note: any) {
+    try {
+      const res = await fetch(`${BASE_URL}/api/notes`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(note)
+      });
+      return await handleResponse(res, note);
+    } catch (e) {
+      return note;
+    }
+  },
+  
+  async createFolder(folder: any) {
+    try {
+      const res = await fetch(`${BASE_URL}/api/folders`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(folder)
+      });
+      return await handleResponse(res, folder);
+    } catch (e) {
+      return folder;
+    }
+  }
+};

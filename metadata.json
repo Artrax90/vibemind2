@@ -1,0 +1,5 @@
+{
+  "name": "VibeMind",
+  "description": "A high-performance, self-hosted AI note-taking ecosystem with RAG and Telegram integration.",
+  "requestFramePermissions": []
+}
