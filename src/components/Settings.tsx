@@ -233,76 +233,6 @@ export default function Settings({ onClose }: SettingsProps) {
                 </section>
 
                 <section className="space-y-4">
-                  <h3 className="text-lg font-semibold text-foreground">{t('settings.proxy')}</h3>
-                  <div className="bg-card p-6 rounded-lg border border-border/50 space-y-6 glass">
-                    <div className="grid grid-cols-2 gap-4">
-                      <div>
-                        <label className="block text-xs font-mono uppercase tracking-wider text-muted-foreground mb-2">Protocol</label>
-                        <select 
-                          value={proxyConfig.protocol} 
-                          onChange={(e) => setProxyConfig({...proxyConfig, protocol: e.target.value})} 
-                          className="w-full bg-background border border-border rounded-lg p-2.5 text-foreground focus:border-primary focus:ring-1 focus:ring-primary outline-none transition-all"
-                        >
-                          <option value="HTTP">HTTP</option>
-                          <option value="SOCKS4">SOCKS4</option>
-                          <option value="SOCKS5">SOCKS5</option>
-                        </select>
-                      </div>
-                      <div className="grid grid-cols-3 gap-2">
-                        <div className="col-span-2">
-                          <label className="block text-xs font-mono uppercase tracking-wider text-muted-foreground mb-2">Host</label>
-                          <input 
-                            type="text" 
-                            placeholder="127.0.0.1" 
-                            value={proxyConfig.host}
-                            onChange={(e) => setProxyConfig({...proxyConfig, host: e.target.value})}
-                            className="w-full bg-background border border-border rounded-lg p-2 text-foreground focus:border-primary focus:ring-1 focus:ring-primary outline-none transition-all" 
-                          />
-                        </div>
-                        <div>
-                          <label className="block text-xs font-mono uppercase tracking-wider text-muted-foreground mb-2">Port</label>
-                          <input 
-                            type="text" 
-                            placeholder="8080" 
-                            value={proxyConfig.port}
-                            onChange={(e) => setProxyConfig({...proxyConfig, port: e.target.value})}
-                            className="w-full bg-background border border-border rounded-lg p-2 text-foreground focus:border-primary focus:ring-1 focus:ring-primary outline-none transition-all" 
-                          />
-                        </div>
-                      </div>
-                    </div>
-                    <div className="grid grid-cols-2 gap-4">
-                      <div>
-                        <label className="block text-xs font-mono uppercase tracking-wider text-muted-foreground mb-2">Username (Optional)</label>
-                        <div className="relative">
-                          <User className="absolute left-3 top-2.5 w-4 h-4 text-muted-foreground" />
-                          <input 
-                            type="text" 
-                            placeholder="user" 
-                            value={proxyConfig.username}
-                            onChange={(e) => setProxyConfig({...proxyConfig, username: e.target.value})}
-                            className="w-full bg-background border border-border rounded-lg p-2 pl-10 text-foreground focus:border-primary focus:ring-1 focus:ring-primary outline-none transition-all" 
-                          />
-                        </div>
-                      </div>
-                      <div>
-                        <label className="block text-xs font-mono uppercase tracking-wider text-muted-foreground mb-2">Password (Optional)</label>
-                        <div className="relative">
-                          <Lock className="absolute left-3 top-2.5 w-4 h-4 text-muted-foreground" />
-                          <input 
-                            type="password" 
-                            placeholder="••••" 
-                            value={proxyConfig.password}
-                            onChange={(e) => setProxyConfig({...proxyConfig, password: e.target.value})}
-                            className="w-full bg-background border border-border rounded-lg p-2 pl-10 text-foreground focus:border-primary focus:ring-1 focus:ring-primary outline-none transition-all" 
-                          />
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </section>
-
-                <section className="space-y-4">
                   <h3 className="text-lg font-semibold text-foreground">{t('settings.webhooks')}</h3>
                   <div className="bg-card p-4 rounded-lg border border-border/50 glass">
                     <input type="text" value={webhookUrl} onChange={(e) => setWebhookUrl(e.target.value)} placeholder="http://homeassistant.local:8123/api/webhook/vibemind" className="w-full bg-background border border-border rounded-lg p-2 text-foreground focus:border-primary focus:ring-1 focus:ring-primary outline-none transition-all" />
@@ -447,6 +377,76 @@ export default function Settings({ onClose }: SettingsProps) {
                     </button>
                   </div>
                 </div>
+
+                <section className="space-y-4">
+                  <h3 className="text-lg font-semibold text-foreground">{t('settings.proxy')}</h3>
+                  <div className="bg-card p-6 rounded-lg border border-border/50 space-y-6 glass">
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-xs font-mono uppercase tracking-wider text-muted-foreground mb-2">Protocol</label>
+                        <select 
+                          value={proxyConfig.protocol} 
+                          onChange={(e) => setProxyConfig({...proxyConfig, protocol: e.target.value})} 
+                          className="w-full bg-background border border-border rounded-lg p-2.5 text-foreground focus:border-primary focus:ring-1 focus:ring-primary outline-none transition-all"
+                        >
+                          <option value="HTTP">HTTP</option>
+                          <option value="SOCKS4">SOCKS4</option>
+                          <option value="SOCKS5">SOCKS5</option>
+                        </select>
+                      </div>
+                      <div className="grid grid-cols-3 gap-2">
+                        <div className="col-span-2">
+                          <label className="block text-xs font-mono uppercase tracking-wider text-muted-foreground mb-2">Host</label>
+                          <input 
+                            type="text" 
+                            placeholder="127.0.0.1" 
+                            value={proxyConfig.host}
+                            onChange={(e) => setProxyConfig({...proxyConfig, host: e.target.value})}
+                            className="w-full bg-background border border-border rounded-lg p-2 text-foreground focus:border-primary focus:ring-1 focus:ring-primary outline-none transition-all" 
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-xs font-mono uppercase tracking-wider text-muted-foreground mb-2">Port</label>
+                          <input 
+                            type="text" 
+                            placeholder="8080" 
+                            value={proxyConfig.port}
+                            onChange={(e) => setProxyConfig({...proxyConfig, port: e.target.value})}
+                            className="w-full bg-background border border-border rounded-lg p-2 text-foreground focus:border-primary focus:ring-1 focus:ring-primary outline-none transition-all" 
+                          />
+                        </div>
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-xs font-mono uppercase tracking-wider text-muted-foreground mb-2">Username (Optional)</label>
+                        <div className="relative">
+                          <User className="absolute left-3 top-2.5 w-4 h-4 text-muted-foreground" />
+                          <input 
+                            type="text" 
+                            placeholder="user" 
+                            value={proxyConfig.username}
+                            onChange={(e) => setProxyConfig({...proxyConfig, username: e.target.value})}
+                            className="w-full bg-background border border-border rounded-lg p-2 pl-10 text-foreground focus:border-primary focus:ring-1 focus:ring-primary outline-none transition-all" 
+                          />
+                        </div>
+                      </div>
+                      <div>
+                        <label className="block text-xs font-mono uppercase tracking-wider text-muted-foreground mb-2">Password (Optional)</label>
+                        <div className="relative">
+                          <Lock className="absolute left-3 top-2.5 w-4 h-4 text-muted-foreground" />
+                          <input 
+                            type="password" 
+                            placeholder="••••" 
+                            value={proxyConfig.password}
+                            onChange={(e) => setProxyConfig({...proxyConfig, password: e.target.value})}
+                            className="w-full bg-background border border-border rounded-lg p-2 pl-10 text-foreground focus:border-primary focus:ring-1 focus:ring-primary outline-none transition-all" 
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </section>
               </div>
             )}
 

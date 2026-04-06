@@ -3,7 +3,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, text
 from sqlalchemy.orm import sessionmaker
 import asyncio
 import os
@@ -152,6 +152,14 @@ async def get_external_dbs(db: Session = Depends(get_db)):
     config = db.query(Config).first()
     return {"dbs": config.external_dbs if config and config.external_dbs else []}
 
+@app.post("/api/notes")
+async def create_note(note: dict):
+    return note
+
+@app.post("/api/folders")
+async def create_folder(folder: dict):
+    return folder
+
 @app.get("/api/bot/status")
 async def get_bot_status():
     """Проверка статуса фонового процесса бота"""
@@ -163,16 +171,33 @@ async def startup_event():
     """При старте FastAPI сервера поднимаем бота, если есть токен, и создаем админа"""
     db = SessionLocal()
     try:
+        # Schema Migration: Check and add proxy_config if missing
+        try:
+            db.execute(text("SELECT proxy_config FROM configs LIMIT 1"))
+        except Exception:
+            db.rollback()
+            logger.info("Adding proxy_config column to configs table...")
+            try:
+                db.execute(text("ALTER TABLE configs ADD COLUMN proxy_config JSON"))
+                db.commit()
+            except Exception as e:
+                logger.error(f"Failed to add proxy_config column: {e}")
+                db.rollback()
+
         # 1. Создание дефолтного админа, если таблица пуста
-        user_count = db.query(User).count()
-        if user_count == 0:
-            logger.info("Таблица пользователей пуста. Создаем дефолтного администратора...")
-            # 2. TRUE ZERO-CONFIG: Default Admin Fix
-            hashed_admin = pwd_context.hash("admin")
-            default_admin = User(username="admin", hashed_password=hashed_admin)
-            db.add(default_admin)
-            db.commit()
-            logger.info("Дефолтный администратор создан (admin / admin).")
+        try:
+            user_count = db.query(User).count()
+            if user_count == 0:
+                logger.info("Таблица пользователей пуста. Создаем дефолтного администратора...")
+                # 2. TRUE ZERO-CONFIG: Default Admin Fix
+                hashed_admin = pwd_context.hash("admin")
+                default_admin = User(username="admin", hashed_password=hashed_admin)
+                db.add(default_admin)
+                db.commit()
+                logger.info("Дефолтный администратор создан (admin / admin).")
+        except Exception as e:
+            logger.error(f"Ошибка при проверке/создании пользователей: {e}")
+            db.rollback()
 
         # 2. Проверка конфига и запуск бота
         config = db.query(Config).first()
