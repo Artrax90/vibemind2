@@ -9,8 +9,8 @@ from typing import List
 
 router = APIRouter(prefix="/api/users", tags=["users"])
 
-# Настройка passlib для хеширования паролей (bcrypt)
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+# Настройка passlib для хеширования паролей (pbkdf2_sha256)
+pwd_context = CryptContext(schemes=["pbkdf2_sha256"], deprecated="auto")
 
 class UserCreate(BaseModel):
     username: str

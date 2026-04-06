@@ -8,7 +8,7 @@ from sqlalchemy.orm import sessionmaker
 import asyncio
 import os
 import logging
-from passlib.hash import bcrypt
+from passlib.context import CryptContext
 from jose import jwt
 from datetime import datetime, timedelta
 
@@ -22,6 +22,9 @@ logger = logging.getLogger(__name__)
 SECRET_KEY = os.getenv("ENCRYPTION_KEY", "fallback-zero-config-secret-key-change-in-production")
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24 # 24 hours
+
+# Password Hashing Fix (Avoids bcrypt version conflict)
+pwd_context = CryptContext(schemes=["pbkdf2_sha256"], deprecated="auto")
 
 # 4. DIRECTORY AUTO-PROVISIONING
 directories = ['/storage/notes', '/storage/logs', '/storage/backups']
@@ -74,7 +77,7 @@ class ExternalDBRequest(BaseModel):
 @app.post("/api/auth/login")
 async def login(req: LoginRequest, db: Session = Depends(get_db)):
     user = db.query(User).filter(User.username == req.username).first()
-    if not user or not bcrypt.verify(req.password, user.hashed_password):
+    if not user or not pwd_context.verify(req.password, user.hashed_password):
         raise HTTPException(status_code=401, detail="Invalid credentials")
     
     expire = datetime.utcnow() + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
@@ -165,7 +168,7 @@ async def startup_event():
         if user_count == 0:
             logger.info("Таблица пользователей пуста. Создаем дефолтного администратора...")
             # 2. TRUE ZERO-CONFIG: Default Admin Fix
-            hashed_admin = bcrypt.hash("admin")
+            hashed_admin = pwd_context.hash("admin")
             default_admin = User(username="admin", hashed_password=hashed_admin)
             db.add(default_admin)
             db.commit()

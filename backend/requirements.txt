@@ -13,7 +13,7 @@ python-multipart
 pytesseract
 Pillow
 cryptography
-passlib[bcrypt]
+passlib
 httpx
 pydantic[email]
 aiohttp-socks
