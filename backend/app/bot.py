@@ -60,18 +60,17 @@ STT_PORT = 10208
 
 async def speech_to_text(audio_path: str) -> str:
     """Транскрибация аудио через Wyoming (Vosk)"""
-    wav_path = audio_path.replace(".ogg", ".wav")
-    logger.info(f"STT: Начинаю обработку. OGG: {audio_path}, WAV: {wav_path}")
+    raw_path = audio_path.replace(".ogg", ".raw")
+    logger.info(f"STT: Начинаю обработку. OGG: {audio_path}, RAW: {raw_path}")
     
     try:
         # 1. Конвертация через FFmpeg (строго s16le, 16kHz, Mono)
         try:
-            logger.info(f"STT: Конвертация OGG -> WAV (s16le, 16kHz, Mono) через FFmpeg...")
-            # Команда: ffmpeg -i input.ogg -ar 16000 -ac 1 -f s16le output.wav
-            # Мы используем .raw или .pcm для ясности, но сохраним .wav как в запросе
+            logger.info(f"STT: Конвертация OGG -> RAW (s16le, 16kHz, Mono) через FFmpeg...")
+            # Команда: ffmpeg -y -i input.ogg -ar 16000 -ac 1 -f s16le output.raw
             cmd = [
                 "ffmpeg", "-y", "-i", audio_path,
-                "-ar", "16000", "-ac", "1", "-f", "s16le", wav_path
+                "-ar", "16000", "-ac", "1", "-f", "s16le", raw_path
             ]
             subprocess.run(cmd, check=True, capture_output=True)
             logger.info("STT: Конвертация успешно завершена.")
@@ -107,10 +106,10 @@ async def speech_to_text(audio_path: str) -> str:
             )
             logger.info("STT: Событие AudioStart отправлено.")
             
-            logger.info("STT: Отправка аудио данных...")
-            with open(wav_path, "rb") as f:
+            logger.info("STT: Отправка аудио данных чанками по 4096 байт...")
+            with open(raw_path, "rb") as f:
                 while True:
-                    chunk = f.read(1024)
+                    chunk = f.read(4096)
                     if not chunk:
                         break
                     await async_write_event(
@@ -126,16 +125,16 @@ async def speech_to_text(audio_path: str) -> str:
             transcript_text = ""
             while True:
                 try:
-                    event = await asyncio.wait_for(async_read_event(reader), timeout=10.0)
+                    event = await asyncio.wait_for(async_read_event(reader), timeout=20.0)
                 except asyncio.TimeoutError:
-                    logger.error("STT: Тайм-аут ожидания ответа от Vosk (10s)")
+                    logger.error("STT: Тайм-аут ожидания ответа от Vosk (20s)")
                     break
 
                 if event is None:
                     logger.warning("STT: Соединение закрыто сервером до получения результата.")
                     break
                 
-                logger.info(f"STT: Получено событие типа: {event.type}")
+                logger.info(f"STT: Пришло событие типа: {event.type}")
                 
                 if Transcript.is_type(event.type):
                     transcript = Transcript.from_event(event)
@@ -156,7 +155,7 @@ async def speech_to_text(audio_path: str) -> str:
         return ""
     finally:
         # Удаляем временные файлы
-        for p in [audio_path, wav_path]:
+        for p in [audio_path, raw_path]:
             if os.path.exists(p):
                 try:
                     os.remove(p)
