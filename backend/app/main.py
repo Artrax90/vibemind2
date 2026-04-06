@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Depends, HTTPException, status
+from fastapi import FastAPI, Depends, HTTPException, status, File, UploadFile
 from fastapi.security import OAuth2PasswordBearer
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
@@ -28,7 +28,7 @@ ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24 # 24 hours
 pwd_context = CryptContext(schemes=["pbkdf2_sha256"], deprecated="auto")
 
 # 4. DIRECTORY AUTO-PROVISIONING
-directories = ['/storage/notes', '/storage/logs', '/storage/backups']
+directories = ['/storage/notes', '/storage/logs', '/storage/backups', '/storage/uploads']
 for d in directories:
     os.makedirs(d, exist_ok=True)
 
@@ -146,6 +146,31 @@ class ExternalDBRequest(BaseModel):
     db_type: str
     display_name: str
     connection_string: str
+
+@app.post("/api/upload")
+async def upload_file(file: UploadFile = File(...), current_user: User = Depends(get_current_user)):
+    """Загрузка изображений на сервер"""
+    try:
+        # Create unique filename
+        ext = os.path.splitext(file.filename)[1]
+        filename = f"{datetime.now().strftime('%Y%m%d%H%M%S')}_{os.urandom(4).hex()}{ext}"
+        filepath = os.path.join('/storage/uploads', filename)
+        
+        with open(filepath, "wb") as buffer:
+            buffer.write(await file.read())
+            
+        # Return the URL to access the file
+        return {"url": f"/api/uploads/{filename}"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Upload failed: {str(e)}")
+
+@app.get("/api/uploads/{filename}")
+async def get_upload(filename: str):
+    """Раздача загруженных файлов"""
+    filepath = os.path.join('/storage/uploads', filename)
+    if os.path.exists(filepath):
+        return FileResponse(filepath)
+    raise HTTPException(status_code=404, detail="File not found")
 
 @app.post("/api/auth/login")
 async def login(req: LoginRequest, db: Session = Depends(get_db)):

@@ -168,5 +168,19 @@ export const api = {
     } catch (e) {
       console.error(e);
     }
+  },
+  
+  async uploadFile(formData: FormData) {
+    try {
+      const res = await fetch(`${BASE_URL}/api/upload`, {
+        method: 'POST',
+        headers: getAuthHeaders(),
+        body: formData
+      });
+      return await handleResponse(res, { url: '' });
+    } catch (e) {
+      console.error('Upload failed:', e);
+      return { url: '' };
+    }
   }
 };

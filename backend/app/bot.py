@@ -84,12 +84,12 @@ async def start_bot(token: str, proxy_url: str = None, proxy_config: dict = None
         elif final_proxy_url:
             session = AiohttpSession(proxy=final_proxy_url)
         else:
-            session = None
+            session = AiohttpSession()
             
-        current_bot = Bot(token=token, session=session)
-        
-        logger.info(f"Запуск Telegram бота... Прокси: {final_proxy_url or 'Direct'}")
-        await dp.start_polling(current_bot)
+        async with Bot(token=token, session=session) as bot:
+            current_bot = bot
+            logger.info(f"Запуск Telegram бота... Прокси: {final_proxy_url or 'Direct'}")
+            await dp.start_polling(bot)
     except Exception as e:
         logger.error(f"Ошибка при запуске бота: {e}")
         current_bot = None
@@ -136,13 +136,14 @@ async def test_bot_connection(token: str, admin_id: str = None, proxy_url: str =
             protocol_name = "HTTP (Legacy)"
 
         # 2. Create session and test
-        async with aiohttp.ClientSession(connector=connector) as client_session:
-            session = AiohttpSession(session=client_session)
-            if final_proxy_url:
-                session.proxy = final_proxy_url
-                
-            test_bot = Bot(token=token, session=session)
+        if connector:
+            session = AiohttpSession(connector=connector)
+        elif final_proxy_url:
+            session = AiohttpSession(proxy=final_proxy_url)
+        else:
+            session = AiohttpSession()
             
+        async with Bot(token=token, session=session) as test_bot:
             try:
                 # Use a longer timeout for get_me as proxies can be slow
                 me = await asyncio.wait_for(test_bot.get_me(), timeout=30.0)
@@ -161,7 +162,7 @@ async def test_bot_connection(token: str, admin_id: str = None, proxy_url: str =
                 print(f"[DEBUG] {error_msg}")
                 return False, "TIMEOUT_ERROR: ❌ Превышено время ожидания. Прокси недоступен или блокирует Telegram."
             finally:
-                # Bot session is managed by ClientSession context manager above
+                # Bot session is managed by async with context manager
                 pass
             
     except Exception as e:

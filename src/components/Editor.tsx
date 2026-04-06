@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Note } from '../App';
+import { api } from '../api/client';
 import { FileText, Eye, Edit3, Wand2, Share2, Bold, Italic, Link, Image, List, Code, Table, CheckCircle, Cloud, CloudOff, Hash, Network } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -23,6 +24,8 @@ export default function Editor({ note, onUpdate, onWikilinkClick, onTagClick, is
   const [title, setTitle] = useState(note.title);
   const [isSaving, setIsSaving] = useState(false);
   const [isSummarizing, setIsSummarizing] = useState(false);
+  const [showCodeDropdown, setShowCodeDropdown] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   
   const [showAutocomplete, setShowAutocomplete] = useState(false);
   const [autocompleteQuery, setAutocompleteQuery] = useState('');
@@ -146,8 +149,30 @@ export default function Editor({ note, onUpdate, onWikilinkClick, onTagClick, is
     insertMarkdown('[[', ']]');
   };
 
-  const insertCodeBlock = () => {
-    insertMarkdown('```\n', '\n```');
+  const insertCodeBlock = (lang: string = '') => {
+    insertMarkdown('```' + lang + '\n', '\n```');
+    setShowCodeDropdown(false);
+  };
+
+  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const formData = new FormData();
+    formData.append('file', file);
+
+    try {
+      const response = await api.uploadFile(formData);
+      if (response.url) {
+        insertMarkdown(`![${file.name}](`, `${response.url})`);
+      }
+    } catch (error) {
+      console.error('Upload failed:', error);
+      alert('Failed to upload image');
+    }
+    
+    // Reset input
+    if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
   const insertLink = () => {
@@ -233,12 +258,58 @@ export default function Editor({ note, onUpdate, onWikilinkClick, onTagClick, is
           <button onClick={insertBold} className="p-1.5 rounded hover:bg-secondary text-muted-foreground hover:text-primary transition-colors" title="Bold"><Bold size={16} /></button>
           <button onClick={insertItalic} className="p-1.5 rounded hover:bg-secondary text-muted-foreground hover:text-primary transition-colors" title="Italic"><Italic size={16} /></button>
           <button onClick={insertLink} className="p-1.5 rounded hover:bg-secondary text-muted-foreground hover:text-primary transition-colors" title="Link"><Link size={16} /></button>
-          <button onClick={insertImage} className="p-1.5 rounded hover:bg-secondary text-muted-foreground hover:text-primary transition-colors" title="Image"><Image size={16} /></button>
+          
+          <div className="relative">
+            <button 
+              onClick={() => fileInputRef.current?.click()} 
+              className="p-1.5 rounded hover:bg-secondary text-muted-foreground hover:text-primary transition-colors" 
+              title="Image"
+            >
+              <Image size={16} />
+            </button>
+            <input 
+              type="file" 
+              ref={fileInputRef} 
+              onChange={handleImageUpload} 
+              className="hidden" 
+              accept="image/*"
+            />
+          </div>
           
           <div className="w-px h-4 bg-border/50 mx-2"></div>
           
           <button onClick={insertList} className="p-1.5 rounded hover:bg-secondary text-muted-foreground hover:text-primary transition-colors" title="List"><List size={16} /></button>
-          <button onClick={insertCodeBlock} className="p-1.5 rounded hover:bg-secondary text-muted-foreground hover:text-primary transition-colors" title="Code Block"><Code size={16} /></button>
+          
+          <div className="relative">
+            <button 
+              onClick={() => setShowCodeDropdown(!showCodeDropdown)} 
+              className={`p-1.5 rounded hover:bg-secondary transition-colors ${showCodeDropdown ? 'bg-secondary text-primary' : 'text-muted-foreground hover:text-primary'}`} 
+              title="Code Block"
+            >
+              <Code size={16} />
+            </button>
+            
+            {showCodeDropdown && (
+              <div className="absolute left-0 top-full mt-1 z-50 bg-popover border border-border rounded-md shadow-lg p-1 w-32">
+                {['python', 'javascript', 'bash', 'yaml', 'json', 'sql', 'markdown'].map(lang => (
+                  <button
+                    key={lang}
+                    onClick={() => insertCodeBlock(lang)}
+                    className="w-full text-left px-2 py-1 text-xs hover:bg-secondary rounded text-foreground capitalize"
+                  >
+                    {lang}
+                  </button>
+                ))}
+                <button
+                  onClick={() => insertCodeBlock('')}
+                  className="w-full text-left px-2 py-1 text-xs hover:bg-secondary rounded text-muted-foreground border-t border-border/50 mt-1"
+                >
+                  Plain Text
+                </button>
+              </div>
+            )}
+          </div>
+
           <button onClick={insertWikilinkBtn} className="p-1.5 rounded hover:bg-secondary text-muted-foreground hover:text-primary transition-colors font-bold text-xs" title="Wikilink">[[ ]]</button>
           <button onClick={insertTable} className="p-1.5 rounded hover:bg-secondary text-muted-foreground hover:text-primary transition-colors" title="Table"><Table size={16} /></button>
         </div>
