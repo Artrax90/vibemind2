@@ -102,6 +102,36 @@ export default function Editor({ note, onUpdate, onWikilinkClick, onTagClick, is
     }
   };
 
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+  };
+
+  const handleDrop = async (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    
+    const files = e.dataTransfer.files;
+    if (files && files.length > 0) {
+      for (let i = 0; i < files.length; i++) {
+        const file = files[i];
+        if (file.type.startsWith('image/')) {
+          const formData = new FormData();
+          formData.append('file', file);
+          
+          try {
+            const response = await api.uploadFile(formData);
+            if (response.url) {
+              insertMarkdown(`![${file.name}](`, `${response.url})`);
+            }
+          } catch (error) {
+            console.error('Drop upload failed:', error);
+          }
+        }
+      }
+    }
+  };
+
   const handleContentChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     const val = e.target.value;
     setContent(val);
@@ -423,6 +453,8 @@ export default function Editor({ note, onUpdate, onWikilinkClick, onTagClick, is
               value={content}
               onChange={handleContentChange}
               onPaste={handlePaste}
+              onDragOver={handleDragOver}
+              onDrop={handleDrop}
               className="w-full h-full bg-transparent text-foreground/80 resize-none outline-none font-mono text-sm leading-relaxed"
               placeholder="Start writing..."
             />

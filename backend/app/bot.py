@@ -1,6 +1,7 @@
 import asyncio
 import logging
 import traceback
+import ast
 from aiogram import Bot, Dispatcher, types, F
 from aiogram.filters import Command
 from aiogram.client.session.aiohttp import AiohttpSession
@@ -33,7 +34,7 @@ async def handle_voice(message: types.Message):
     # TODO: 
     # 1. Скачать файл: await current_bot.download(message.voice, destination="temp.ogg")
     # 2. Конвертировать через ffmpeg (subprocess)
-    # 3. Отправить в Whisper API (используя httpx с proxy_url)
+    # 3. Отправить в Whisper API (используя httpx with proxy_url)
     # 4. Сохранить текст как заметку в БД
 
 @dp.message(F.text)
@@ -52,22 +53,26 @@ async def start_bot(token: str, proxy_url: str = None, proxy_config: dict = None
         # 1. Determine proxy URL string
         final_proxy_url = None
         
-        # Check proxy_config first (dictionary from UI)
-        if proxy_config and proxy_config.get("host"):
-            protocol = proxy_config.get("protocol", "http").lower()
+        # Handle proxy_config if it's a string (from DB)
+        if isinstance(proxy_config, str):
+            try:
+                proxy_config = ast.literal_eval(proxy_config)
+            except:
+                pass
+
+        # Check proxy_config first (dictionary from UI or parsed string)
+        if isinstance(proxy_config, dict) and proxy_config.get("host"):
+            protocol = str(proxy_config.get("protocol", "http")).lower()
             host = str(proxy_config.get("host"))
-            if "://" in host:
-                host = host.split("://")[-1]
+            port = proxy_config.get("port")
+            user = proxy_config.get("username")
+            password = proxy_config.get("password")
             
             if host and host != "None":
-                port = proxy_config.get("port")
-                user = proxy_config.get("username")
-                password = proxy_config.get("password")
-                
-                auth = f"{user}:{password}@" if user and password else ""
-                port_str = f":{port}" if port else ""
-                
-                final_proxy_url = f"{protocol}://{auth}{host}{port_str}"
+                if user and password:
+                    final_proxy_url = f"{protocol}://{user}:{password}@{host}:{port}"
+                else:
+                    final_proxy_url = f"{protocol}://{host}:{port}"
         
         # Fallback to legacy proxy_url string if it's actually a string
         if not final_proxy_url and proxy_url and isinstance(proxy_url, str):
@@ -96,23 +101,26 @@ async def test_bot_connection(token: str, admin_id: str = None, proxy_url: str =
     port = "unknown"
     
     try:
+        # Handle proxy_config if it's a string (from DB)
+        if isinstance(proxy_config, str):
+            try:
+                proxy_config = ast.literal_eval(proxy_config)
+            except:
+                pass
+
         # 1. Determine proxy URL string
-        if proxy_config and proxy_config.get("host"):
-            protocol = proxy_config.get("protocol", "http").lower()
+        if isinstance(proxy_config, dict) and proxy_config.get("host"):
+            protocol = str(proxy_config.get("protocol", "http")).lower()
             host = str(proxy_config.get("host"))
-            if "://" in host:
-                host = host.split("://")[-1]
+            port = proxy_config.get("port")
+            user = proxy_config.get("username")
+            password = proxy_config.get("password")
             
             if host and host != "None":
-                port = proxy_config.get("port")
-                user = proxy_config.get("username")
-                password = proxy_config.get("password")
-                
-                auth = f"{user}:{password}@" if user and password else ""
-                port_str = f":{port}" if port else ""
-                
-                # Use standard URL format for all protocols
-                final_proxy_url = f"{protocol}://{auth}{host}{port_str}"
+                if user and password:
+                    final_proxy_url = f"{protocol}://{user}:{password}@{host}:{port}"
+                else:
+                    final_proxy_url = f"{protocol}://{host}:{port}"
                 protocol_name = protocol.upper()
         
         # Fallback to legacy proxy_url string if it's actually a string
@@ -121,7 +129,6 @@ async def test_bot_connection(token: str, admin_id: str = None, proxy_url: str =
             protocol_name = "HTTP (Legacy)"
 
         # 2. Create session and test
-        # Pass proxy directly to AiohttpSession, aiogram handles SOCKS if aiohttp-socks is installed
         session = AiohttpSession(proxy=final_proxy_url) if final_proxy_url else AiohttpSession()
             
         async with Bot(token=token, session=session) as test_bot:
