@@ -40,15 +40,15 @@
   --card-foreground: oklch(0.92 0 0);
   --popover: oklch(0.12 0.005 285);
   --popover-foreground: oklch(0.92 0 0);
-  /* Indigo-500 primary */
-  --primary: oklch(0.65 0.2 265);
+  /* Indigo-500 primary (Neon Purple) */
+  --primary: oklch(0.65 0.25 285);
   --primary-foreground: oklch(0.985 0 0);
   --secondary: oklch(0.2 0.005 285);
   --secondary-foreground: oklch(0.92 0 0);
   --muted: oklch(0.2 0.005 285);
   --muted-foreground: oklch(0.6 0 0);
-  /* Emerald-500 accent */
-  --accent: oklch(0.7 0.18 160);
+  /* Cyan-400 accent (Neon Blue) */
+  --accent: oklch(0.75 0.18 200);
   --accent-foreground: oklch(0.1 0 0);
   --destructive: oklch(0.55 0.22 25);
   --destructive-foreground: oklch(0.985 0 0);

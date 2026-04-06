@@ -59,18 +59,15 @@ export default function App() {
 
   useEffect(() => {
     if (token) {
+      setIsLoading(true);
       Promise.all([api.getNotes(), api.getFolders()]).then(([fetchedNotes, fetchedFolders]) => {
-        if (fetchedNotes && fetchedNotes.length > 0) {
-          setNotes(fetchedNotes);
-        } else {
-          // Default notes if empty
-          setNotes([
-            { id: '1', title: 'Welcome to VibeMind', content: '# VibeMind\n\nYour cyberpunk AI note-taking ecosystem.\n\nTry [[Wiki-links]] and #tags.\n\n```python\nprint("Hello World")\n```' }
-          ]);
-        }
-        if (fetchedFolders) {
-          setFolders(fetchedFolders);
-        }
+        // Only set default notes if we got an empty array AND it's likely a first-time load
+        // For now, we'll trust the backend. If it's empty, it's empty.
+        setNotes(fetchedNotes || []);
+        setFolders(fetchedFolders || []);
+        setIsLoading(false);
+      }).catch(err => {
+        console.error("Failed to fetch data", err);
         setIsLoading(false);
       });
     }

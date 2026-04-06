@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Note } from '../App';
-import { FileText, Eye, Edit3, Wand2, Share2 } from 'lucide-react';
+import { FileText, Eye, Edit3, Wand2, Share2, Bold, Italic, Link, Image, List, Code, Table, CheckCircle, Cloud, CloudOff, Hash, Network } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
@@ -142,6 +142,34 @@ export default function Editor({ note, onUpdate, onWikilinkClick, onTagClick, is
     insertMarkdown(tableTemplate);
   };
 
+  const insertWikilinkBtn = () => {
+    insertMarkdown('[[', ']]');
+  };
+
+  const insertCodeBlock = () => {
+    insertMarkdown('```\n', '\n```');
+  };
+
+  const insertLink = () => {
+    insertMarkdown('[', '](url)');
+  };
+
+  const insertImage = () => {
+    insertMarkdown('![alt](', ')');
+  };
+
+  const insertList = () => {
+    insertMarkdown('- ');
+  };
+
+  const insertBold = () => {
+    insertMarkdown('**', '**');
+  };
+
+  const insertItalic = () => {
+    insertMarkdown('_', '_');
+  };
+
   // Simple logic to find related notes (by tags or common words in title)
   const relatedNotes = allNotes.filter(n => 
     n.id !== note.id && 
@@ -164,18 +192,24 @@ export default function Editor({ note, onUpdate, onWikilinkClick, onTagClick, is
         </div>
         
         <div className="flex items-center space-x-4">
-          <div className="text-xs text-muted-foreground mr-2">
+          <div className="flex items-center space-x-1 text-xs font-mono">
             {isSaving ? (
-              <span className="text-primary animate-pulse">Saving...</span>
+              <>
+                <Cloud className="w-4 h-4 text-primary animate-pulse" />
+                <span className="text-primary uppercase tracking-widest">Syncing</span>
+              </>
             ) : (
-              <span>Saved</span>
+              <>
+                <CheckCircle className="w-4 h-4 text-emerald-500" />
+                <span className="text-emerald-500 uppercase tracking-widest">Saved</span>
+              </>
             )}
           </div>
 
           <button 
             onClick={handleSummarize}
             disabled={isSummarizing}
-            className="p-2 text-primary hover:bg-primary/10 rounded-lg transition-colors disabled:opacity-50"
+            className="p-2 text-primary hover:bg-primary/10 rounded-lg transition-all hover:scale-110 active:scale-95 disabled:opacity-50"
             title={t('editor.summarize')}
           >
             <Wand2 size={20} className={isSummarizing ? 'animate-spin' : ''} />
@@ -184,7 +218,7 @@ export default function Editor({ note, onUpdate, onWikilinkClick, onTagClick, is
           {onShare && (
             <button 
               onClick={onShare}
-              className="p-2 text-muted-foreground hover:text-foreground rounded-lg transition-colors"
+              className="p-2 text-muted-foreground hover:text-primary rounded-lg transition-all hover:scale-110 active:scale-95"
               title="Share"
             >
               <Share2 size={20} />
@@ -192,58 +226,118 @@ export default function Editor({ note, onUpdate, onWikilinkClick, onTagClick, is
           )}
         </div>
       </div>
+
+      {/* Toolbar */}
+      {!isPreview && (
+        <div className="px-8 py-2 flex items-center space-x-1 border-b border-border/30 bg-secondary/20">
+          <button onClick={insertBold} className="p-1.5 rounded hover:bg-secondary text-muted-foreground hover:text-primary transition-colors" title="Bold"><Bold size={16} /></button>
+          <button onClick={insertItalic} className="p-1.5 rounded hover:bg-secondary text-muted-foreground hover:text-primary transition-colors" title="Italic"><Italic size={16} /></button>
+          <button onClick={insertLink} className="p-1.5 rounded hover:bg-secondary text-muted-foreground hover:text-primary transition-colors" title="Link"><Link size={16} /></button>
+          <button onClick={insertImage} className="p-1.5 rounded hover:bg-secondary text-muted-foreground hover:text-primary transition-colors" title="Image"><Image size={16} /></button>
+          
+          <div className="w-px h-4 bg-border/50 mx-2"></div>
+          
+          <button onClick={insertList} className="p-1.5 rounded hover:bg-secondary text-muted-foreground hover:text-primary transition-colors" title="List"><List size={16} /></button>
+          <button onClick={insertCodeBlock} className="p-1.5 rounded hover:bg-secondary text-muted-foreground hover:text-primary transition-colors" title="Code Block"><Code size={16} /></button>
+          <button onClick={insertWikilinkBtn} className="p-1.5 rounded hover:bg-secondary text-muted-foreground hover:text-primary transition-colors font-bold text-xs" title="Wikilink">[[ ]]</button>
+          <button onClick={insertTable} className="p-1.5 rounded hover:bg-secondary text-muted-foreground hover:text-primary transition-colors" title="Table"><Table size={16} /></button>
+        </div>
+      )}
       
-      <div className="flex-1 overflow-y-auto p-8 scrollbar-thin">
-        {isPreview ? (
-          <div className="prose prose-invert max-w-none text-foreground/80" onClick={handleContentClick}>
-            <ReactMarkdown 
-              remarkPlugins={[remarkGfm]}
-              components={{
-                code({node, inline, className, children, ...props}: any) {
-                  const match = /language-(\w+)/.exec(className || '')
-                  return !inline && match ? (
-                    <SyntaxHighlighter
-                      style={vscDarkPlus as any}
-                      language={match[1]}
-                      PreTag="div"
-                      className="rounded-lg border border-border/50"
-                      {...props}
-                    >
-                      {String(children).replace(/\n$/, '')}
-                    </SyntaxHighlighter>
-                  ) : (
-                    <code className="bg-secondary px-1 rounded" {...props}>
-                      {children}
-                    </code>
-                  )
-                },
-                p({children}) {
-                  if (typeof children === 'string') {
-                    return <p dangerouslySetInnerHTML={{ __html: renderContent(children) }} />;
+      <div className="flex-1 overflow-y-auto p-8 scrollbar-thin flex flex-col">
+        <div className="flex-1">
+          {isPreview ? (
+            <div className="prose prose-invert max-w-none text-foreground/80" onClick={handleContentClick}>
+              <ReactMarkdown 
+                remarkPlugins={[remarkGfm]}
+                components={{
+                  code({node, inline, className, children, ...props}: any) {
+                    const match = /language-(\w+)/.exec(className || '')
+                    return !inline && match ? (
+                      <SyntaxHighlighter
+                        style={vscDarkPlus as any}
+                        language={match[1]}
+                        PreTag="div"
+                        className="rounded-lg border border-border/50"
+                        {...props}
+                      >
+                        {String(children).replace(/\n$/, '')}
+                      </SyntaxHighlighter>
+                    ) : (
+                      <code className="bg-secondary px-1 rounded" {...props}>
+                        {children}
+                      </code>
+                    )
+                  },
+                  p({children}) {
+                    if (typeof children === 'string') {
+                      return <p dangerouslySetInnerHTML={{ __html: renderContent(children) }} />;
+                    }
+                    if (Array.isArray(children)) {
+                      return <p>{children.map((child, i) => {
+                        if (typeof child === 'string') {
+                          return <span key={i} dangerouslySetInnerHTML={{ __html: renderContent(child) }} />;
+                        }
+                        return <React.Fragment key={i}>{child}</React.Fragment>;
+                      })}</p>;
+                    }
+                    return <p>{children}</p>;
+                  },
+                  table({children}) {
+                    return (
+                      <div className="overflow-x-auto my-4 border border-border/50 rounded-lg">
+                        <table className="min-w-full divide-y divide-border/50">
+                          {children}
+                        </table>
+                      </div>
+                    )
+                  },
+                  th({children}) {
+                    return <th className="px-4 py-2 bg-secondary/50 text-left text-xs font-bold uppercase tracking-wider text-primary">{children}</th>
+                  },
+                  td({children}) {
+                    return <td className="px-4 py-2 border-t border-border/30 text-sm">{children}</td>
                   }
-                  if (Array.isArray(children)) {
-                    return <p>{children.map((child, i) => {
-                      if (typeof child === 'string') {
-                        return <span key={i} dangerouslySetInnerHTML={{ __html: renderContent(child) }} />;
-                      }
-                      return <React.Fragment key={i}>{child}</React.Fragment>;
-                    })}</p>;
-                  }
-                  return <p>{children}</p>;
-                }
-              }}
-            >
-              {content}
-            </ReactMarkdown>
+                }}
+              >
+                {content}
+              </ReactMarkdown>
+            </div>
+          ) : (
+            <textarea
+              ref={textareaRef}
+              value={content}
+              onChange={handleContentChange}
+              className="w-full h-full bg-transparent text-foreground/80 resize-none outline-none font-mono text-sm leading-relaxed"
+              placeholder="Start writing..."
+            />
+          )}
+        </div>
+
+        {/* Related Notes Section */}
+        {relatedNotes.length > 0 && (
+          <div className="mt-12 pt-8 border-t border-border/30">
+            <h3 className="text-sm font-bold uppercase tracking-widest text-muted-foreground mb-4 flex items-center">
+              <Network size={14} className="mr-2 text-primary" /> Related Notes
+            </h3>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              {relatedNotes.map(rn => (
+                <div 
+                  key={rn.id}
+                  onClick={() => onWikilinkClick && onWikilinkClick(rn.title)}
+                  className="p-4 rounded-xl border border-border/50 bg-secondary/10 hover:bg-primary/5 hover:border-primary/30 transition-all cursor-pointer group"
+                >
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-sm font-bold text-foreground group-hover:text-primary transition-colors truncate">{rn.title}</span>
+                    <FileText size={14} className="text-muted-foreground group-hover:text-primary transition-colors" />
+                  </div>
+                  <p className="text-xs text-muted-foreground line-clamp-2 leading-relaxed">
+                    {rn.content.replace(/[#*`[\]]/g, '')}
+                  </p>
+                </div>
+              ))}
+            </div>
           </div>
-        ) : (
-          <textarea
-            ref={textareaRef}
-            value={content}
-            onChange={handleContentChange}
-            className="w-full h-full bg-transparent text-foreground/80 resize-none outline-none font-mono text-sm leading-relaxed"
-            placeholder="Start writing..."
-          />
         )}
       </div>
 

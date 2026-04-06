@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import traceback
 from aiogram import Bot, Dispatcher, types, F
 from aiogram.filters import Command
 from aiogram.client.session.aiohttp import AiohttpSession
@@ -95,6 +96,8 @@ async def start_bot(token: str, proxy_url: str = None, proxy_config: dict = None
 
 async def test_bot_connection(token: str, admin_id: str = None, proxy_url: str = None, proxy_config: dict = None):
     """Тестирование соединения бота и отправка сообщения"""
+    print(f"DEBUG PROXY URL: '{proxy_url}'")
+    print(f"DEBUG PROXY CONFIG: {proxy_config}")
     try:
         connector = None
         protocol = "Direct"
@@ -148,6 +151,8 @@ async def test_bot_connection(token: str, admin_id: str = None, proxy_url: str =
         await test_bot.session.close()
         return True, f"✅ VibeMind: Connection Successful! Protocol: {protocol}"
     except Exception as e:
+        print(f"DEBUG ERROR: {str(e)}")
+        traceback.print_exc()
         return False, f"❌ Connection Failed: {str(e)}"
 
 async def stop_bot():

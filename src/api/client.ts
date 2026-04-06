@@ -1,7 +1,18 @@
 const BASE_URL = ''; // Relative to current host
 
+// Helper to get token
+const getAuthHeaders = () => {
+  const token = localStorage.getItem('access_token');
+  return token ? { 'Authorization': `Bearer ${token}` } : {};
+};
+
 // Helper to handle responses and fallback to mock data if backend is not running
 async function handleResponse(res: Response, mockData: any) {
+  if (res.status === 401) {
+    console.warn('Unauthorized, clearing token');
+    localStorage.removeItem('access_token');
+    // We don't reload here to avoid infinite loops, but the app should react to token change
+  }
   if (!res.ok) {
     console.warn(`API call failed (${res.status}), returning mock data`);
     return mockData;
@@ -25,7 +36,10 @@ export const api = {
     try {
       const res = await fetch(`${BASE_URL}/api/settings`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          ...getAuthHeaders()
+        },
         body: JSON.stringify(settings)
       });
       return await handleResponse(res, { success: true, settings });
@@ -37,7 +51,9 @@ export const api = {
   
   async getSettings() {
     try {
-      const res = await fetch(`${BASE_URL}/api/settings`);
+      const res = await fetch(`${BASE_URL}/api/settings`, {
+        headers: getAuthHeaders()
+      });
       return await handleResponse(res, { 
         telegram_bot_token: '', 
         llm_providers: [], 
@@ -53,7 +69,10 @@ export const api = {
     try {
       const res = await fetch(`${BASE_URL}/api/users`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          ...getAuthHeaders()
+        },
         body: JSON.stringify(user)
       });
       return await handleResponse(res, { id: `u${Date.now()}`, ...user });
@@ -64,7 +83,9 @@ export const api = {
   
   async getUsers() {
     try {
-      const res = await fetch(`${BASE_URL}/api/users`);
+      const res = await fetch(`${BASE_URL}/api/users`, {
+        headers: getAuthHeaders()
+      });
       return await handleResponse(res, [
         { id: '1', username: 'admin', email: 'admin@vibemind.local', role: 'Admin' }
       ]);
@@ -77,7 +98,10 @@ export const api = {
     try {
       const res = await fetch(`${BASE_URL}/api/notes`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          ...getAuthHeaders()
+        },
         body: JSON.stringify(note)
       });
       return await handleResponse(res, note);
@@ -88,7 +112,9 @@ export const api = {
   
   async getNotes() {
     try {
-      const res = await fetch(`${BASE_URL}/api/notes`);
+      const res = await fetch(`${BASE_URL}/api/notes`, {
+        headers: getAuthHeaders()
+      });
       return await handleResponse(res, []);
     } catch (e) {
       return [];
@@ -97,7 +123,10 @@ export const api = {
   
   async deleteNote(id: string) {
     try {
-      await fetch(`${BASE_URL}/api/notes/${id}`, { method: 'DELETE' });
+      await fetch(`${BASE_URL}/api/notes/${id}`, { 
+        method: 'DELETE',
+        headers: getAuthHeaders()
+      });
     } catch (e) {
       console.error(e);
     }
@@ -107,7 +136,10 @@ export const api = {
     try {
       const res = await fetch(`${BASE_URL}/api/folders`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          ...getAuthHeaders()
+        },
         body: JSON.stringify(folder)
       });
       return await handleResponse(res, folder);
@@ -118,7 +150,9 @@ export const api = {
   
   async getFolders() {
     try {
-      const res = await fetch(`${BASE_URL}/api/folders`);
+      const res = await fetch(`${BASE_URL}/api/folders`, {
+        headers: getAuthHeaders()
+      });
       return await handleResponse(res, []);
     } catch (e) {
       return [];
@@ -127,7 +161,10 @@ export const api = {
   
   async deleteFolder(id: string) {
     try {
-      await fetch(`${BASE_URL}/api/folders/${id}`, { method: 'DELETE' });
+      await fetch(`${BASE_URL}/api/folders/${id}`, { 
+        method: 'DELETE',
+        headers: getAuthHeaders()
+      });
     } catch (e) {
       console.error(e);
     }
