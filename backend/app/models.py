@@ -20,7 +20,22 @@ class User(Base):
     
     id = Column(Integer, primary_key=True, index=True)
     username = Column(String, unique=True, index=True)
+    email = Column(String, unique=True, index=True, nullable=True)
     hashed_password = Column(String, nullable=False)
+    is_active = Column(Integer, default=1)
+
+class Folder(Base):
+    __tablename__ = "folders"
+    id = Column(String, primary_key=True, index=True)
+    name = Column(String, nullable=False)
+    parentId = Column(String, nullable=True)
+
+class Note(Base):
+    __tablename__ = "notes"
+    id = Column(String, primary_key=True, index=True)
+    title = Column(String, nullable=False)
+    content = Column(Text, nullable=True)
+    folderId = Column(String, nullable=True)
 
 # Примечание: Для pgvector вам понадобится добавить:
 # from pgvector.sqlalchemy import Vector

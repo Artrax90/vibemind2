@@ -86,6 +86,23 @@ export const api = {
     }
   },
   
+  async getNotes() {
+    try {
+      const res = await fetch(`${BASE_URL}/api/notes`);
+      return await handleResponse(res, []);
+    } catch (e) {
+      return [];
+    }
+  },
+  
+  async deleteNote(id: string) {
+    try {
+      await fetch(`${BASE_URL}/api/notes/${id}`, { method: 'DELETE' });
+    } catch (e) {
+      console.error(e);
+    }
+  },
+  
   async createFolder(folder: any) {
     try {
       const res = await fetch(`${BASE_URL}/api/folders`, {
@@ -96,6 +113,23 @@ export const api = {
       return await handleResponse(res, folder);
     } catch (e) {
       return folder;
+    }
+  },
+  
+  async getFolders() {
+    try {
+      const res = await fetch(`${BASE_URL}/api/folders`);
+      return await handleResponse(res, []);
+    } catch (e) {
+      return [];
+    }
+  },
+  
+  async deleteFolder(id: string) {
+    try {
+      await fetch(`${BASE_URL}/api/folders/${id}`, { method: 'DELETE' });
+    } catch (e) {
+      console.error(e);
     }
   }
 };

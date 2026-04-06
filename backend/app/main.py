@@ -12,7 +12,7 @@ from passlib.context import CryptContext
 from jose import jwt
 from datetime import datetime, timedelta
 
-from .models import Base, Config, User
+from .models import Base, Config, User, Note, Folder
 from .bot import restart_bot, current_bot, test_bot_connection
 
 logging.basicConfig(level=logging.INFO)
@@ -69,6 +69,14 @@ class LoginRequest(BaseModel):
     username: str
     password: str
 
+class BotTestRequest(BaseModel):
+    tg_token: str
+    proxy_url: str | None = None
+    proxy_config: dict | None = None
+
+class ProxyTestRequest(BaseModel):
+    proxy_config: dict | None = None
+
 class ExternalDBRequest(BaseModel):
     db_type: str
     display_name: str
@@ -114,16 +122,52 @@ async def update_settings(settings: SettingsUpdate, db: Session = Depends(get_db
     return {"status": "success", "message": "Настройки сохранены, бот перезапускается"}
 
 @app.post("/api/bot/test")
-async def test_bot(db: Session = Depends(get_db)):
-    config = db.query(Config).first()
-    if not config or not config.tg_token:
+async def test_bot(req: BotTestRequest):
+    if not req.tg_token:
         raise HTTPException(status_code=400, detail="Bot token not configured")
     
-    success, message = await test_bot_connection(config.tg_token, config.proxy_url, config.proxy_config)
+    success, message = await test_bot_connection(req.tg_token, req.proxy_url, req.proxy_config)
     if success:
         return {"status": "success", "message": message}
     else:
         raise HTTPException(status_code=500, detail=message)
+
+@app.post("/api/proxy/test")
+async def test_proxy(req: ProxyTestRequest):
+    import aiohttp
+    from aiohttp_socks import ProxyConnector
+    
+    if not req.proxy_config or not req.proxy_config.get('host'):
+        raise HTTPException(status_code=400, detail="Proxy host not configured")
+        
+    pc = req.proxy_config
+    protocol = pc.get('protocol', 'HTTP').lower()
+    host = pc.get('host')
+    port = pc.get('port')
+    username = pc.get('username')
+    password = pc.get('password')
+    
+    if protocol in ['socks4', 'socks5']:
+        auth = f"{username}:{password}@" if username and password else ""
+        proxy_url = f"{protocol}://{auth}{host}:{port}"
+        connector = ProxyConnector.from_url(proxy_url)
+    else:
+        auth = f"{username}:{password}@" if username and password else ""
+        proxy_url = f"http://{auth}{host}:{port}"
+        connector = None # aiohttp handles http proxy directly via proxy param
+        
+    try:
+        async with aiohttp.ClientSession(connector=connector) as session:
+            kwargs = {}
+            if protocol not in ['socks4', 'socks5']:
+                kwargs['proxy'] = proxy_url
+            async with session.get('https://api.telegram.org', timeout=10, **kwargs) as resp:
+                if resp.status == 200:
+                    return {"status": "success", "message": "Proxy connection successful!"}
+                else:
+                    raise HTTPException(status_code=500, detail=f"Proxy returned status {resp.status}")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Proxy connection failed: {str(e)}")
 
 @app.post("/api/external-db")
 async def add_external_db(req: ExternalDBRequest, db: Session = Depends(get_db)):
@@ -152,13 +196,73 @@ async def get_external_dbs(db: Session = Depends(get_db)):
     config = db.query(Config).first()
     return {"dbs": config.external_dbs if config and config.external_dbs else []}
 
+class NoteCreate(BaseModel):
+    id: str
+    title: str
+    content: str | None = None
+    folderId: str | None = None
+
+class FolderCreate(BaseModel):
+    id: str
+    name: str
+    parentId: str | None = None
+
+@app.get("/api/notes")
+async def get_notes(db: Session = Depends(get_db)):
+    notes = db.query(Note).all()
+    return [{"id": n.id, "title": n.title, "content": n.content, "folderId": n.folderId} for n in notes]
+
 @app.post("/api/notes")
-async def create_note(note: dict):
-    return note
+async def create_or_update_note(note: NoteCreate, db: Session = Depends(get_db)):
+    db_note = db.query(Note).filter(Note.id == note.id).first()
+    if db_note:
+        db_note.title = note.title
+        db_note.content = note.content
+        db_note.folderId = note.folderId
+    else:
+        db_note = Note(
+            id=note.id,
+            title=note.title,
+            content=note.content,
+            folderId=note.folderId
+        )
+        db.add(db_note)
+    db.commit()
+    return note.dict()
+
+@app.delete("/api/notes/{note_id}")
+async def delete_note(note_id: str, db: Session = Depends(get_db)):
+    db.query(Note).filter(Note.id == note_id).delete()
+    db.commit()
+    return {"status": "success"}
+
+@app.get("/api/folders")
+async def get_folders(db: Session = Depends(get_db)):
+    folders = db.query(Folder).all()
+    return [{"id": f.id, "name": f.name, "parentId": f.parentId} for f in folders]
 
 @app.post("/api/folders")
-async def create_folder(folder: dict):
-    return folder
+async def create_or_update_folder(folder: FolderCreate, db: Session = Depends(get_db)):
+    db_folder = db.query(Folder).filter(Folder.id == folder.id).first()
+    if db_folder:
+        db_folder.name = folder.name
+        db_folder.parentId = folder.parentId
+    else:
+        db_folder = Folder(
+            id=folder.id,
+            name=folder.name,
+            parentId=folder.parentId
+        )
+        db.add(db_folder)
+    db.commit()
+    return folder.dict()
+
+@app.delete("/api/folders/{folder_id}")
+async def delete_folder(folder_id: str, db: Session = Depends(get_db)):
+    db.query(Folder).filter(Folder.id == folder_id).delete()
+    db.query(Note).filter(Note.folderId == folder_id).delete()
+    db.commit()
+    return {"status": "success"}
 
 @app.get("/api/bot/status")
 async def get_bot_status():
@@ -169,6 +273,9 @@ async def get_bot_status():
 @app.on_event("startup")
 async def startup_event():
     """При старте FastAPI сервера поднимаем бота, если есть токен, и создаем админа"""
+    # Ensure all tables are created (useful if models were added after initial create_all)
+    Base.metadata.create_all(bind=engine)
+    
     db = SessionLocal()
     try:
         # Schema Migration: Check and add proxy_config if missing
@@ -182,6 +289,29 @@ async def startup_event():
                 db.commit()
             except Exception as e:
                 logger.error(f"Failed to add proxy_config column: {e}")
+                db.rollback()
+
+        # Миграция схемы: добавляем email и is_active в users, если их нет
+        try:
+            db.execute(text("SELECT email FROM users LIMIT 1"))
+        except Exception:
+            db.rollback()
+            try:
+                db.execute(text("ALTER TABLE users ADD COLUMN email VARCHAR"))
+                db.commit()
+            except Exception as e:
+                logger.error(f"Failed to add email column: {e}")
+                db.rollback()
+                
+        try:
+            db.execute(text("SELECT is_active FROM users LIMIT 1"))
+        except Exception:
+            db.rollback()
+            try:
+                db.execute(text("ALTER TABLE users ADD COLUMN is_active INTEGER DEFAULT 1"))
+                db.commit()
+            except Exception as e:
+                logger.error(f"Failed to add is_active column: {e}")
                 db.rollback()
 
         # 1. Создание дефолтного админа, если таблица пуста

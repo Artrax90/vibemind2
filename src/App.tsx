@@ -10,6 +10,8 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Network, Edit3, Eye, Search, X, Menu, Maximize2, Minimize2, Sun, Moon } from 'lucide-react';
 import { useLanguage } from './contexts/LanguageContext';
 
+import { api } from './api/client';
+
 export type Note = {
   id: string;
   title: string;
@@ -26,13 +28,9 @@ export type Folder = {
 export default function App() {
   const { t } = useLanguage();
   const [token, setToken] = useState<string | null>(localStorage.getItem('access_token'));
-  const [notes, setNotes] = useState<Note[]>([
-    { id: '1', title: 'Welcome to VibeMind', content: '# VibeMind\n\nYour cyberpunk AI note-taking ecosystem.\n\nTry [[Wiki-links]] and #tags.\n\n```python\nprint("Hello World")\n```' },
-    { id: '2', title: 'Ideas', content: 'Some ideas for the project.\n\nCheck out [[Welcome to VibeMind]]' }
-  ]);
-  const [folders, setFolders] = useState<Folder[]>([
-    { id: 'f1', name: 'Projects' }
-  ]);
+  const [notes, setNotes] = useState<Note[]>([]);
+  const [folders, setFolders] = useState<Folder[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
   
   const [activeNoteId, setActiveNoteId] = useState<string | null>('1');
   const [showSettings, setShowSettings] = useState(false);
@@ -60,6 +58,25 @@ export default function App() {
   }, [theme]);
 
   useEffect(() => {
+    if (token) {
+      Promise.all([api.getNotes(), api.getFolders()]).then(([fetchedNotes, fetchedFolders]) => {
+        if (fetchedNotes && fetchedNotes.length > 0) {
+          setNotes(fetchedNotes);
+        } else {
+          // Default notes if empty
+          setNotes([
+            { id: '1', title: 'Welcome to VibeMind', content: '# VibeMind\n\nYour cyberpunk AI note-taking ecosystem.\n\nTry [[Wiki-links]] and #tags.\n\n```python\nprint("Hello World")\n```' }
+          ]);
+        }
+        if (fetchedFolders) {
+          setFolders(fetchedFolders);
+        }
+        setIsLoading(false);
+      });
+    }
+  }, [token]);
+
+  useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.ctrlKey && e.key === 'k') {
         e.preventDefault();
@@ -84,30 +101,45 @@ export default function App() {
   const activeNote = notes.find(n => n.id === activeNoteId);
 
   const updateNote = (id: string, updates: Partial<Note>) => {
-    setNotes(prev => prev.map(n => n.id === id ? { ...n, ...updates } : n));
+    setNotes(prev => {
+      const newNotes = prev.map(n => n.id === id ? { ...n, ...updates } : n);
+      const updatedNote = newNotes.find(n => n.id === id);
+      if (updatedNote) api.createNote(updatedNote);
+      return newNotes;
+    });
   };
 
   const addNote = (newNote: Note) => {
     setNotes(prev => [...prev, newNote]);
+    api.createNote(newNote);
   };
 
   const addFolder = (newFolder: Folder) => {
     setFolders(prev => [...prev, newFolder]);
+    api.createFolder(newFolder);
   };
 
   const deleteNote = (id: string) => {
     setNotes(notes.filter(n => n.id !== id));
     if (activeNoteId === id) setActiveNoteId(null);
+    api.deleteNote(id);
   };
 
   const deleteFolder = (id: string) => {
     setFolders(folders.filter(f => f.id !== id));
-    // Also delete notes inside this folder (or move them to root, let's delete for simplicity)
     setNotes(notes.filter(n => n.folderId !== id));
+    api.deleteFolder(id);
   };
 
   const renameFolder = (id: string, newName: string) => {
-    setFolders(folders.map(f => f.id === id ? { ...f, name: newName } : f));
+    setFolders(folders.map(f => {
+      if (f.id === id) {
+        const updated = { ...f, name: newName };
+        api.createFolder(updated);
+        return updated;
+      }
+      return f;
+    }));
   };
 
   const handleWikilinkClick = (title: string) => {

@@ -106,7 +106,8 @@ export default function Settings({ onClose }: SettingsProps) {
     try {
       const response = await fetch('/api/bot/test', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' }
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ tg_token: botToken, proxy_config: proxyConfig })
       });
 
       const data = await response.json();
@@ -126,6 +127,28 @@ export default function Settings({ onClose }: SettingsProps) {
     }
     
     setTimeout(() => setBotStatus('disconnected'), 5000);
+  };
+
+  const handleTestProxy = async () => {
+    if (!proxyConfig.host) {
+      alert('Please enter a proxy host first.');
+      return;
+    }
+    try {
+      const response = await fetch('/api/proxy/test', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ proxy_config: proxyConfig })
+      });
+      const data = await response.json();
+      if (response.ok && data.status === 'success') {
+        alert('✅ Proxy connection successful!');
+      } else {
+        alert(`❌ Proxy test failed: ${data.detail || 'Unknown error'}`);
+      }
+    } catch (e) {
+      alert('❌ Proxy test request failed.');
+    }
   };
 
   const handleAddExternalDB = async (dbData: any) => {
@@ -444,6 +467,14 @@ export default function Settings({ onClose }: SettingsProps) {
                           />
                         </div>
                       </div>
+                    </div>
+                    <div className="mt-4 flex justify-end">
+                      <button 
+                        onClick={handleTestProxy}
+                        className="px-4 py-2 bg-secondary text-secondary-foreground rounded-lg hover:bg-secondary/80 transition-colors"
+                      >
+                        Test Proxy Connection
+                      </button>
                     </div>
                   </div>
                 </section>
