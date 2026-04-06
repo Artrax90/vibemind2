@@ -88,7 +88,7 @@ async def speech_to_text(audio_path: str) -> str:
                 chunk = f.read(1024)
                 if not chunk:
                     break
-                await async_write_event(AudioChunk(audio=chunk).event(), writer)
+                await async_write_event(AudioChunk(audio=chunk, rate=16000, width=2, channels=1).event(), writer)
         
         await async_write_event(AudioStop().event(), writer)
         
