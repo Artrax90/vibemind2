@@ -21,6 +21,31 @@ logger = logging.getLogger(__name__)
 SECRET_KEY = os.getenv("ENCRYPTION_KEY", "fallback-zero-config-secret-key-change-in-production")
 ALGORITHM = "HS256"
 
+STT_STOP_WORDS = ["в неё", "в нее", "неё", "нее", "туда", "в заметку", "текст", "и", "в", "под названием"]
+
+def clean_text_cyclic(text: str) -> str:
+    """Циклическая очистка текста от стоп-слов в начале и в конце"""
+    if not text:
+        return text
+    
+    # Также убираем двоеточия и лишние пробелы
+    text = text.strip().strip(":")
+    changed = True
+    while changed:
+        changed = False
+        lower_text = text.lower()
+        for word in STT_STOP_WORDS:
+            w_lower = word.lower()
+            if lower_text.startswith(w_lower):
+                text = text[len(word):].strip().strip(":")
+                lower_text = text.lower()
+                changed = True
+            if lower_text.endswith(w_lower):
+                text = text[:-len(word)].strip().strip(":")
+                lower_text = text.lower()
+                changed = True
+    return text.strip().strip(":")
+
 dp = Dispatcher()
 bot_task = None
 current_bot = None
@@ -158,40 +183,79 @@ async def handle_text(message: types.Message):
         return
         
     text = message.text.strip()
+    lower_text = text.lower()
     
     target_title = None
     new_content = None
     mode = "none"
 
-    # Этап 1 (Append): "добавь в [название] [текст]"
-    append_pattern = r"^добавь в (?:заметку )?(\S+)\s+(?:и\s+)?(.+)$"
-    append_match = re.match(append_pattern, text, re.IGNORECASE | re.UNICODE | re.DOTALL)
-    
-    if append_match:
+    # Позиционный парсинг
+    # 1. Режим Добавления (Append): "добавь в [название] [текст]"
+    if lower_text.startswith("добавь в"):
         mode = "append"
-        target_title = append_match.group(1).strip()
-        new_content = append_match.group(2).strip()
-    else:
-        # Этап 2 (Create): "создай [что-то] [название] и добавь [текст]"
-        # Ищем "названием" или "заметку", берем следующее слово как Title, а всё после "добавь" или "неё" как Content
-        create_pattern = r".*создай.*?(?:заметку|названием)\s+(\S+)\s+.*?(?:добавь|неё)\s+(.+)$"
-        create_match = re.match(create_pattern, text, re.IGNORECASE | re.UNICODE | re.DOTALL)
-        if create_match:
-            mode = "create"
-            target_title = create_match.group(1).strip()
-            new_content = create_match.group(2).strip()
+        # Ищем начало заголовка
+        if lower_text.startswith("добавь в заметку"):
+            start_idx = len("добавь в заметку")
+        else:
+            start_idx = len("добавь в")
+        
+        remaining = text[start_idx:].strip()
+        parts = remaining.split(None, 1)
+        if len(parts) == 2:
+            target_title = parts[0]
+            new_content = parts[1]
+        elif len(parts) == 1:
+            target_title = parts[0]
+            new_content = ""
 
-    # Обязательная очистка
-    def clean_text(t):
-        if not t: return t
-        # Удаляем лишние слова в начале
-        t = re.sub(r"^\s*(?:заметку|под|названием|и|в|неё|:)\s*", "", t, flags=re.IGNORECASE | re.UNICODE)
-        return t.strip()
+    # 2. Режим Создания (Create): "создай [что-то] [название] и добавь [текст]"
+    if not target_title and "создай" in lower_text:
+        mode = "create"
+        # Ищем ключевые слова для заголовка
+        idx_name = lower_text.find("названием")
+        idx_note = lower_text.find("заметку")
+        
+        pivot_idx = -1
+        if idx_name != -1:
+            pivot_idx = idx_name + len("названием")
+        elif idx_note != -1:
+            pivot_idx = idx_note + len("заметку")
+            
+        if pivot_idx != -1:
+            # Берем следующее слово как Title
+            after_pivot = text[pivot_idx:].strip()
+            parts = after_pivot.split(None, 1)
+            if len(parts) >= 1:
+                target_title = parts[0]
+                
+                # Ищем начало контента после Title
+                title_pos = text[pivot_idx:].find(target_title)
+                after_title_pos = pivot_idx + title_pos + len(target_title)
+                after_title_text = text[after_title_pos:]
+                after_title_lower = after_title_text.lower()
+                
+                # Ищем "добавь", "неё", "нее"
+                idx_add = after_title_lower.find("добавь")
+                idx_her = after_title_lower.find("неё")
+                idx_her2 = after_title_lower.find("нее")
+                
+                found_indices = [i for i in [idx_add, idx_her, idx_her2] if i != -1]
+                if found_indices:
+                    min_idx = min(found_indices)
+                    if min_idx == idx_add: split_len = len("добавь")
+                    elif min_idx == idx_her: split_len = len("неё")
+                    else: split_len = len("нее")
+                    new_content = after_title_text[min_idx + split_len:].strip()
+                elif len(parts) == 2:
+                    new_content = parts[1]
+                else:
+                    new_content = ""
 
+    # Очистка
     if target_title:
-        target_title = clean_text(target_title)
+        target_title = clean_text_cyclic(target_title)
     if new_content:
-        new_content = clean_text(new_content)
+        new_content = clean_text_cyclic(new_content)
 
     if target_title and new_content:
         logger.info(f"DEBUG PARSE: mode={mode}, title='{target_title}', content='{new_content}'")
