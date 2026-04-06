@@ -159,36 +159,42 @@ async def handle_text(message: types.Message):
         
     text = message.text.strip()
     
-    # 1. Режим "Smart Creation": гибкий поиск ключевых слов
-    # Ищем конструкцию: [что-то] создай [что-то] заметку [что-то] названием [Название] [и] [Текст]
-    smart_pattern = r".*создай.*заметку.*названием\s+(.+?)\s+(?:и\s+)?(?:добавь в неё|текст|:)\s+(.+)$"
-    smart_match = re.match(smart_pattern, text, re.IGNORECASE | re.DOTALL)
-    
-    # 2. Режим "Добавления" (Append Mode): "добавь в [название] [текст]"
-    append_pattern = r"^добавь в (?:заметку )?(\S+)\s+(?:и\s+)?(.+)$"
-    append_match = re.match(append_pattern, text, re.IGNORECASE | re.DOTALL)
-    
     target_title = None
     new_content = None
+    mode = "none"
+
+    # Этап 1 (Append): "добавь в [название] [текст]"
+    append_pattern = r"^добавь в (?:заметку )?(\S+)\s+(?:и\s+)?(.+)$"
+    append_match = re.match(append_pattern, text, re.IGNORECASE | re.UNICODE | re.DOTALL)
     
-    if smart_match:
-        target_title = smart_match.group(1).strip()
-        new_content = smart_match.group(2).strip()
-        
-        # Очистка заголовка, если он слишком длинный (сбой парсинга)
-        if len(target_title) > 50:
-            # Пытаемся вытащить только то, что после "названием"
-            parts = re.split(r"названием", target_title, flags=re.IGNORECASE)
-            target_title = parts[-1].strip().split()[0] # Берем первое слово после "названием"
-            
-    elif append_match:
+    if append_match:
+        mode = "append"
         target_title = append_match.group(1).strip()
         new_content = append_match.group(2).strip()
-        # Очистка контента от лишних союзов и знаков в начале
-        new_content = re.sub(r"^\s*(?::|и|текст)\s*", "", new_content, flags=re.IGNORECASE)
+    else:
+        # Этап 2 (Create): "создай [что-то] [название] и добавь [текст]"
+        # Ищем "названием" или "заметку", берем следующее слово как Title, а всё после "добавь" или "неё" как Content
+        create_pattern = r".*создай.*?(?:заметку|названием)\s+(\S+)\s+.*?(?:добавь|неё)\s+(.+)$"
+        create_match = re.match(create_pattern, text, re.IGNORECASE | re.UNICODE | re.DOTALL)
+        if create_match:
+            mode = "create"
+            target_title = create_match.group(1).strip()
+            new_content = create_match.group(2).strip()
+
+    # Обязательная очистка
+    def clean_text(t):
+        if not t: return t
+        # Удаляем лишние слова в начале
+        t = re.sub(r"^\s*(?:заметку|под|названием|и|в|неё|:)\s*", "", t, flags=re.IGNORECASE | re.UNICODE)
+        return t.strip()
+
+    if target_title:
+        target_title = clean_text(target_title)
+    if new_content:
+        new_content = clean_text(new_content)
 
     if target_title and new_content:
-        logger.info(f"Parsed Title: '{target_title}', Parsed Content: '{new_content}'")
+        logger.info(f"DEBUG PARSE: mode={mode}, title='{target_title}', content='{new_content}'")
         
         # 1. Ищем заметку
         existing_note = await search_note_by_title(target_title)
@@ -212,7 +218,7 @@ async def handle_text(message: types.Message):
 
     # Обычный режим сохранения
     title = text[:30] + "..." if len(text) > 30 else text
-    logger.info(f"Parsed Title: '{title}', Parsed Content: '{text}'")
+    logger.info(f"DEBUG PARSE: mode=simple, title='{title}', content='{text}'")
     success, result_msg = await save_note_to_api(title, text)
     await message.answer(result_msg)
 
