@@ -47,36 +47,47 @@ async def handle_text(message: types.Message):
 async def start_bot(token: str, proxy_url: str = None, proxy_config: dict = None):
     """Запуск бота с поддержкой прокси (HTTP, SOCKS4, SOCKS5)"""
     global current_bot
+
+    # Унифицируй входные данные
+    if isinstance(proxy_url, str) and proxy_url.strip().startswith("{"):
+        try:
+            proxy_url = ast.literal_eval(proxy_url)
+        except:
+            pass
+
     try:
         session = None
-        
-        # 1. Determine proxy URL string
         final_proxy_url = None
         
-        # Handle proxy_config if it's a string (from DB)
-        if isinstance(proxy_config, str):
-            try:
-                proxy_config = ast.literal_eval(proxy_config)
-            except:
-                pass
-
-        # Check proxy_config first (dictionary from UI or parsed string)
-        if isinstance(proxy_config, dict) and proxy_config.get("host"):
-            protocol = str(proxy_config.get("protocol", "http")).lower()
-            host = str(proxy_config.get("host"))
-            port = proxy_config.get("port")
-            user = proxy_config.get("username")
-            password = proxy_config.get("password")
-            
-            if host and host != "None":
-                if user and password:
-                    final_proxy_url = f"{protocol}://{user}:{password}@{host}:{port}"
-                else:
-                    final_proxy_url = f"{protocol}://{host}:{port}"
-        
-        # Fallback to legacy proxy_url string if it's actually a string
-        if not final_proxy_url and proxy_url and isinstance(proxy_url, str):
+        # Приоритет 1: proxy_url как готовая строка
+        if isinstance(proxy_url, str) and (proxy_url.startswith("http") or proxy_url.startswith("socks")):
             final_proxy_url = proxy_url
+        # Приоритет 2: proxy_url как словарь
+        elif isinstance(proxy_url, dict) and proxy_url.get("host"):
+            p = proxy_url
+            protocol = str(p.get("protocol", "http")).lower()
+            host = str(p.get("host"))
+            port = p.get("port")
+            user = p.get("username")
+            password = p.get("password")
+            if user and password:
+                final_proxy_url = f"{protocol}://{user}:{password}@{host}:{port}"
+            else:
+                final_proxy_url = f"{protocol}://{host}:{port}"
+        # Приоритет 3: proxy_config как словарь
+        elif isinstance(proxy_config, dict) and proxy_config.get("host"):
+            p = proxy_config
+            protocol = str(p.get("protocol", "http")).lower()
+            host = str(p.get("host"))
+            port = p.get("port")
+            user = p.get("username")
+            password = p.get("password")
+            if user and password:
+                final_proxy_url = f"{protocol}://{user}:{password}@{host}:{port}"
+            else:
+                final_proxy_url = f"{protocol}://{host}:{port}"
+
+        logger.debug(f"Final Proxy URL for start_bot: {final_proxy_url}")
 
         # 2. Create session
         session = AiohttpSession(proxy=final_proxy_url) if final_proxy_url else AiohttpSession()
@@ -91,43 +102,53 @@ async def start_bot(token: str, proxy_url: str = None, proxy_config: dict = None
 
 async def test_bot_connection(token: str, admin_id: str = None, proxy_url: str = None, proxy_config: dict = None):
     """Тестирование соединения бота и отправка сообщения"""
-    print(f"DEBUG PROXY URL: '{proxy_url}'")
-    print(f"DEBUG PROXY CONFIG: {proxy_config}")
-    
+    # Унифицируй входные данные
+    if isinstance(proxy_url, str) and proxy_url.strip().startswith("{"):
+        try:
+            proxy_url = ast.literal_eval(proxy_url)
+        except:
+            pass
+
     session = None
     final_proxy_url = None
     protocol_name = "Direct"
     host = "unknown"
     port = "unknown"
     
+    # Приоритет 1: proxy_url как готовая строка
+    if isinstance(proxy_url, str) and (proxy_url.startswith("http") or proxy_url.startswith("socks")):
+        final_proxy_url = proxy_url
+        protocol_name = proxy_url.split("://")[0].upper() if "://" in proxy_url else "Proxy"
+    # Приоритет 2: proxy_url как словарь
+    elif isinstance(proxy_url, dict) and proxy_url.get("host"):
+        p = proxy_url
+        protocol = str(p.get("protocol", "http")).lower()
+        host = str(p.get("host"))
+        port = p.get("port")
+        user = p.get("username")
+        password = p.get("password")
+        if user and password:
+            final_proxy_url = f"{protocol}://{user}:{password}@{host}:{port}"
+        else:
+            final_proxy_url = f"{protocol}://{host}:{port}"
+        protocol_name = protocol.upper()
+    # Приоритет 3: proxy_config как словарь
+    elif isinstance(proxy_config, dict) and proxy_config.get("host"):
+        p = proxy_config
+        protocol = str(p.get("protocol", "http")).lower()
+        host = str(p.get("host"))
+        port = p.get("port")
+        user = p.get("username")
+        password = p.get("password")
+        if user and password:
+            final_proxy_url = f"{protocol}://{user}:{password}@{host}:{port}"
+        else:
+            final_proxy_url = f"{protocol}://{host}:{port}"
+        protocol_name = protocol.upper()
+
+    logger.debug(f"Final Proxy URL: {final_proxy_url}")
+
     try:
-        # Handle proxy_config if it's a string (from DB)
-        if isinstance(proxy_config, str):
-            try:
-                proxy_config = ast.literal_eval(proxy_config)
-            except:
-                pass
-
-        # 1. Determine proxy URL string
-        if isinstance(proxy_config, dict) and proxy_config.get("host"):
-            protocol = str(proxy_config.get("protocol", "http")).lower()
-            host = str(proxy_config.get("host"))
-            port = proxy_config.get("port")
-            user = proxy_config.get("username")
-            password = proxy_config.get("password")
-            
-            if host and host != "None":
-                if user and password:
-                    final_proxy_url = f"{protocol}://{user}:{password}@{host}:{port}"
-                else:
-                    final_proxy_url = f"{protocol}://{host}:{port}"
-                protocol_name = protocol.upper()
-        
-        # Fallback to legacy proxy_url string if it's actually a string
-        if not final_proxy_url and proxy_url and isinstance(proxy_url, str):
-            final_proxy_url = proxy_url
-            protocol_name = "HTTP (Legacy)"
-
         # 2. Create session and test
         session = AiohttpSession(proxy=final_proxy_url) if final_proxy_url else AiohttpSession()
             
