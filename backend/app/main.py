@@ -343,6 +343,17 @@ async def delete_note(note_id: str, db: Session = Depends(get_db), current_user:
     db.commit()
     return {"status": "success"}
 
+@app.get("/api/notes/search")
+async def search_notes(query: str, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    """Поиск заметки по заголовку (точное совпадение или частичное)"""
+    note = db.query(Note).filter(
+        Note.user_id == current_user.id,
+        Note.title.ilike(f"%{query}%")
+    ).first()
+    if note:
+        return {"id": note.id, "title": note.title, "content": note.content}
+    return None
+
 @app.get("/api/folders")
 async def get_folders(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     folders = db.query(Folder).filter(Folder.user_id == current_user.id).all()

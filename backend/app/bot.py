@@ -4,6 +4,7 @@ import traceback
 import ast
 import os
 import uuid
+import re
 from datetime import datetime, timedelta
 from jose import jwt
 from aiogram import Bot, Dispatcher, types, F
@@ -25,8 +26,8 @@ bot_task = None
 current_bot = None
 current_admin_id = None
 
-async def save_note_to_api(title: str, content: str):
-    """Отправка заметки в API FastAPI"""
+async def save_note_to_api(title: str, content: str, note_id: str = None):
+    """Отправка заметки в API FastAPI (создание или обновление)"""
     url = "http://localhost:3344/api/notes"
     
     # Генерируем токен для пользователя 'admin'
@@ -40,7 +41,7 @@ async def save_note_to_api(title: str, content: str):
     }
     
     payload = {
-        "id": str(uuid.uuid4()),
+        "id": note_id or str(uuid.uuid4()),
         "title": title,
         "content": content
     }
@@ -59,6 +60,28 @@ async def save_note_to_api(title: str, content: str):
     except Exception as e:
         logger.error(f"Ошибка при обращении к API: {e}")
         return False, f"❌ Ошибка при обращении к API: {str(e)}"
+
+async def search_note_by_title(title: str):
+    """Поиск заметки по заголовку через API"""
+    url = f"http://localhost:3344/api/notes/search?query={title}"
+    
+    # Генерируем токен
+    expire = datetime.utcnow() + timedelta(minutes=60)
+    to_encode = {"sub": "admin", "exp": expire}
+    token = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
+    
+    headers = {"Authorization": f"Bearer {token}"}
+    
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.get(url, headers=headers) as response:
+                if response.status == 200:
+                    data = await response.json()
+                    return data
+                return None
+    except Exception as e:
+        logger.error(f"Ошибка при поиске заметки: {e}")
+        return None
 
 @dp.message(Command("start"))
 async def handle_start(message: types.Message):
@@ -125,7 +148,7 @@ async def handle_photo(message: types.Message):
 
 @dp.message(F.text)
 async def handle_text(message: types.Message):
-    """Сохранение текстовых сообщений как .md заметок"""
+    """Сохранение текстовых сообщений как .md заметок или обновление существующих"""
     # Проверка admin_id
     if current_admin_id and str(message.from_user.id) != str(current_admin_id):
         logger.warning(f"Unauthorized access attempt from {message.from_user.id}")
@@ -134,8 +157,39 @@ async def handle_text(message: types.Message):
     if message.text.startswith('/'):
         return
         
-    title = message.text[:30] + "..." if len(message.text) > 30 else message.text
-    success, result_msg = await save_note_to_api(title, message.text)
+    text = message.text.strip()
+    
+    # Режим "Добавления" (Append Mode)
+    # "добавь в [название] [текст]" или "добавь в заметку [название] [текст]"
+    append_match = re.match(r"^добавь в (?:заметку )?(\S+)\s+(.+)$", text, re.IGNORECASE | re.DOTALL)
+    
+    if append_match:
+        target_title = append_match.group(1)
+        new_content = append_match.group(2)
+        
+        # 1. Ищем заметку
+        existing_note = await search_note_by_title(target_title)
+        
+        if existing_note:
+            # 2. Обновляем существующую
+            updated_content = f"{existing_note['content']}\n{new_content}"
+            success, result_msg = await save_note_to_api(existing_note['title'], updated_content, existing_note['id'])
+            if success:
+                await message.answer(f"Обновил заметку «{existing_note['title']}»! ✅")
+            else:
+                await message.answer(result_msg)
+        else:
+            # 3. Создаем новую
+            success, result_msg = await save_note_to_api(target_title, new_content)
+            if success:
+                await message.answer(f"Создал новую заметку «{target_title}»! 📝")
+            else:
+                await message.answer(result_msg)
+        return
+
+    # Обычный режим сохранения
+    title = text[:30] + "..." if len(text) > 30 else text
+    success, result_msg = await save_note_to_api(title, text)
     await message.answer(result_msg)
 
 async def start_bot(token: str, proxy_url: str = None, proxy_config: dict = None, admin_id: str = None):
