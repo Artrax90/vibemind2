@@ -159,19 +159,30 @@ async def handle_text(message: types.Message):
         
     text = message.text.strip()
     
-    # Режим "Добавления" (Append Mode)
-    # "добавь в [название] [текст]" или "добавь в заметку [название] [текст]"
+    # 1. Режим "Smart Creation": "создай новую заметку под названием [Название] и добавь в неё [Текст]"
+    smart_match = re.match(r"^создай новую заметку под названием\s+(.+?)\s+(?:и\s+)?добавь в неё\s+(.+)$", text, re.IGNORECASE | re.DOTALL)
+    
+    # 2. Режим "Добавления" (Append Mode): "добавь в [название] [текст]"
     append_match = re.match(r"^добавь в (?:заметку )?(\S+)\s+(.+)$", text, re.IGNORECASE | re.DOTALL)
     
-    if append_match:
-        target_title = append_match.group(1)
-        new_content = append_match.group(2)
-        
+    target_title = None
+    new_content = None
+    
+    if smart_match:
+        target_title = smart_match.group(1).strip()
+        new_content = smart_match.group(2).strip()
+    elif append_match:
+        target_title = append_match.group(1).strip()
+        new_content = append_match.group(2).strip()
+        # Очистка контента от лишних союзов и знаков в начале
+        new_content = re.sub(r"^\s*(?::|и|текст)\s*", "", new_content, flags=re.IGNORECASE)
+
+    if target_title and new_content:
         # 1. Ищем заметку
         existing_note = await search_note_by_title(target_title)
         
         if existing_note:
-            # 2. Обновляем существующую
+            # 2. Обновляем существующую (с переносом строки)
             updated_content = f"{existing_note['content']}\n{new_content}"
             success, result_msg = await save_note_to_api(existing_note['title'], updated_content, existing_note['id'])
             if success:
