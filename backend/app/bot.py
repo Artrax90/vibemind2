@@ -159,11 +159,14 @@ async def handle_text(message: types.Message):
         
     text = message.text.strip()
     
-    # 1. Режим "Smart Creation": "создай новую заметку под названием [Название] и добавь в неё [Текст]"
-    smart_match = re.match(r"^создай новую заметку под названием\s+(.+?)\s+(?:и\s+)?добавь в неё\s+(.+)$", text, re.IGNORECASE | re.DOTALL)
+    # 1. Режим "Smart Creation": гибкий поиск ключевых слов
+    # Ищем конструкцию: [что-то] создай [что-то] заметку [что-то] названием [Название] [и] [Текст]
+    smart_pattern = r".*создай.*заметку.*названием\s+(.+?)\s+(?:и\s+)?(?:добавь в неё|текст|:)\s+(.+)$"
+    smart_match = re.match(smart_pattern, text, re.IGNORECASE | re.DOTALL)
     
     # 2. Режим "Добавления" (Append Mode): "добавь в [название] [текст]"
-    append_match = re.match(r"^добавь в (?:заметку )?(\S+)\s+(.+)$", text, re.IGNORECASE | re.DOTALL)
+    append_pattern = r"^добавь в (?:заметку )?(\S+)\s+(?:и\s+)?(.+)$"
+    append_match = re.match(append_pattern, text, re.IGNORECASE | re.DOTALL)
     
     target_title = None
     new_content = None
@@ -171,6 +174,13 @@ async def handle_text(message: types.Message):
     if smart_match:
         target_title = smart_match.group(1).strip()
         new_content = smart_match.group(2).strip()
+        
+        # Очистка заголовка, если он слишком длинный (сбой парсинга)
+        if len(target_title) > 50:
+            # Пытаемся вытащить только то, что после "названием"
+            parts = re.split(r"названием", target_title, flags=re.IGNORECASE)
+            target_title = parts[-1].strip().split()[0] # Берем первое слово после "названием"
+            
     elif append_match:
         target_title = append_match.group(1).strip()
         new_content = append_match.group(2).strip()
@@ -178,12 +188,14 @@ async def handle_text(message: types.Message):
         new_content = re.sub(r"^\s*(?::|и|текст)\s*", "", new_content, flags=re.IGNORECASE)
 
     if target_title and new_content:
+        logger.info(f"Parsed Title: '{target_title}', Parsed Content: '{new_content}'")
+        
         # 1. Ищем заметку
         existing_note = await search_note_by_title(target_title)
         
         if existing_note:
-            # 2. Обновляем существующую (с переносом строки)
-            updated_content = f"{existing_note['content']}\n{new_content}"
+            # 2. Обновляем существующую (с двойным переносом строки для Markdown)
+            updated_content = f"{existing_note['content']}\n\n{new_content}"
             success, result_msg = await save_note_to_api(existing_note['title'], updated_content, existing_note['id'])
             if success:
                 await message.answer(f"Обновил заметку «{existing_note['title']}»! ✅")
@@ -200,6 +212,7 @@ async def handle_text(message: types.Message):
 
     # Обычный режим сохранения
     title = text[:30] + "..." if len(text) > 30 else text
+    logger.info(f"Parsed Title: '{title}', Parsed Content: '{text}'")
     success, result_msg = await save_note_to_api(title, text)
     await message.answer(result_msg)
 
