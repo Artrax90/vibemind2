@@ -209,7 +209,7 @@ async def update_settings(settings: SettingsUpdate, db: Session = Depends(get_db
     # Динамически перезапускаем бота с новыми настройками
     if config.tg_token:
         # Запускаем перезапуск как фоновую задачу, чтобы не блокировать HTTP ответ
-        asyncio.create_task(restart_bot(config.tg_token, config.proxy_url, config.proxy_config))
+        asyncio.create_task(restart_bot(config.tg_token, config.proxy_url, config.proxy_config, config.tg_admin_id))
         
     return {"status": "success", "message": "Настройки сохранены, бот перезапускается"}
 
@@ -456,7 +456,7 @@ async def startup_event():
             logger.info("Токен Telegram не найден в БД. Бот находится в статусе 'Idle'. Пожалуйста, настройте его через Web UI.")
         else:
             logger.info("Найден токен Telegram. Запускаем бота...")
-            asyncio.create_task(restart_bot(config.tg_token, config.proxy_url, config.proxy_config))
+            asyncio.create_task(restart_bot(config.tg_token, config.proxy_url, config.proxy_config, config.tg_admin_id))
     except Exception as e:
         logger.error(f"Ошибка при запуске: {e}")
     finally:

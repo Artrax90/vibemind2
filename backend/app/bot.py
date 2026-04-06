@@ -4,6 +4,8 @@ import traceback
 import ast
 import os
 import uuid
+from datetime import datetime, timedelta
+from jose import jwt
 from aiogram import Bot, Dispatcher, types, F
 from aiogram.filters import Command
 from aiogram.client.session.aiohttp import AiohttpSession
@@ -14,9 +16,49 @@ import aiohttp
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+# JWT Settings (must match main.py)
+SECRET_KEY = os.getenv("ENCRYPTION_KEY", "fallback-zero-config-secret-key-change-in-production")
+ALGORITHM = "HS256"
+
 dp = Dispatcher()
 bot_task = None
 current_bot = None
+current_admin_id = None
+
+async def save_note_to_api(title: str, content: str):
+    """Отправка заметки в API FastAPI"""
+    url = "http://localhost:3344/api/notes"
+    
+    # Генерируем токен для пользователя 'admin'
+    expire = datetime.utcnow() + timedelta(minutes=60)
+    to_encode = {"sub": "admin", "exp": expire}
+    token = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
+    
+    headers = {
+        "Authorization": f"Bearer {token}",
+        "Content-Type": "application/json"
+    }
+    
+    payload = {
+        "id": str(uuid.uuid4()),
+        "title": title,
+        "content": content
+    }
+    
+    logger.info(f"Отправка заметки на URL: {url} для пользователя: {current_admin_id}")
+    
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.post(url, json=payload, headers=headers) as response:
+                resp_text = await response.text()
+                logger.info(f"Ответ API: {response.status}, Тело: {resp_text}")
+                if response.status in [200, 201]:
+                    return True, "✅ Заметка успешно сохранена!"
+                else:
+                    return False, f"❌ Ошибка при сохранении: {response.status}"
+    except Exception as e:
+        logger.error(f"Ошибка при обращении к API: {e}")
+        return False, f"❌ Ошибка при обращении к API: {str(e)}"
 
 @dp.message(Command("start"))
 async def handle_start(message: types.Message):
@@ -47,6 +89,11 @@ async def handle_voice(message: types.Message):
 @dp.message(F.photo)
 async def handle_photo(message: types.Message):
     """Обработка изображений"""
+    # Проверка admin_id
+    if current_admin_id and str(message.from_user.id) != str(current_admin_id):
+        logger.warning(f"Unauthorized access attempt from {message.from_user.id}")
+        return
+
     try:
         photo = message.photo[-1]
         file_id = photo.file_id
@@ -61,9 +108,17 @@ async def handle_photo(message: types.Message):
         file = await message.bot.get_file(file_id)
         await message.bot.download_file(file.file_path, filepath)
         
-        # Уведомляем пользователя
-        await message.answer(f"📸 Изображение получено и сохранено! Доступно по ссылке: /api/uploads/{filename}")
-        # TODO: Создать заметку с ссылкой на изображение в БД
+        # Сохраняем в API
+        img_url = f"/api/uploads/{filename}"
+        title = f"Photo from Telegram {datetime.now().strftime('%Y-%m-%d %H:%M')}"
+        content = f"![image]({img_url})"
+        
+        success, result_msg = await save_note_to_api(title, content)
+        if success:
+            await message.answer(f"📸 Изображение сохранено!\n{result_msg}")
+        else:
+            await message.answer(result_msg)
+            
     except Exception as e:
         logger.error(f"Error handling photo: {e}")
         await message.answer("❌ Ошибка при сохранении изображения.")
@@ -71,18 +126,22 @@ async def handle_photo(message: types.Message):
 @dp.message(F.text)
 async def handle_text(message: types.Message):
     """Сохранение текстовых сообщений как .md заметок"""
+    # Проверка admin_id
+    if current_admin_id and str(message.from_user.id) != str(current_admin_id):
+        logger.warning(f"Unauthorized access attempt from {message.from_user.id}")
+        return
+
     if message.text.startswith('/'):
-        # Если это команда, которую мы не обработали выше, просто игнорируем
-        # (Dispatcher вызывает обработчики по порядку, так что сюда попадут только неизвестные команды)
         return
         
-    note_content = message.text
-    # TODO: Сохранение note_content в PostgreSQL
-    await message.answer("✅ Заметка успешно сохранена!")
+    title = message.text[:30] + "..." if len(message.text) > 30 else message.text
+    success, result_msg = await save_note_to_api(title, message.text)
+    await message.answer(result_msg)
 
-async def start_bot(token: str, proxy_url: str = None, proxy_config: dict = None):
+async def start_bot(token: str, proxy_url: str = None, proxy_config: dict = None, admin_id: str = None):
     """Запуск бота с поддержкой прокси (HTTP, SOCKS4, SOCKS5)"""
-    global current_bot
+    global current_bot, current_admin_id
+    current_admin_id = admin_id
 
     # Унифицируй входные данные
     if isinstance(proxy_url, str) and proxy_url.strip().startswith("{"):
@@ -226,7 +285,7 @@ async def stop_bot():
         await current_bot.session.close()
         current_bot = None
 
-async def restart_bot(token: str, proxy_url: str = None, proxy_config: dict = None):
+async def restart_bot(token: str, proxy_url: str = None, proxy_config: dict = None, admin_id: str = None):
     """Динамический перезапуск бота (вызывается из FastAPI)"""
     global bot_task
     
@@ -243,4 +302,4 @@ async def restart_bot(token: str, proxy_url: str = None, proxy_config: dict = No
             
     # Запускаем новую задачу, если передан токен
     if token:
-        bot_task = asyncio.create_task(start_bot(token, proxy_url, proxy_config))
+        bot_task = asyncio.create_task(start_bot(token, proxy_url, proxy_config, admin_id))
