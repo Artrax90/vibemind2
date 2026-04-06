@@ -2,6 +2,8 @@ import asyncio
 import logging
 import traceback
 import ast
+import os
+import uuid
 from aiogram import Bot, Dispatcher, types, F
 from aiogram.filters import Command
 from aiogram.client.session.aiohttp import AiohttpSession
@@ -15,6 +17,11 @@ logger = logging.getLogger(__name__)
 dp = Dispatcher()
 bot_task = None
 current_bot = None
+
+@dp.message(Command("start"))
+async def handle_start(message: types.Message):
+    """Приветствие пользователя"""
+    await message.answer("Привет! Я твой личный помощник VibeMind. Присылай мне любые мысли, ссылки или картинки, и я сохраню их в твои заметки.")
 
 @dp.message(Command("ask"))
 async def handle_ask(message: types.Message):
@@ -37,9 +44,38 @@ async def handle_voice(message: types.Message):
     # 3. Отправить в Whisper API (используя httpx with proxy_url)
     # 4. Сохранить текст как заметку в БД
 
+@dp.message(F.photo)
+async def handle_photo(message: types.Message):
+    """Обработка изображений"""
+    try:
+        photo = message.photo[-1]
+        file_id = photo.file_id
+        
+        # Генерируем имя файла
+        filename = f"{uuid.uuid4()}.jpg"
+        upload_dir = '/app/storage/uploads'
+        os.makedirs(upload_dir, exist_ok=True)
+        filepath = os.path.join(upload_dir, filename)
+        
+        # Скачиваем файл
+        file = await message.bot.get_file(file_id)
+        await message.bot.download_file(file.file_path, filepath)
+        
+        # Уведомляем пользователя
+        await message.answer(f"📸 Изображение получено и сохранено! Доступно по ссылке: /api/uploads/{filename}")
+        # TODO: Создать заметку с ссылкой на изображение в БД
+    except Exception as e:
+        logger.error(f"Error handling photo: {e}")
+        await message.answer("❌ Ошибка при сохранении изображения.")
+
 @dp.message(F.text)
 async def handle_text(message: types.Message):
     """Сохранение текстовых сообщений как .md заметок"""
+    if message.text.startswith('/'):
+        # Если это команда, которую мы не обработали выше, просто игнорируем
+        # (Dispatcher вызывает обработчики по порядку, так что сюда попадут только неизвестные команды)
+        return
+        
     note_content = message.text
     # TODO: Сохранение note_content в PostgreSQL
     await message.answer("✅ Заметка успешно сохранена!")
