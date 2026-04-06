@@ -1,14 +1,51 @@
 version: '3.8'
 
 services:
-  vibemind:
+  app:
     build: .
+    image: artrax/vibemind:latest
     container_name: vibemind_app
     ports:
       - "3344:3344"
     volumes:
       - vibemind_storage:/app/storage
+    environment:
+      - DATABASE_URL=postgresql://vibemind:vibemind@db:5432/vibemind
+      - REDIS_URL=redis://redis:6379/0
+      - ENCRYPTION_KEY=super-secret-default-key-change-me-later-123
+      - TZ=Europe/Moscow
+    restart: always
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_started
+
+  db:
+    image: pgvector/pgvector:pg16
+    container_name: vibemind_db
+    environment:
+      - POSTGRES_USER=vibemind
+      - POSTGRES_PASSWORD=vibemind
+      - POSTGRES_DB=vibemind
+    volumes:
+      - vibemind_db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U vibemind -d vibemind"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    restart: always
+
+  redis:
+    image: redis:7-alpine
+    container_name: vibemind_redis
     restart: always
 
 volumes:
+  vibemind_db_data:
   vibemind_storage:
