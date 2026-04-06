@@ -109,6 +109,7 @@ export default function App() {
   const addNote = (newNote: Note) => {
     setNotes(prev => [...prev, newNote]);
     api.createNote(newNote);
+    setViewMode('edit');
   };
 
   const addFolder = (newFolder: Folder) => {
@@ -217,14 +218,6 @@ export default function App() {
         {/* Header Toggle & Mobile Controls - Moved to bottom center to avoid overlap */}
         {!showSettings && (
           <div className="absolute bottom-8 left-1/2 -translate-x-1/2 z-10 flex items-center space-x-2 rounded-lg border border-border/50 bg-background/80 backdrop-blur-sm p-1 shadow-lg">
-            <button 
-              onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
-              className="p-1.5 rounded flex items-center text-muted-foreground hover:text-foreground hidden md:block transition-colors"
-              title="Toggle Theme"
-            >
-              {theme === 'dark' ? <Sun size={16} /> : <Moon size={16} />}
-            </button>
-            <div className="w-px h-4 hidden md:block bg-border/50"></div>
             <button 
               onClick={() => setViewMode('edit')}
               className={`p-1.5 rounded flex items-center transition-colors ${viewMode === 'edit' ? 'bg-primary/20 text-primary' : 'text-muted-foreground hover:text-foreground'}`}

@@ -98,12 +98,15 @@ async def test_bot_connection(token: str, admin_id: str = None, proxy_url: str =
     """Тестирование соединения бота и отправка сообщения"""
     print(f"DEBUG PROXY URL: '{proxy_url}'")
     print(f"DEBUG PROXY CONFIG: {proxy_config}")
+    
+    session = None
+    final_proxy_url = None
+    connector = None
+    protocol_name = "Direct"
+    host = "unknown"
+    port = "unknown"
+    
     try:
-        session = None
-        final_proxy_url = None
-        connector = None
-        protocol_name = "Direct"
-        
         # 1. Determine proxy URL string
         if proxy_config and proxy_config.get("host"):
             protocol = proxy_config.get("protocol", "http").lower()
@@ -141,21 +144,32 @@ async def test_bot_connection(token: str, admin_id: str = None, proxy_url: str =
             session = None
             
         test_bot = Bot(token=token, session=session)
-        me = await test_bot.get_me()
         
-        # Send message to admin if ID is provided
-        if admin_id:
-            try:
-                await test_bot.send_message(chat_id=admin_id, text=f"✅ VibeMind: Connection Successful! Protocol: {protocol_name}")
-            except Exception as msg_err:
-                logger.warning(f"Failed to send test message to admin {admin_id}: {msg_err}")
-        
-        await test_bot.session.close()
-        return True, f"✅ VibeMind: Connection Successful! Protocol: {protocol_name}"
+        try:
+            # Use a longer timeout for get_me as proxies can be slow
+            me = await asyncio.wait_for(test_bot.get_me(), timeout=30.0)
+            
+            # Send message to admin if ID is provided
+            if admin_id:
+                try:
+                    await test_bot.send_message(chat_id=admin_id, text=f"✅ VibeMind: Connection Successful! Protocol: {protocol_name}")
+                except Exception as msg_err:
+                    logger.warning(f"Failed to send test message to admin {admin_id}: {msg_err}")
+            
+            return True, f"✅ VibeMind: Connection Successful! Protocol: {protocol_name}"
+            
+        except asyncio.TimeoutError:
+            error_msg = f"Тайм-аут при попытке подключения через прокси: {host}:{port}"
+            print(f"[DEBUG] {error_msg}")
+            return False, "❌ Превышено время ожидания. Прокси недоступен или блокирует Telegram."
+            
     except Exception as e:
         print(f"DEBUG ERROR: {str(e)}")
         traceback.print_exc()
         return False, f"❌ Connection Failed: {str(e)}"
+    finally:
+        if session:
+            await session.close()
 
 async def stop_bot():
     """Остановка текущего инстанса бота"""
