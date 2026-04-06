@@ -51,7 +51,6 @@ async def start_bot(token: str, proxy_url: str = None, proxy_config: dict = None
         
         # 1. Determine proxy URL string
         final_proxy_url = None
-        connector = None
         
         # Check proxy_config first (dictionary from UI)
         if proxy_config and proxy_config.get("host"):
@@ -68,23 +67,14 @@ async def start_bot(token: str, proxy_url: str = None, proxy_config: dict = None
                 auth = f"{user}:{password}@" if user and password else ""
                 port_str = f":{port}" if port else ""
                 
-                if protocol in ["socks4", "socks5"]:
-                    socks_url = f"{protocol}://{auth}{host}{port_str}"
-                    connector = ProxyConnector.from_url(socks_url, rdns=True)
-                else:
-                    final_proxy_url = f"http://{auth}{host}{port_str}"
+                final_proxy_url = f"{protocol}://{auth}{host}{port_str}"
         
         # Fallback to legacy proxy_url string if it's actually a string
-        if not final_proxy_url and not connector and proxy_url and isinstance(proxy_url, str):
+        if not final_proxy_url and proxy_url and isinstance(proxy_url, str):
             final_proxy_url = proxy_url
 
         # 2. Create session
-        if connector:
-            session = AiohttpSession(connector=connector)
-        elif final_proxy_url:
-            session = AiohttpSession(proxy=final_proxy_url)
-        else:
-            session = AiohttpSession()
+        session = AiohttpSession(proxy=final_proxy_url) if final_proxy_url else AiohttpSession()
             
         async with Bot(token=token, session=session) as bot:
             current_bot = bot
@@ -101,7 +91,6 @@ async def test_bot_connection(token: str, admin_id: str = None, proxy_url: str =
     
     session = None
     final_proxy_url = None
-    connector = None
     protocol_name = "Direct"
     host = "unknown"
     port = "unknown"
@@ -122,26 +111,18 @@ async def test_bot_connection(token: str, admin_id: str = None, proxy_url: str =
                 auth = f"{user}:{password}@" if user and password else ""
                 port_str = f":{port}" if port else ""
                 
-                if protocol in ["socks4", "socks5"]:
-                    socks_url = f"{protocol}://{auth}{host}{port_str}"
-                    connector = ProxyConnector.from_url(socks_url, rdns=True)
-                    protocol_name = protocol.upper()
-                else:
-                    final_proxy_url = f"http://{auth}{host}{port_str}"
-                    protocol_name = "HTTP"
+                # Use standard URL format for all protocols
+                final_proxy_url = f"{protocol}://{auth}{host}{port_str}"
+                protocol_name = protocol.upper()
         
         # Fallback to legacy proxy_url string if it's actually a string
-        if not final_proxy_url and not connector and proxy_url and isinstance(proxy_url, str):
+        if not final_proxy_url and proxy_url and isinstance(proxy_url, str):
             final_proxy_url = proxy_url
             protocol_name = "HTTP (Legacy)"
 
         # 2. Create session and test
-        if connector:
-            session = AiohttpSession(connector=connector)
-        elif final_proxy_url:
-            session = AiohttpSession(proxy=final_proxy_url)
-        else:
-            session = AiohttpSession()
+        # Pass proxy directly to AiohttpSession, aiogram handles SOCKS if aiohttp-socks is installed
+        session = AiohttpSession(proxy=final_proxy_url) if final_proxy_url else AiohttpSession()
             
         async with Bot(token=token, session=session) as test_bot:
             try:

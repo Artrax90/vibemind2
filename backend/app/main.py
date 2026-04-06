@@ -27,8 +27,10 @@ ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24 # 24 hours
 # Password Hashing Fix (Avoids bcrypt version conflict)
 pwd_context = CryptContext(schemes=["pbkdf2_sha256"], deprecated="auto")
 
+import uuid
+
 # 4. DIRECTORY AUTO-PROVISIONING
-directories = ['/storage/notes', '/storage/logs', '/storage/backups', '/storage/uploads']
+directories = ['/app/storage/notes', '/app/storage/logs', '/app/storage/backups', '/app/storage/uploads']
 for d in directories:
     os.makedirs(d, exist_ok=True)
 
@@ -151,10 +153,10 @@ class ExternalDBRequest(BaseModel):
 async def upload_file(file: UploadFile = File(...), current_user: User = Depends(get_current_user)):
     """Загрузка изображений на сервер"""
     try:
-        # Create unique filename
+        # Create unique filename using UUID
         ext = os.path.splitext(file.filename)[1]
-        filename = f"{datetime.now().strftime('%Y%m%d%H%M%S')}_{os.urandom(4).hex()}{ext}"
-        filepath = os.path.join('/storage/uploads', filename)
+        filename = f"{uuid.uuid4()}{ext}"
+        filepath = os.path.join('/app/storage/uploads', filename)
         
         with open(filepath, "wb") as buffer:
             buffer.write(await file.read())
@@ -167,7 +169,7 @@ async def upload_file(file: UploadFile = File(...), current_user: User = Depends
 @app.get("/api/uploads/{filename}")
 async def get_upload(filename: str):
     """Раздача загруженных файлов"""
-    filepath = os.path.join('/storage/uploads', filename)
+    filepath = os.path.join('/app/storage/uploads', filename)
     if os.path.exists(filepath):
         return FileResponse(filepath)
     raise HTTPException(status_code=404, detail="File not found")

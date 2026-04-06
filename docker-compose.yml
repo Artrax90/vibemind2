@@ -7,7 +7,7 @@ services:
     ports:
       - "3344:3344"
     volumes:
-      - vibemind_storage:/storage
+      - vibemind_storage:/app/storage
     restart: always
 
 volumes:

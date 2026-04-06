@@ -80,6 +80,28 @@ export default function Editor({ note, onUpdate, onWikilinkClick, onTagClick, is
     }
   };
 
+  const handlePaste = async (e: React.ClipboardEvent) => {
+    const items = e.clipboardData.items;
+    for (let i = 0; i < items.length; i++) {
+      if (items[i].type.indexOf('image') !== -1) {
+        const blob = items[i].getAsFile();
+        if (!blob) continue;
+        
+        const formData = new FormData();
+        formData.append('file', blob, 'pasted_image.png');
+
+        try {
+          const response = await api.uploadFile(formData);
+          if (response.url) {
+            insertMarkdown(`![pasted image](`, `${response.url})`);
+          }
+        } catch (error) {
+          console.error('Paste upload failed:', error);
+        }
+      }
+    }
+  };
+
   const handleContentChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     const val = e.target.value;
     setContent(val);
@@ -150,8 +172,29 @@ export default function Editor({ note, onUpdate, onWikilinkClick, onTagClick, is
   };
 
   const insertCodeBlock = (lang: string = '') => {
-    insertMarkdown('```' + lang + '\n', '\n```');
+    if (!textareaRef.current) return;
+    const start = textareaRef.current.selectionStart;
+    const end = textareaRef.current.selectionEnd;
+    const selection = content.substring(start, end);
+    
+    const prefix = '```' + lang + '\n';
+    const suffix = '\n```';
+    
+    const newContent = content.substring(0, start) + prefix + selection + suffix + content.substring(end);
+    setContent(newContent);
     setShowCodeDropdown(false);
+    
+    setTimeout(() => {
+      if (textareaRef.current) {
+        // If no selection, put cursor inside the block
+        // If selection, put cursor at the end of the block
+        const newPos = selection.length === 0 
+          ? start + prefix.length 
+          : start + prefix.length + selection.length + suffix.length;
+        textareaRef.current.setSelectionRange(newPos, newPos);
+        textareaRef.current.focus();
+      }
+    }, 0);
   };
 
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -379,6 +422,7 @@ export default function Editor({ note, onUpdate, onWikilinkClick, onTagClick, is
               ref={textareaRef}
               value={content}
               onChange={handleContentChange}
+              onPaste={handlePaste}
               className="w-full h-full bg-transparent text-foreground/80 resize-none outline-none font-mono text-sm leading-relaxed"
               placeholder="Start writing..."
             />
