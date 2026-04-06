@@ -64,13 +64,20 @@ async def speech_to_text(audio_path: str) -> str:
     logger.info(f"STT: Начинаю обработку. OGG: {audio_path}, WAV: {wav_path}")
     
     try:
-        # 1. Конвертация
+        # 1. Конвертация через FFmpeg (строго s16le, 16kHz, Mono)
         try:
-            logger.info("STT: Конвертация OGG -> WAV (16kHz, Mono)...")
-            audio = AudioSegment.from_file(audio_path)
-            audio = audio.set_frame_rate(16000).set_channels(1).set_sample_width(2)
-            audio.export(wav_path, format="wav")
+            logger.info(f"STT: Конвертация OGG -> WAV (s16le, 16kHz, Mono) через FFmpeg...")
+            # Команда: ffmpeg -i input.ogg -ar 16000 -ac 1 -f s16le output.wav
+            # Мы используем .raw или .pcm для ясности, но сохраним .wav как в запросе
+            cmd = [
+                "ffmpeg", "-y", "-i", audio_path,
+                "-ar", "16000", "-ac", "1", "-f", "s16le", wav_path
+            ]
+            subprocess.run(cmd, check=True, capture_output=True)
             logger.info("STT: Конвертация успешно завершена.")
+        except subprocess.CalledProcessError as e:
+            logger.error(f"STT: Ошибка FFmpeg: {e.stderr.decode()}")
+            return ""
         except Exception as conv_err:
             logger.error(f"STT: Ошибка при конвертации аудио: {conv_err}")
             logger.error(traceback.format_exc())
@@ -98,6 +105,7 @@ async def speech_to_text(audio_path: str) -> str:
                 AudioStart(rate=16000, width=2, channels=1).event(),
                 writer,
             )
+            logger.info("STT: Событие AudioStart отправлено.")
             
             logger.info("STT: Отправка аудио данных...")
             with open(wav_path, "rb") as f:
