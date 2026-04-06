@@ -24,27 +24,31 @@ ALGORITHM = "HS256"
 STT_STOP_WORDS = ["в неё", "в нее", "неё", "нее", "туда", "в заметку", "текст", "и", "в", "под названием"]
 
 def clean_text_cyclic(text: str) -> str:
-    """Циклическая очистка текста от стоп-слов в начале и в конце"""
+    """Циклическая очистка текста от стоп-слов в начале и в конце с использованием границ слов"""
     if not text:
         return text
     
-    # Также убираем двоеточия и лишние пробелы
-    text = text.strip().strip(":")
+    text = text.strip()
     changed = True
     while changed:
         changed = False
-        lower_text = text.lower()
+        old_text = text
+        
+        # Очистка от стоп-слов с использованием границ слов \b
         for word in STT_STOP_WORDS:
-            w_lower = word.lower()
-            if lower_text.startswith(w_lower):
-                text = text[len(word):].strip().strip(":")
-                lower_text = text.lower()
-                changed = True
-            if lower_text.endswith(w_lower):
-                text = text[:-len(word)].strip().strip(":")
-                lower_text = text.lower()
-                changed = True
-    return text.strip().strip(":")
+            # В начале строки
+            text = re.sub(rf'^\b{re.escape(word)}\b\s*', '', text, flags=re.IGNORECASE | re.UNICODE)
+            # В конце строки
+            text = re.sub(rf'\s*\b{re.escape(word)}\b$', '', text, flags=re.IGNORECASE | re.UNICODE)
+        
+        # Убираем двоеточия и лишние пробелы в начале и конце (но не через strip("и")!)
+        text = re.sub(r'^[:\s]+', '', text)
+        text = re.sub(r'[:\s]+$', '', text)
+        
+        if text != old_text:
+            changed = True
+            
+    return text.strip()
 
 dp = Dispatcher()
 bot_task = None
@@ -215,41 +219,31 @@ async def handle_text(message: types.Message):
         idx_name = lower_text.find("названием")
         idx_note = lower_text.find("заметку")
         
-        pivot_idx = -1
+        start_title_idx = -1
         if idx_name != -1:
-            pivot_idx = idx_name + len("названием")
+            start_title_idx = idx_name + len("названием")
         elif idx_note != -1:
-            pivot_idx = idx_note + len("заметку")
+            start_title_idx = idx_note + len("заметку")
             
-        if pivot_idx != -1:
-            # Берем следующее слово как Title
-            after_pivot = text[pivot_idx:].strip()
-            parts = after_pivot.split(None, 1)
-            if len(parts) >= 1:
-                target_title = parts[0]
-                
-                # Ищем начало контента после Title
-                title_pos = text[pivot_idx:].find(target_title)
-                after_title_pos = pivot_idx + title_pos + len(target_title)
-                after_title_text = text[after_title_pos:]
-                after_title_lower = after_title_text.lower()
-                
-                # Ищем "добавь", "неё", "нее"
-                idx_add = after_title_lower.find("добавь")
-                idx_her = after_title_lower.find("неё")
-                idx_her2 = after_title_lower.find("нее")
-                
-                found_indices = [i for i in [idx_add, idx_her, idx_her2] if i != -1]
-                if found_indices:
-                    min_idx = min(found_indices)
-                    if min_idx == idx_add: split_len = len("добавь")
-                    elif min_idx == idx_her: split_len = len("неё")
-                    else: split_len = len("нее")
-                    new_content = after_title_text[min_idx + split_len:].strip()
-                elif len(parts) == 2:
-                    new_content = parts[1]
-                else:
-                    new_content = ""
+        if start_title_idx != -1:
+            # Ищем "добавь" как основной разделитель между Title и Content
+            idx_add = lower_text.find("добавь", start_title_idx)
+            
+            if idx_add != -1:
+                # Title - всё между ключевым словом и "добавь"
+                target_title = text[start_title_idx:idx_add].strip()
+                # Content - всё после "добавь"
+                new_content = text[idx_add + len("добавь"):].strip()
+            else:
+                # Если "добавь" не найдено, откатываемся к старому методу (первое слово после ключевого слова)
+                after_pivot = text[start_title_idx:].strip()
+                parts = after_pivot.split(None, 1)
+                if len(parts) >= 1:
+                    target_title = parts[0]
+                    if len(parts) == 2:
+                        new_content = parts[1]
+                    else:
+                        new_content = ""
 
     # Очистка
     if target_title:
