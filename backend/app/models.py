@@ -29,6 +29,7 @@ class Folder(Base):
     id = Column(String, primary_key=True, index=True)
     name = Column(String, nullable=False)
     parentId = Column(String, nullable=True)
+    user_id = Column(Integer, index=True)
 
 class Note(Base):
     __tablename__ = "notes"
@@ -36,6 +37,7 @@ class Note(Base):
     title = Column(String, nullable=False)
     content = Column(Text, nullable=True)
     folderId = Column(String, nullable=True)
+    user_id = Column(Integer, index=True)
 
 # Примечание: Для pgvector вам понадобится добавить:
 # from pgvector.sqlalchemy import Vector

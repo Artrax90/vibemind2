@@ -8,9 +8,10 @@ import { updateSettings, getBotStatus } from '../api/settings';
 
 type SettingsProps = {
   onClose: () => void;
+  onLogout: () => void;
 };
 
-export default function Settings({ onClose }: SettingsProps) {
+export default function Settings({ onClose, onLogout }: SettingsProps) {
   const { language, setLanguage, t } = useLanguage();
   const [activeTab, setActiveTab] = useState<'general' | 'integrations' | 'bots' | 'users'>('general');
   
@@ -533,8 +534,11 @@ export default function Settings({ onClose }: SettingsProps) {
                 </div>
 
                 <div className="pt-8 flex justify-end">
-                  <button className="px-4 py-2 bg-destructive/10 text-destructive hover:bg-destructive/20 rounded-lg transition-colors">
-                    Logout Current Session
+                  <button 
+                    onClick={onLogout}
+                    className="px-4 py-2 bg-destructive/10 text-destructive hover:bg-destructive/20 rounded-lg transition-colors flex items-center"
+                  >
+                    <Lock size={16} className="mr-2" /> Logout Current Session
                   </button>
                 </div>
               </div>

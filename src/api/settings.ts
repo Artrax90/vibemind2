@@ -4,6 +4,9 @@ export interface SettingsPayload {
   llm_provider?: string;
   api_key?: string;
   proxy_url?: string;
+  base_url?: string;
+  model_name?: string;
+  proxy_config?: any;
 }
 
 export const updateSettings = async (settings: SettingsPayload) => {

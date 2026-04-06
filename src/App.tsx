@@ -170,6 +170,14 @@ export default function App() {
     setShareModalOpen(true);
   };
 
+  const handleLogout = () => {
+    localStorage.removeItem('access_token');
+    setToken(null);
+    setNotes([]);
+    setFolders([]);
+    setActiveNoteId(null);
+  };
+
   if (!token) {
     return <Login onLogin={(newToken) => setToken(newToken)} />;
   }
@@ -271,7 +279,7 @@ export default function App() {
               exit={{ opacity: 0, y: -20 }}
               className="h-full w-full"
             >
-              <Settings onClose={() => setShowSettings(false)} />
+              <Settings onClose={() => setShowSettings(false)} onLogout={handleLogout} />
             </motion.div>
           ) : viewMode === 'graph' ? (
             <motion.div 

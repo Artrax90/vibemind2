@@ -1,4 +1,5 @@
-from fastapi import FastAPI, Depends, HTTPException
+from fastapi import FastAPI, Depends, HTTPException, status
+from fastapi.security import OAuth2PasswordBearer
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
@@ -47,6 +48,27 @@ SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base.metadata.create_all(bind=engine)
 
 app = FastAPI(title="VibeMind Backend")
+
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="api/auth/login")
+
+async def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)):
+    credentials_exception = HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Could not validate credentials",
+        headers={"WWW-Authenticate": "Bearer"},
+    )
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        username: str = payload.get("sub")
+        if username is None:
+            raise credentials_exception
+    except Exception:
+        raise credentials_exception
+    
+    user = db.query(User).filter(User.username == username).first()
+    if user is None:
+        raise credentials_exception
+    return user
 
 def get_db():
     db = SessionLocal()
@@ -255,13 +277,13 @@ class FolderCreate(BaseModel):
     parentId: str | None = None
 
 @app.get("/api/notes")
-async def get_notes(db: Session = Depends(get_db)):
-    notes = db.query(Note).all()
+async def get_notes(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    notes = db.query(Note).filter(Note.user_id == current_user.id).all()
     return [{"id": n.id, "title": n.title, "content": n.content, "folderId": n.folderId} for n in notes]
 
 @app.post("/api/notes")
-async def create_or_update_note(note: NoteCreate, db: Session = Depends(get_db)):
-    db_note = db.query(Note).filter(Note.id == note.id).first()
+async def create_or_update_note(note: NoteCreate, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    db_note = db.query(Note).filter(Note.id == note.id, Note.user_id == current_user.id).first()
     if db_note:
         db_note.title = note.title
         db_note.content = note.content
@@ -271,26 +293,27 @@ async def create_or_update_note(note: NoteCreate, db: Session = Depends(get_db))
             id=note.id,
             title=note.title,
             content=note.content,
-            folderId=note.folderId
+            folderId=note.folderId,
+            user_id=current_user.id
         )
         db.add(db_note)
     db.commit()
     return note.dict()
 
 @app.delete("/api/notes/{note_id}")
-async def delete_note(note_id: str, db: Session = Depends(get_db)):
-    db.query(Note).filter(Note.id == note_id).delete()
+async def delete_note(note_id: str, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    db.query(Note).filter(Note.id == note_id, Note.user_id == current_user.id).delete()
     db.commit()
     return {"status": "success"}
 
 @app.get("/api/folders")
-async def get_folders(db: Session = Depends(get_db)):
-    folders = db.query(Folder).all()
+async def get_folders(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    folders = db.query(Folder).filter(Folder.user_id == current_user.id).all()
     return [{"id": f.id, "name": f.name, "parentId": f.parentId} for f in folders]
 
 @app.post("/api/folders")
-async def create_or_update_folder(folder: FolderCreate, db: Session = Depends(get_db)):
-    db_folder = db.query(Folder).filter(Folder.id == folder.id).first()
+async def create_or_update_folder(folder: FolderCreate, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    db_folder = db.query(Folder).filter(Folder.id == folder.id, Folder.user_id == current_user.id).first()
     if db_folder:
         db_folder.name = folder.name
         db_folder.parentId = folder.parentId
@@ -298,16 +321,17 @@ async def create_or_update_folder(folder: FolderCreate, db: Session = Depends(ge
         db_folder = Folder(
             id=folder.id,
             name=folder.name,
-            parentId=folder.parentId
+            parentId=folder.parentId,
+            user_id=current_user.id
         )
         db.add(db_folder)
     db.commit()
     return folder.dict()
 
 @app.delete("/api/folders/{folder_id}")
-async def delete_folder(folder_id: str, db: Session = Depends(get_db)):
-    db.query(Folder).filter(Folder.id == folder_id).delete()
-    db.query(Note).filter(Note.folderId == folder_id).delete()
+async def delete_folder(folder_id: str, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    db.query(Folder).filter(Folder.id == folder_id, Folder.user_id == current_user.id).delete()
+    db.query(Note).filter(Note.folderId == folder_id, Note.user_id == current_user.id).delete()
     db.commit()
     return {"status": "success"}
 
@@ -360,6 +384,19 @@ async def startup_event():
             except Exception as e:
                 logger.error(f"Failed to add is_active column: {e}")
                 db.rollback()
+
+        # Migration: Add user_id to notes and folders
+        for table in ["notes", "folders"]:
+            try:
+                db.execute(text(f"SELECT user_id FROM {table} LIMIT 1"))
+            except Exception:
+                db.rollback()
+                try:
+                    db.execute(text(f"ALTER TABLE {table} ADD COLUMN user_id INTEGER"))
+                    db.commit()
+                except Exception as e:
+                    logger.error(f"Failed to add user_id column to {table}: {e}")
+                    db.rollback()
 
         # 1. Создание дефолтного админа, если таблица пуста
         try:

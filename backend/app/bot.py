@@ -50,6 +50,10 @@ async def start_bot(token: str, proxy_url: str = None, proxy_config: dict = None
         if proxy_config and proxy_config.get("host"):
             protocol = proxy_config.get("protocol", "http").lower()
             host = proxy_config.get("host")
+            # Sanitize host: remove any existing protocol prefix
+            if "://" in host:
+                host = host.split("://")[-1]
+            
             port = proxy_config.get("port")
             user = proxy_config.get("username")
             password = proxy_config.get("password")
@@ -93,6 +97,10 @@ async def test_bot_connection(token: str, admin_id: str = None, proxy_url: str =
         if proxy_config and proxy_config.get("host"):
             protocol = proxy_config.get("protocol", "http").upper()
             host = proxy_config.get("host")
+            # Sanitize host: remove any existing protocol prefix
+            if "://" in host:
+                host = host.split("://")[-1]
+            
             port = proxy_config.get("port")
             user = proxy_config.get("username")
             password = proxy_config.get("password")
