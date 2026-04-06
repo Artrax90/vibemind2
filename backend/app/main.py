@@ -55,6 +55,49 @@ def get_db():
     finally:
         db.close()
 
+from pydantic import BaseModel, EmailStr
+from typing import List
+
+class UserCreate(BaseModel):
+    username: str
+    email: EmailStr
+    password: str
+
+class UserResponse(BaseModel):
+    id: int
+    username: str
+    email: EmailStr | None = None
+    is_active: bool
+
+    class Config:
+        from_attributes = True
+
+def get_password_hash(password: str) -> str:
+    return pwd_context.hash(password)
+
+@app.post("/api/users", response_model=UserResponse, status_code=201)
+async def create_user(user: UserCreate, db: Session = Depends(get_db)):
+    existing_user = db.query(User).filter(User.email == user.email).first()
+    if existing_user:
+        raise HTTPException(status_code=400, detail="Email already registered")
+    
+    hashed_password = get_password_hash(user.password)
+    new_user = User(
+        username=user.username, 
+        email=user.email, 
+        hashed_password=hashed_password,
+        is_active=1
+    )
+    db.add(new_user)
+    db.commit()
+    db.refresh(new_user)
+    return new_user
+
+@app.get("/api/users", response_model=List[UserResponse])
+async def get_users(db: Session = Depends(get_db)):
+    users = db.query(User).all()
+    return users
+
 class SettingsUpdate(BaseModel):
     tg_token: str | None = None
     tg_admin_id: str | None = None
@@ -149,11 +192,15 @@ async def test_proxy(req: ProxyTestRequest):
     
     if protocol in ['socks4', 'socks5']:
         auth = f"{username}:{password}@" if username and password else ""
-        proxy_url = f"{protocol}://{auth}{host}:{port}"
+        proxy_url = f"{protocol}://{auth}{host}"
+        if port:
+            proxy_url += f":{port}"
         connector = ProxyConnector.from_url(proxy_url)
     else:
         auth = f"{username}:{password}@" if username and password else ""
-        proxy_url = f"http://{auth}{host}:{port}"
+        proxy_url = f"http://{auth}{host}"
+        if port:
+            proxy_url += f":{port}"
         connector = None # aiohttp handles http proxy directly via proxy param
         
     try:

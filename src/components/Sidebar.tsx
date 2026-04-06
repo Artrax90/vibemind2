@@ -219,8 +219,8 @@ export default function Sidebar({ notes, folders, activeNoteId, isLoading = fals
   };
 
   const renderTree = (parentId?: string, depth = 0) => {
-    const childFolders = folders.filter(f => f.parentId === parentId);
-    const childNotes = notes.filter(n => n.folderId === parentId);
+    const childFolders = folders.filter(f => (f.parentId || undefined) === parentId);
+    const childNotes = notes.filter(n => (n.folderId || undefined) === parentId);
 
     return (
       <div className="space-y-0.5" style={{ paddingLeft: depth > 0 ? '16px' : '0px' }}>

@@ -55,11 +55,12 @@ async def start_bot(token: str, proxy_url: str = None, proxy_config: dict = None
             password = proxy_config.get("password")
             
             if protocol in ["socks4", "socks5"]:
-                proxy_type = aiohttp.ProxyType.SOCKS4 if protocol == "socks4" else aiohttp.ProxyType.SOCKS5
                 proxy_url_socks = f"{protocol}://"
                 if user and password:
                     proxy_url_socks += f"{user}:{password}@"
-                proxy_url_socks += f"{host}:{port}"
+                proxy_url_socks += f"{host}"
+                if port:
+                    proxy_url_socks += f":{port}"
                 connector = ProxyConnector.from_url(proxy_url_socks)
                 session = AiohttpSession(connector=connector)
             else:
@@ -67,7 +68,9 @@ async def start_bot(token: str, proxy_url: str = None, proxy_config: dict = None
                 proxy_url_http = f"http://"
                 if user and password:
                     proxy_url_http += f"{user}:{password}@"
-                proxy_url_http += f"{host}:{port}"
+                proxy_url_http += f"{host}"
+                if port:
+                    proxy_url_http += f":{port}"
                 session = AiohttpSession(proxy=proxy_url_http)
         elif proxy_url:
             session = AiohttpSession(proxy=proxy_url)
@@ -98,14 +101,18 @@ async def test_bot_connection(token: str, admin_id: str = None, proxy_url: str =
                 proxy_url_socks = f"{protocol.lower()}://"
                 if user and password:
                     proxy_url_socks += f"{user}:{password}@"
-                proxy_url_socks += f"{host}:{port}"
+                proxy_url_socks += f"{host}"
+                if port:
+                    proxy_url_socks += f":{port}"
                 connector = ProxyConnector.from_url(proxy_url_socks)
                 session = AiohttpSession(connector=connector)
             else:
                 proxy_url_http = f"http://"
                 if user and password:
                     proxy_url_http += f"{user}:{password}@"
-                proxy_url_http += f"{host}:{port}"
+                proxy_url_http += f"{host}"
+                if port:
+                    proxy_url_http += f":{port}"
                 session = AiohttpSession(proxy=proxy_url_http)
         elif proxy_url:
             protocol = "HTTP (Legacy)"
