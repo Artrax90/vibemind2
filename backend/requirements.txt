@@ -18,3 +18,5 @@ httpx
 pydantic[email]
 aiohttp-socks
 python-jose[cryptography]
+pydub
+wyoming
