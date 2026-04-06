@@ -111,22 +111,23 @@ async def speech_to_text(audio_path: str) -> str:
                     )
             
             await async_write_event(AudioStop().event(), writer)
+            logger.info("STT: Событие AudioStop отправлено.")
             logger.info("STT: Аудио данные отправлены, ожидаю результат...")
             
             # 4. Ожидание результата
             transcript_text = ""
             while True:
                 try:
-                    event = await asyncio.wait_for(async_read_event(reader), timeout=5.0)
+                    event = await asyncio.wait_for(async_read_event(reader), timeout=10.0)
                 except asyncio.TimeoutError:
-                    logger.error("STT: Тайм-аут ожидания ответа от Vosk (5s)")
+                    logger.error("STT: Тайм-аут ожидания ответа от Vosk (10s)")
                     break
 
                 if event is None:
                     logger.warning("STT: Соединение закрыто сервером до получения результата.")
                     break
                 
-                logger.info(f"STT: Получено событие от Vosk: {event.type}")
+                logger.info(f"STT: Получено событие типа: {event.type}")
                 
                 if Transcript.is_type(event.type):
                     transcript = Transcript.from_event(event)
