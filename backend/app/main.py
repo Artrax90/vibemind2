@@ -193,8 +193,10 @@ async def test_bot(req: BotTestRequest):
     
     success, message = await test_bot_connection(req.tg_token, req.proxy_url, req.proxy_config)
     if success:
-        return {"status": "success", "message": message}
+        return {"ok": True, "message": "Bot is active"}
     else:
+        if "TIMEOUT_ERROR" in message:
+            raise HTTPException(status_code=408, detail=message.replace("TIMEOUT_ERROR: ", ""))
         raise HTTPException(status_code=500, detail=message)
 
 @app.post("/api/proxy/test")

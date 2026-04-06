@@ -87,10 +87,10 @@ export default function App() {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, []);
 
-  const handleNoteSelect = (id: string) => {
+  const handleNoteSelect = (id: string, mode: 'edit' | 'preview' = 'preview') => {
     setActiveNoteId(id);
     setShowSettings(false);
-    setViewMode('preview');
+    setViewMode(mode);
     setShowSearch(false);
     setIsMobileMenuOpen(false); // Close mobile menu on select
   };
@@ -261,7 +261,7 @@ export default function App() {
               exit={{ opacity: 0, y: -20 }}
               className="h-full w-full"
             >
-              <Settings onClose={() => setShowSettings(false)} />
+              <Settings onClose={() => setShowSettings(false)} theme={theme} setTheme={setTheme} />
             </motion.div>
           ) : viewMode === 'graph' ? (
             <motion.div 

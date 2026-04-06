@@ -70,7 +70,7 @@ async def start_bot(token: str, proxy_url: str = None, proxy_config: dict = None
                 
                 if protocol in ["socks4", "socks5"]:
                     socks_url = f"{protocol}://{auth}{host}{port_str}"
-                    connector = ProxyConnector.from_url(socks_url)
+                    connector = ProxyConnector.from_url(socks_url, rdns=True)
                 else:
                     final_proxy_url = f"http://{auth}{host}{port_str}"
         
@@ -124,7 +124,7 @@ async def test_bot_connection(token: str, admin_id: str = None, proxy_url: str =
                 
                 if protocol in ["socks4", "socks5"]:
                     socks_url = f"{protocol}://{auth}{host}{port_str}"
-                    connector = ProxyConnector.from_url(socks_url)
+                    connector = ProxyConnector.from_url(socks_url, rdns=True)
                     protocol_name = protocol.upper()
                 else:
                     final_proxy_url = f"http://{auth}{host}{port_str}"
@@ -135,33 +135,34 @@ async def test_bot_connection(token: str, admin_id: str = None, proxy_url: str =
             final_proxy_url = proxy_url
             protocol_name = "HTTP (Legacy)"
 
-        # 2. Create session
-        if connector:
-            session = AiohttpSession(connector=connector)
-        elif final_proxy_url:
-            session = AiohttpSession(proxy=final_proxy_url)
-        else:
-            session = None
+        # 2. Create session and test
+        async with aiohttp.ClientSession(connector=connector) as client_session:
+            session = AiohttpSession(session=client_session)
+            if final_proxy_url:
+                session.proxy = final_proxy_url
+                
+            test_bot = Bot(token=token, session=session)
             
-        test_bot = Bot(token=token, session=session)
-        
-        try:
-            # Use a longer timeout for get_me as proxies can be slow
-            me = await asyncio.wait_for(test_bot.get_me(), timeout=30.0)
-            
-            # Send message to admin if ID is provided
-            if admin_id:
-                try:
-                    await test_bot.send_message(chat_id=admin_id, text=f"✅ VibeMind: Connection Successful! Protocol: {protocol_name}")
-                except Exception as msg_err:
-                    logger.warning(f"Failed to send test message to admin {admin_id}: {msg_err}")
-            
-            return True, f"✅ VibeMind: Connection Successful! Protocol: {protocol_name}"
-            
-        except asyncio.TimeoutError:
-            error_msg = f"Тайм-аут при попытке подключения через прокси: {host}:{port}"
-            print(f"[DEBUG] {error_msg}")
-            return False, "❌ Превышено время ожидания. Прокси недоступен или блокирует Telegram."
+            try:
+                # Use a longer timeout for get_me as proxies can be slow
+                me = await asyncio.wait_for(test_bot.get_me(), timeout=30.0)
+                
+                # Send message to admin if ID is provided
+                if admin_id:
+                    try:
+                        await test_bot.send_message(chat_id=admin_id, text=f"✅ VibeMind: Connection Successful! Protocol: {protocol_name}")
+                    except Exception as msg_err:
+                        logger.warning(f"Failed to send test message to admin {admin_id}: {msg_err}")
+                
+                return True, f"✅ VibeMind: Connection Successful! Protocol: {protocol_name}"
+                
+            except asyncio.TimeoutError:
+                error_msg = f"Тайм-аут при попытке подключения через прокси: {host}:{port}"
+                print(f"[DEBUG] {error_msg}")
+                return False, "TIMEOUT_ERROR: ❌ Превышено время ожидания. Прокси недоступен или блокирует Telegram."
+            finally:
+                # Bot session is managed by ClientSession context manager above
+                pass
             
     except Exception as e:
         print(f"DEBUG ERROR: {str(e)}")

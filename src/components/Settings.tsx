@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { X, Globe, Shield, User, Download, Cpu, Webhook, MessageSquare, Plus, Save, Trash2, CheckCircle, AlertCircle, Database, Edit2, Server, Lock, Key } from 'lucide-react';
+import { X, Globe, Shield, User, Download, Cpu, Webhook, MessageSquare, Plus, Save, Trash2, CheckCircle, AlertCircle, Database, Edit2, Server, Lock, Key, Sun, Moon } from 'lucide-react';
 import CreateUserModal from './modals/CreateUserModal';
 import AddDBModal from './modals/AddDBModal';
 import { api } from '../api/client';
@@ -8,9 +8,11 @@ import { updateSettings, getBotStatus } from '../api/settings';
 
 type SettingsProps = {
   onClose: () => void;
+  theme: 'dark' | 'light';
+  setTheme: (theme: 'dark' | 'light') => void;
 };
 
-export default function Settings({ onClose }: SettingsProps) {
+export default function Settings({ onClose, theme, setTheme }: SettingsProps) {
   const { language, setLanguage, t } = useLanguage();
   const [activeTab, setActiveTab] = useState<'general' | 'integrations' | 'bots' | 'users'>('general');
   
@@ -252,6 +254,24 @@ export default function Settings({ onClose }: SettingsProps) {
                   <div className="flex items-center space-x-4 bg-card p-4 rounded-lg border border-border/50">
                     <button onClick={() => setLanguage('EN')} className={`px-4 py-2 rounded-lg transition-colors ${language === 'EN' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-secondary hover:text-foreground'}`}>English</button>
                     <button onClick={() => setLanguage('RU')} className={`px-4 py-2 rounded-lg transition-colors ${language === 'RU' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-secondary hover:text-foreground'}`}>Русский</button>
+                  </div>
+                </section>
+
+                <section className="space-y-4">
+                  <h3 className="text-lg font-semibold text-foreground">Theme</h3>
+                  <div className="flex items-center space-x-4 bg-card p-4 rounded-lg border border-border/50">
+                    <button 
+                      onClick={() => setTheme('light')} 
+                      className={`flex items-center px-4 py-2 rounded-lg transition-colors ${theme === 'light' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-secondary hover:text-foreground'}`}
+                    >
+                      <Sun size={16} className="mr-2" /> Light
+                    </button>
+                    <button 
+                      onClick={() => setTheme('dark')} 
+                      className={`flex items-center px-4 py-2 rounded-lg transition-colors ${theme === 'dark' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-secondary hover:text-foreground'}`}
+                    >
+                      <Moon size={16} className="mr-2" /> Dark
+                    </button>
                   </div>
                 </section>
 

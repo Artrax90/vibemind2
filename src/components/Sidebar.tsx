@@ -17,7 +17,7 @@ type SidebarProps = {
   folders: FolderType[];
   activeNoteId: string | null;
   isLoading?: boolean;
-  onSelectNote: (id: string) => void;
+  onSelectNote: (id: string, mode?: 'edit' | 'preview') => void;
   onOpenSettings: () => void;
   onOpenSearch: () => void;
   onNotesChange: (notes: Note[]) => void;
@@ -157,7 +157,7 @@ export default function Sidebar({ notes, folders, activeNoteId, isLoading = fals
     try {
       api.createNote(newNote).catch(console.error);
       onAddNote(newNote);
-      onSelectNote(newNote.id);
+      onSelectNote(newNote.id, 'edit');
       if (selectedFolderId) {
         setExpandedFolders(new Set(expandedFolders).add(selectedFolderId));
       }
