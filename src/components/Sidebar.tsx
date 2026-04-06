@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
-import { Folder, FileText, Settings as SettingsIcon, Plus, MoreVertical, Search, ChevronRight, ChevronDown, FilePlus, FolderPlus, Edit2, Trash2, Share2, FolderInput, LayoutGrid, Hash, Clock, Star } from 'lucide-react';
+import { Folder, FileText, Settings as SettingsIcon, Plus, MoreVertical, Search, ChevronRight, ChevronDown, FilePlus, FolderPlus, Edit2, Trash2, Share2, FolderInput } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Note, Folder as FolderType } from '../App';
 import CreateFolderModal from './modals/CreateFolderModal';
@@ -267,16 +267,11 @@ export default function Sidebar({ notes, folders, activeNoteId, isLoading = fals
       <motion.div 
         initial={{ x: -250 }}
         animate={{ x: 0 }}
-        className="w-64 bg-background/95 border-r border-border/50 flex flex-col h-full relative glass-strong" 
+        className="w-64 bg-background/95 border-r border-border/50 flex flex-col h-full relative" 
         onClick={() => setSelectedFolderId(undefined)}
       >
-        <div className="p-6 flex items-center justify-between relative">
-          <div className="flex items-center space-x-2">
-            <div className="w-8 h-8 bg-primary/20 rounded-lg flex items-center justify-center border border-primary/30 glow-primary">
-              <LayoutGrid size={18} className="text-primary" />
-            </div>
-            <h1 className="text-lg font-bold text-foreground tracking-tight">VibeMind</h1>
-          </div>
+        <div className="p-6 flex items-center justify-between">
+          <h1 className="text-xl font-bold text-primary tracking-tight">VibeMind</h1>
           
           <div className="relative">
             <button 
@@ -292,7 +287,7 @@ export default function Sidebar({ notes, folders, activeNoteId, isLoading = fals
                   initial={{ opacity: 0, y: -10 }}
                   animate={{ opacity: 1, y: 0 }}
                   exit={{ opacity: 0, y: -10 }}
-                  className="absolute top-full right-0 mt-1 w-40 bg-popover border border-border rounded-lg shadow-xl z-50 overflow-hidden glass-strong"
+                  className="absolute top-full right-0 mt-1 w-40 bg-popover border border-border rounded-lg shadow-xl z-50 overflow-hidden"
                 >
                   <button 
                     onClick={(e) => { e.stopPropagation(); handleCreateNote(); }}
@@ -315,46 +310,27 @@ export default function Sidebar({ notes, folders, activeNoteId, isLoading = fals
         <div className="px-4 pb-4">
           <button 
             onClick={onOpenSearch}
-            className="w-full flex items-center justify-between bg-secondary/30 border border-border/50 rounded-xl px-3 py-2 text-sm text-muted-foreground hover:border-primary/50 hover:bg-secondary/50 transition-all duration-300"
+            className="w-full flex items-center justify-between bg-secondary/50 border border-border rounded-lg px-3 py-1.5 text-sm text-muted-foreground hover:border-primary transition-colors"
           >
             <div className="flex items-center">
-              <Search size={14} className="mr-2 text-primary/70" />
+              <Search size={14} className="mr-2" />
               <span>{t('sidebar.search')}...</span>
             </div>
-            <kbd className="text-[10px] bg-background/50 px-1.5 py-0.5 rounded border border-border/30 text-muted-foreground/50">⌘K</kbd>
+            <kbd className="text-[10px] bg-background px-1.5 py-0.5 rounded border border-border">⌘K</kbd>
           </button>
         </div>
 
         <div className="flex-1 overflow-y-auto px-2 py-2 scrollbar-thin">
-          <div className="space-y-1 mb-6">
-            <div className="px-4 py-1 text-[10px] font-bold text-muted-foreground/50 uppercase tracking-widest">Quick Access</div>
-            <button className="w-full flex items-center px-4 py-2 text-sm text-muted-foreground hover:text-foreground hover:bg-primary/5 rounded-lg transition-colors group">
-              <Star size={14} className="mr-3 text-accent/70 group-hover:text-accent" />
-              Favorites
-            </button>
-            <button className="w-full flex items-center px-4 py-2 text-sm text-muted-foreground hover:text-foreground hover:bg-primary/5 rounded-lg transition-colors group">
-              <Clock size={14} className="mr-3 text-primary/70 group-hover:text-primary" />
-              Recent
-            </button>
-            <button className="w-full flex items-center px-4 py-2 text-sm text-muted-foreground hover:text-foreground hover:bg-primary/5 rounded-lg transition-colors group">
-              <Hash size={14} className="mr-3 text-accent/70 group-hover:text-accent" />
-              Tags
-            </button>
-          </div>
-
           {isLoading ? (
             <div className="space-y-2 p-2">
               {[1, 2, 3, 4, 5].map(i => (
-                <div key={i} className="h-8 bg-secondary/30 rounded-lg animate-pulse w-full"></div>
+                <div key={i} className="h-8 bg-secondary/30 rounded animate-pulse w-full"></div>
               ))}
             </div>
           ) : (
-            <div className="mt-2">
-              <div className="px-4 py-1 text-[10px] font-bold text-muted-foreground/50 uppercase tracking-widest mb-2">Explorer</div>
-              <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
-                {renderTree(undefined)}
-              </DndContext>
-            </div>
+            <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+              {renderTree(undefined)}
+            </DndContext>
           )}
         </div>
 
@@ -371,7 +347,7 @@ export default function Sidebar({ notes, folders, activeNoteId, isLoading = fals
         {/* Context Menu */}
         {contextMenu && createPortal(
           <div 
-            className="fixed bg-popover border border-border rounded-lg shadow-xl z-[9999] py-1 min-w-[150px] glass-strong"
+            className="fixed bg-popover border border-border rounded-lg shadow-xl z-[9999] py-1 min-w-[150px]"
             style={{ top: contextMenu.y, left: contextMenu.x }}
             onClick={(e) => e.stopPropagation()}
           >
@@ -435,7 +411,7 @@ export default function Sidebar({ notes, folders, activeNoteId, isLoading = fals
       {/* Move Note Modal */}
       {movingNoteId && createPortal(
         <div className="fixed inset-0 bg-background/80 backdrop-blur-sm z-[9999] flex items-center justify-center">
-          <div className="bg-card border border-border rounded-xl shadow-2xl w-full max-w-sm overflow-hidden glass-strong">
+          <div className="bg-card border border-border rounded-xl shadow-2xl w-full max-w-sm overflow-hidden">
             <div className="px-6 py-4 border-b border-border/50">
               <h2 className="text-lg font-bold text-foreground">Move Note</h2>
             </div>

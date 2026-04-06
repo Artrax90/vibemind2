@@ -208,6 +208,14 @@ async def test_proxy(req: ProxyTestRequest):
     pc = req.proxy_config
     protocol = pc.get('protocol', 'HTTP').lower()
     host = pc.get('host')
+    
+    # Sanitize host: remove any existing protocol prefix
+    if host and isinstance(host, str) and "://" in host:
+        host = host.split("://")[-1]
+    
+    if not host:
+        return {"status": "error", "detail": "Proxy host is required"}
+        
     port = pc.get('port')
     username = pc.get('username')
     password = pc.get('password')

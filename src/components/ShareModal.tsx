@@ -60,7 +60,7 @@ export default function ShareModal({ isOpen, onClose, resourceId, resourceType, 
         initial={{ opacity: 0, scale: 0.95 }}
         animate={{ opacity: 1, scale: 1 }}
         exit={{ opacity: 0, scale: 0.95 }}
-        className="w-full max-w-lg border border-border/50 rounded-xl shadow-2xl overflow-hidden bg-background glass-strong flex flex-col"
+        className="w-full max-w-lg border border-border/50 rounded-xl shadow-2xl overflow-hidden bg-background flex flex-col"
       >
         <div className="px-6 py-4 border-b border-border/50 flex items-center justify-between">
           <div>
@@ -106,7 +106,7 @@ export default function ShareModal({ isOpen, onClose, resourceId, resourceType, 
             <button
               onClick={handleShare}
               disabled={!username.trim()}
-              className="w-full sm:w-auto flex items-center justify-center px-4 py-2 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed glow-primary h-[38px]"
+              className="w-full sm:w-auto flex items-center justify-center px-4 py-2 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed h-[38px]"
             >
               <UserPlus size={16} className="mr-2" />
               Grant

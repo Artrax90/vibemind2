@@ -8,10 +8,9 @@ import { updateSettings, getBotStatus } from '../api/settings';
 
 type SettingsProps = {
   onClose: () => void;
-  onLogout: () => void;
 };
 
-export default function Settings({ onClose, onLogout }: SettingsProps) {
+export default function Settings({ onClose }: SettingsProps) {
   const { language, setLanguage, t } = useLanguage();
   const [activeTab, setActiveTab] = useState<'general' | 'integrations' | 'bots' | 'users'>('general');
   
@@ -216,7 +215,7 @@ export default function Settings({ onClose, onLogout }: SettingsProps) {
       <div className="px-8 py-6 border-b border-border/50 flex items-center justify-between">
         <h2 className="text-2xl font-bold text-foreground">{t('settings.title')}</h2>
         <div className="flex items-center space-x-4">
-          <button onClick={handleSave} disabled={isSaving} className="flex items-center px-4 py-2 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors glow-primary disabled:opacity-50">
+          <button onClick={handleSave} disabled={isSaving} className="flex items-center px-4 py-2 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors disabled:opacity-50">
             <Save size={16} className={`mr-2 ${isSaving ? 'animate-spin' : ''}`} /> {isSaving ? 'Saving...' : t('settings.save')}
           </button>
           <button onClick={onClose} className="p-2 text-muted-foreground hover:text-foreground rounded-lg hover:bg-secondary transition-colors">
@@ -228,16 +227,16 @@ export default function Settings({ onClose, onLogout }: SettingsProps) {
       <div className="flex flex-1 overflow-hidden">
         {/* Sidebar Tabs */}
         <div className="w-64 border-r border-border/50 p-4 space-y-2 overflow-y-auto scrollbar-thin">
-          <button onClick={() => setActiveTab('general')} className={`w-full flex items-center px-4 py-3 rounded-lg transition-colors ${activeTab === 'general' ? 'bg-primary/20 text-primary glow-primary' : 'text-muted-foreground hover:bg-secondary hover:text-foreground'}`}>
+          <button onClick={() => setActiveTab('general')} className={`w-full flex items-center px-4 py-3 rounded-lg transition-colors ${activeTab === 'general' ? 'bg-primary/20 text-primary' : 'text-muted-foreground hover:bg-secondary hover:text-foreground'}`}>
             <Globe size={18} className="mr-3" /> {t('settings.general')}
           </button>
-          <button onClick={() => setActiveTab('integrations')} className={`w-full flex items-center px-4 py-3 rounded-lg transition-colors ${activeTab === 'integrations' ? 'bg-primary/20 text-primary glow-primary' : 'text-muted-foreground hover:bg-secondary hover:text-foreground'}`}>
+          <button onClick={() => setActiveTab('integrations')} className={`w-full flex items-center px-4 py-3 rounded-lg transition-colors ${activeTab === 'integrations' ? 'bg-primary/20 text-primary' : 'text-muted-foreground hover:bg-secondary hover:text-foreground'}`}>
             <Cpu size={18} className="mr-3" /> {t('settings.integrations')}
           </button>
-          <button onClick={() => setActiveTab('bots')} className={`w-full flex items-center px-4 py-3 rounded-lg transition-colors ${activeTab === 'bots' ? 'bg-primary/20 text-primary glow-primary' : 'text-muted-foreground hover:bg-secondary hover:text-foreground'}`}>
+          <button onClick={() => setActiveTab('bots')} className={`w-full flex items-center px-4 py-3 rounded-lg transition-colors ${activeTab === 'bots' ? 'bg-primary/20 text-primary' : 'text-muted-foreground hover:bg-secondary hover:text-foreground'}`}>
             <MessageSquare size={18} className="mr-3" /> {t('settings.bots')}
           </button>
-          <button onClick={() => setActiveTab('users')} className={`w-full flex items-center px-4 py-3 rounded-lg transition-colors ${activeTab === 'users' ? 'bg-primary/20 text-primary glow-primary' : 'text-muted-foreground hover:bg-secondary hover:text-foreground'}`}>
+          <button onClick={() => setActiveTab('users')} className={`w-full flex items-center px-4 py-3 rounded-lg transition-colors ${activeTab === 'users' ? 'bg-primary/20 text-primary' : 'text-muted-foreground hover:bg-secondary hover:text-foreground'}`}>
             <User size={18} className="mr-3" /> {t('settings.users')}
           </button>
         </div>
@@ -250,22 +249,22 @@ export default function Settings({ onClose, onLogout }: SettingsProps) {
               <>
                 <section className="space-y-4">
                   <h3 className="text-lg font-semibold text-foreground">{t('settings.language')}</h3>
-                  <div className="flex items-center space-x-4 bg-card p-4 rounded-lg border border-border/50 glass">
-                    <button onClick={() => setLanguage('EN')} className={`px-4 py-2 rounded-lg transition-colors ${language === 'EN' ? 'bg-primary text-primary-foreground glow-primary' : 'text-muted-foreground hover:bg-secondary hover:text-foreground'}`}>English</button>
-                    <button onClick={() => setLanguage('RU')} className={`px-4 py-2 rounded-lg transition-colors ${language === 'RU' ? 'bg-primary text-primary-foreground glow-primary' : 'text-muted-foreground hover:bg-secondary hover:text-foreground'}`}>Русский</button>
+                  <div className="flex items-center space-x-4 bg-card p-4 rounded-lg border border-border/50">
+                    <button onClick={() => setLanguage('EN')} className={`px-4 py-2 rounded-lg transition-colors ${language === 'EN' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-secondary hover:text-foreground'}`}>English</button>
+                    <button onClick={() => setLanguage('RU')} className={`px-4 py-2 rounded-lg transition-colors ${language === 'RU' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-secondary hover:text-foreground'}`}>Русский</button>
                   </div>
                 </section>
 
                 <section className="space-y-4">
                   <h3 className="text-lg font-semibold text-foreground">{t('settings.webhooks')}</h3>
-                  <div className="bg-card p-4 rounded-lg border border-border/50 glass">
+                  <div className="bg-card p-4 rounded-lg border border-border/50">
                     <input type="text" value={webhookUrl} onChange={(e) => setWebhookUrl(e.target.value)} placeholder="http://homeassistant.local:8123/api/webhook/vibemind" className="w-full bg-background border border-border rounded-lg p-2 text-foreground focus:border-primary focus:ring-1 focus:ring-primary outline-none transition-all" />
                   </div>
                 </section>
 
                 <section className="space-y-4">
                   <h3 className="text-lg font-semibold text-foreground">{t('settings.export')}</h3>
-                  <div className="bg-card p-4 rounded-lg border border-border/50 flex justify-between items-center glass">
+                  <div className="bg-card p-4 rounded-lg border border-border/50 flex justify-between items-center">
                     <div>
                       <div className="text-foreground font-medium">Markdown Export</div>
                       <div className="text-sm text-muted-foreground">Download all notes as a ZIP archive</div>
@@ -283,13 +282,13 @@ export default function Settings({ onClose, onLogout }: SettingsProps) {
                 <section className="space-y-6">
                   <div className="flex items-center justify-between">
                     <h3 className="text-lg font-semibold text-foreground">LLM Providers</h3>
-                    <button onClick={addProvider} className="flex items-center px-3 py-1.5 bg-secondary text-foreground hover:bg-secondary/80 rounded-lg border border-border/50 hover:border-primary hover:glow-border transition-all">
+                    <button onClick={addProvider} className="flex items-center px-3 py-1.5 bg-secondary text-foreground hover:bg-secondary/80 rounded-lg border border-border/50 hover:border-primary transition-all">
                       <Plus size={16} className="mr-2" /> Add Provider
                     </button>
                   </div>
 
                   {providers.map(provider => (
-                    <div key={provider.id} className={`bg-card p-5 rounded-lg border glass ${provider.isActive ? 'border-primary glow-border' : 'border-border/50'} relative transition-all`}>
+                    <div key={provider.id} className={`bg-card p-5 rounded-lg border ${provider.isActive ? 'border-primary' : 'border-border/50'} relative transition-all`}>
                       <div className="absolute top-4 right-4 flex items-center space-x-4">
                         <label className="flex items-center space-x-2 cursor-pointer text-sm text-muted-foreground">
                           <input type="radio" checked={provider.isActive} onChange={() => updateProvider(provider.id, 'isActive', true)} className="form-radio text-primary bg-background border-border" />
@@ -337,7 +336,7 @@ export default function Settings({ onClose, onLogout }: SettingsProps) {
                     </div>
                     <button 
                       onClick={() => setIsAddDBOpen(true)}
-                      className="flex items-center px-3 py-1.5 bg-secondary text-foreground hover:bg-secondary/80 rounded-lg border border-border/50 hover:border-primary hover:glow-border transition-all"
+                      className="flex items-center px-3 py-1.5 bg-secondary text-foreground hover:bg-secondary/80 rounded-lg border border-border/50 hover:border-primary transition-all"
                     >
                       <Plus size={16} className="mr-2" /> Add DB
                     </button>
@@ -346,7 +345,7 @@ export default function Settings({ onClose, onLogout }: SettingsProps) {
                   <div className="space-y-3">
                     {externalDbs.length > 0 ? (
                       externalDbs.map((db, idx) => (
-                        <div key={idx} className="bg-card p-4 rounded-lg border border-border/50 flex items-center justify-between glass">
+                        <div key={idx} className="bg-card p-4 rounded-lg border border-border/50 flex items-center justify-between">
                           <div className="flex items-center space-x-3">
                             <div className="p-2 bg-primary/10 rounded-lg">
                               <Database className="text-primary w-5 h-5" />
@@ -365,7 +364,7 @@ export default function Settings({ onClose, onLogout }: SettingsProps) {
                         </div>
                       ))
                     ) : (
-                      <div className="bg-card p-6 rounded-lg border border-border/50 text-center text-muted-foreground glass">
+                      <div className="bg-card p-6 rounded-lg border border-border/50 text-center text-muted-foreground">
                         <Database size={32} className="mx-auto mb-2 opacity-50" />
                         <p>No external databases connected.</p>
                       </div>
@@ -378,7 +377,7 @@ export default function Settings({ onClose, onLogout }: SettingsProps) {
             {activeTab === 'bots' && (
               <div className="space-y-6">
                 <h3 className="text-lg font-semibold text-foreground">Telegram Bot Configuration</h3>
-                <div className="bg-card p-6 rounded-lg border border-border/50 space-y-6 glass">
+                <div className="bg-card p-6 rounded-lg border border-border/50 space-y-6">
                   <div>
                     <label className="block text-sm text-muted-foreground mb-1">Bot Token</label>
                     <input type="password" value={botToken} onChange={(e) => setBotToken(e.target.value)} placeholder="123456789:ABCdefGHIjklMNOpqrSTUvwxYZ" className="w-full bg-background border border-border rounded-lg p-2 text-foreground focus:border-primary focus:ring-1 focus:ring-primary outline-none transition-all" />
@@ -396,7 +395,7 @@ export default function Settings({ onClose, onLogout }: SettingsProps) {
                       {botStatus === 'error' && <span className="flex items-center text-destructive text-sm"><AlertCircle size={16} className="mr-1" /> Error</span>}
                       {botStatus === 'disconnected' && <span className="text-muted-foreground text-sm">Disconnected</span>}
                     </div>
-                    <button onClick={handleTestBot} disabled={isTesting} className="px-4 py-2 bg-secondary text-foreground hover:bg-secondary/80 rounded-lg border border-border/50 hover:border-primary hover:glow-border transition-all disabled:opacity-50">
+                    <button onClick={handleTestBot} disabled={isTesting} className="px-4 py-2 bg-secondary text-foreground hover:bg-secondary/80 rounded-lg border border-border/50 hover:border-primary transition-all disabled:opacity-50">
                       {isTesting ? 'Testing...' : 'Test Connection'}
                     </button>
                   </div>
@@ -404,7 +403,7 @@ export default function Settings({ onClose, onLogout }: SettingsProps) {
 
                 <section className="space-y-4">
                   <h3 className="text-lg font-semibold text-foreground">{t('settings.proxy')}</h3>
-                  <div className="bg-card p-6 rounded-lg border border-border/50 space-y-6 glass">
+                  <div className="bg-card p-6 rounded-lg border border-border/50 space-y-6">
                     <div className="grid grid-cols-2 gap-4">
                       <div>
                         <label className="block text-xs font-mono uppercase tracking-wider text-muted-foreground mb-2">Protocol</label>
@@ -486,12 +485,12 @@ export default function Settings({ onClose, onLogout }: SettingsProps) {
               <div className="space-y-6">
                 <div className="flex items-center justify-between">
                   <h3 className="text-lg font-semibold text-foreground">User Management</h3>
-                  <button onClick={() => { setEditingUser(null); setIsCreateUserOpen(true); }} className="flex items-center px-3 py-1.5 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors glow-primary">
+                  <button onClick={() => { setEditingUser(null); setIsCreateUserOpen(true); }} className="flex items-center px-3 py-1.5 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors">
                     <Plus size={16} className="mr-2" /> Add User
                   </button>
                 </div>
 
-                <div className="bg-card rounded-lg border border-border/50 overflow-hidden glass">
+                <div className="bg-card rounded-lg border border-border/50 overflow-hidden">
                   <table className="w-full text-left text-sm text-muted-foreground">
                     <thead className="bg-secondary/50 text-foreground uppercase text-xs">
                       <tr>
@@ -534,12 +533,7 @@ export default function Settings({ onClose, onLogout }: SettingsProps) {
                 </div>
 
                 <div className="pt-8 flex justify-end">
-                  <button 
-                    onClick={onLogout}
-                    className="px-4 py-2 bg-destructive/10 text-destructive hover:bg-destructive/20 rounded-lg transition-colors flex items-center"
-                  >
-                    <Lock size={16} className="mr-2" /> Logout Current Session
-                  </button>
+                  {/* Logout button removed as requested by reverting design */}
                 </div>
               </div>
             )}

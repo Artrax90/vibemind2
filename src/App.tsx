@@ -222,37 +222,29 @@ export default function App() {
           <div className="absolute top-4 right-4 z-10 flex items-center space-x-2 rounded-lg border border-border/50 bg-background/80 backdrop-blur-sm p-1 shadow-lg">
             <button 
               onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
-              className="p-1.5 rounded flex items-center text-muted-foreground hover:text-foreground hover:glow-primary hidden md:block transition-colors"
+              className="p-1.5 rounded flex items-center text-muted-foreground hover:text-foreground hidden md:block transition-colors"
               title="Toggle Theme"
             >
               {theme === 'dark' ? <Sun size={16} /> : <Moon size={16} />}
             </button>
             <div className="w-px h-4 hidden md:block bg-border/50"></div>
             <button 
-              onClick={() => setIsFocusMode(!isFocusMode)}
-              className="p-1.5 rounded flex items-center text-muted-foreground hover:text-foreground hover:glow-primary hidden md:block transition-colors"
-              title="Toggle Focus Mode"
-            >
-              {isFocusMode ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
-            </button>
-            <div className="w-px h-4 hidden md:block bg-border/50"></div>
-            <button 
               onClick={() => setViewMode('edit')}
-              className={`p-1.5 rounded flex items-center transition-colors ${viewMode === 'edit' ? 'bg-primary/20 text-primary glow-primary' : 'text-muted-foreground hover:text-foreground hover:glow-primary'}`}
+              className={`p-1.5 rounded flex items-center transition-colors ${viewMode === 'edit' ? 'bg-primary/20 text-primary' : 'text-muted-foreground hover:text-foreground'}`}
               title="Edit Mode"
             >
               <Edit3 size={16} />
             </button>
             <button 
               onClick={() => setViewMode('preview')}
-              className={`p-1.5 rounded flex items-center transition-colors ${viewMode === 'preview' ? 'bg-primary/20 text-primary glow-primary' : 'text-muted-foreground hover:text-foreground hover:glow-primary'}`}
+              className={`p-1.5 rounded flex items-center transition-colors ${viewMode === 'preview' ? 'bg-primary/20 text-primary' : 'text-muted-foreground hover:text-foreground'}`}
               title="Preview Mode"
             >
               <Eye size={16} />
             </button>
             <button 
               onClick={() => setViewMode('graph')}
-              className={`p-1.5 rounded flex items-center transition-colors ${viewMode === 'graph' ? 'bg-primary/20 text-primary glow-primary' : 'text-muted-foreground hover:text-foreground hover:glow-primary'}`}
+              className={`p-1.5 rounded flex items-center transition-colors ${viewMode === 'graph' ? 'bg-primary/20 text-primary' : 'text-muted-foreground hover:text-foreground'}`}
               title="Graph View"
             >
               <Network size={16} />
@@ -279,7 +271,7 @@ export default function App() {
               exit={{ opacity: 0, y: -20 }}
               className="h-full w-full"
             >
-              <Settings onClose={() => setShowSettings(false)} onLogout={handleLogout} />
+              <Settings onClose={() => setShowSettings(false)} />
             </motion.div>
           ) : viewMode === 'graph' ? (
             <motion.div 
@@ -342,7 +334,7 @@ export default function App() {
               initial={{ opacity: 0, scale: 0.95 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.95 }}
-              className="w-full max-w-2xl border border-border/50 rounded-xl shadow-2xl overflow-hidden bg-background glass-strong"
+              className="w-full max-w-2xl bg-card border border-border rounded-xl shadow-2xl overflow-hidden"
             >
               <div className="flex items-center px-4 py-3 border-b border-border/50">
                 <Search size={20} className="text-muted-foreground mr-3" />
@@ -369,11 +361,6 @@ export default function App() {
                     <span className="text-sm text-muted-foreground line-clamp-1 mt-1">{note.content}</span>
                   </div>
                 ))}
-                {notes.filter(n => n.title.toLowerCase().includes(searchQuery.toLowerCase()) || n.content.toLowerCase().includes(searchQuery.toLowerCase())).length === 0 && (
-                  <div className="px-4 py-8 text-center text-muted-foreground">
-                    No notes found matching "{searchQuery}"
-                  </div>
-                )}
               </div>
             </motion.div>
           </div>

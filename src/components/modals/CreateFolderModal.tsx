@@ -29,7 +29,7 @@ export default function CreateFolderModal({ isOpen, onClose, onCreate, parentId 
             initial={{ opacity: 0, scale: 0.95 }}
             animate={{ opacity: 1, scale: 1 }}
             exit={{ opacity: 0, scale: 0.95 }}
-            className="w-full max-w-md bg-card border border-border/50 rounded-xl shadow-2xl overflow-hidden glass-strong"
+            className="w-full max-w-md bg-card border border-border/50 rounded-xl shadow-2xl overflow-hidden"
           >
             <div className="flex items-center justify-between px-4 py-3 border-b border-border/50">
               <h3 className="text-lg font-semibold text-foreground">
@@ -62,7 +62,7 @@ export default function CreateFolderModal({ isOpen, onClose, onCreate, parentId 
                 <button 
                   type="submit" 
                   disabled={!name.trim()}
-                  className="px-4 py-2 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors glow-primary"
+                  className="px-4 py-2 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                 >
                   Create
                 </button>

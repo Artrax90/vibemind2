@@ -64,9 +64,9 @@ export default function Chat({ notes, activeNoteId, onNoteClick }: ChatProps) {
   }, [notes, activeNoteId]);
 
   return (
-    <div className="w-80 bg-background flex flex-col border-l border-border/50 glass">
+    <div className="w-80 bg-background flex flex-col border-l border-border/50">
       <div className="p-4 border-b border-border/50">
-        <h3 className="text-sm font-semibold text-primary flex items-center glow-primary">
+        <h3 className="text-sm font-semibold text-primary flex items-center">
           <Bot size={16} className="mr-2" />
           AI Assistant (RAG)
         </h3>
@@ -77,7 +77,7 @@ export default function Chat({ notes, activeNoteId, onNoteClick }: ChatProps) {
           <div key={i} className={`flex flex-col ${msg.role === 'user' ? 'items-end' : 'items-start'}`}>
             <div className={`max-w-[85%] rounded-lg p-3 text-sm ${
               msg.role === 'user' 
-                ? 'bg-primary text-primary-foreground glow-primary' 
+                ? 'bg-primary text-primary-foreground' 
                 : 'bg-secondary text-foreground border border-border/50'
             }`}>
               {msg.content}
@@ -86,7 +86,7 @@ export default function Chat({ notes, activeNoteId, onNoteClick }: ChatProps) {
             {msg.citations && msg.citations.length > 0 && (
               <div className="mt-2 space-y-2 w-full pr-4">
                 {msg.citations.map((cit, idx) => (
-                  <div key={idx} className="bg-card border border-border/50 rounded-lg p-2 text-xs cursor-pointer hover:border-primary hover:glow-border transition-all">
+                  <div key={idx} className="bg-card border border-border/50 rounded-lg p-2 text-xs cursor-pointer hover:border-primary transition-all">
                     <div className="font-semibold text-primary flex items-center mb-1">
                       <span className="bg-primary text-primary-foreground rounded-full w-4 h-4 flex items-center justify-center mr-1 text-[10px]">{idx + 1}</span>
                       {cit.title}
@@ -111,7 +111,7 @@ export default function Chat({ notes, activeNoteId, onNoteClick }: ChatProps) {
                 <div 
                   key={note.id}
                   onClick={() => onNoteClick(note.id)}
-                  className="bg-card p-2 rounded-lg border border-border/50 cursor-pointer hover:border-primary hover:glow-border transition-all"
+                  className="bg-card p-2 rounded-lg border border-border/50 cursor-pointer hover:border-primary transition-all"
                 >
                   <div className="text-xs font-medium text-primary mb-1 flex items-center">
                     <FileText size={12} className="mr-1" /> {note.title}
@@ -139,7 +139,7 @@ export default function Chat({ notes, activeNoteId, onNoteClick }: ChatProps) {
                 <div 
                   key={note.id}
                   onClick={() => onNoteClick(note.id)}
-                  className="bg-card p-2 rounded-lg border border-border/50 cursor-pointer hover:border-primary hover:glow-border transition-all"
+                  className="bg-card p-2 rounded-lg border border-border/50 cursor-pointer hover:border-primary transition-all"
                 >
                   <div className="text-xs font-medium text-primary mb-1 flex items-center">
                     <FileText size={12} className="mr-1" /> {note.title}

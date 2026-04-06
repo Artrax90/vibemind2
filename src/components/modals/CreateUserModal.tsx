@@ -46,7 +46,7 @@ export default function CreateUserModal({ isOpen, onClose, onCreate, initialData
             initial={{ opacity: 0, scale: 0.95 }}
             animate={{ opacity: 1, scale: 1 }}
             exit={{ opacity: 0, scale: 0.95 }}
-            className="w-full max-w-md bg-card border border-border/50 rounded-xl shadow-2xl overflow-hidden glass-strong"
+            className="w-full max-w-md bg-card border border-border/50 rounded-xl shadow-2xl overflow-hidden"
           >
             <div className="flex items-center justify-between px-4 py-3 border-b border-border/50">
               <h3 className="text-lg font-semibold text-foreground">{initialData ? 'Edit User' : 'Add New User'}</h3>
@@ -76,7 +76,7 @@ export default function CreateUserModal({ isOpen, onClose, onCreate, initialData
               </div>
               <div className="flex justify-end space-x-3 pt-4">
                 <button type="button" onClick={onClose} className="px-4 py-2 text-muted-foreground hover:text-foreground transition-colors">Cancel</button>
-                <button type="submit" className="px-4 py-2 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors glow-primary">{initialData ? 'Save Changes' : 'Add User'}</button>
+                <button type="submit" className="px-4 py-2 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors">{initialData ? 'Save Changes' : 'Add User'}</button>
               </div>
             </form>
           </motion.div>

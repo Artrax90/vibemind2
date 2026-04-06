@@ -62,12 +62,12 @@ export default function Login({ onLogin }: LoginProps) {
             <Zap className="text-primary w-8 h-8" />
           </motion.div>
           <h1 className="text-4xl font-bold tracking-tighter text-foreground mb-2">
-            VIBE<span className="text-primary glow-primary">MIND</span>
+            VIBE<span className="text-primary">MIND</span>
           </h1>
           <p className="text-muted-foreground font-mono text-sm uppercase tracking-widest">Neural Access Protocol v1.9</p>
         </div>
 
-        <div className="glass-strong border border-border/50 rounded-2xl p-8 shadow-2xl relative overflow-hidden">
+        <div className="bg-card border border-border/50 rounded-2xl p-8 shadow-2xl relative overflow-hidden">
           {/* Scanline effect */}
           <div className="absolute inset-0 pointer-events-none bg-gradient-to-b from-transparent via-primary/5 to-transparent h-[2px] w-full animate-scanline z-20" />
           

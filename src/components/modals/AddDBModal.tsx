@@ -30,7 +30,7 @@ export default function AddDBModal({ isOpen, onClose, onConnect }: AddDBModalPro
           initial={{ opacity: 0, scale: 0.95, y: 20 }}
           animate={{ opacity: 1, scale: 1, y: 0 }}
           exit={{ opacity: 0, scale: 0.95, y: 20 }}
-          className="w-full max-w-lg bg-background border border-border/50 rounded-2xl shadow-2xl overflow-hidden glass-strong"
+          className="w-full max-w-lg bg-background border border-border/50 rounded-2xl shadow-2xl overflow-hidden"
         >
           <div className="px-6 py-4 border-b border-border/50 flex items-center justify-between">
             <div className="flex items-center space-x-2">
@@ -50,7 +50,7 @@ export default function AddDBModal({ isOpen, onClose, onConnect }: AddDBModalPro
                   <button
                     type="button"
                     onClick={() => setDbType('postgresql')}
-                    className={`flex items-center justify-center px-4 py-3 rounded-xl border transition-all ${dbType === 'postgresql' ? 'bg-primary/10 border-primary text-primary glow-primary' : 'bg-secondary/50 border-border/50 text-muted-foreground hover:border-primary/50'}`}
+                    className={`flex items-center justify-center px-4 py-3 rounded-xl border transition-all ${dbType === 'postgresql' ? 'bg-primary/10 border-primary text-primary' : 'bg-secondary/50 border-border/50 text-muted-foreground hover:border-primary/50'}`}
                   >
                     <Server className="w-4 h-4 mr-2" />
                     PostgreSQL
@@ -58,7 +58,7 @@ export default function AddDBModal({ isOpen, onClose, onConnect }: AddDBModalPro
                   <button
                     type="button"
                     onClick={() => setDbType('mongodb')}
-                    className={`flex items-center justify-center px-4 py-3 rounded-xl border transition-all ${dbType === 'mongodb' ? 'bg-primary/10 border-primary text-primary glow-primary' : 'bg-secondary/50 border-border/50 text-muted-foreground hover:border-primary/50'}`}
+                    className={`flex items-center justify-center px-4 py-3 rounded-xl border transition-all ${dbType === 'mongodb' ? 'bg-primary/10 border-primary text-primary' : 'bg-secondary/50 border-border/50 text-muted-foreground hover:border-primary/50'}`}
                   >
                     <Database className="w-4 h-4 mr-2" />
                     MongoDB

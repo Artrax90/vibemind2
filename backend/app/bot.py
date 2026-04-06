@@ -49,11 +49,15 @@ async def start_bot(token: str, proxy_url: str = None, proxy_config: dict = None
         connector = None
         if proxy_config and proxy_config.get("host"):
             protocol = proxy_config.get("protocol", "http").lower()
-            host = proxy_config.get("host")
+            host = str(proxy_config.get("host"))
             # Sanitize host: remove any existing protocol prefix
             if "://" in host:
                 host = host.split("://")[-1]
             
+            if not host or host == "None":
+                logger.error("Proxy host is empty after sanitization")
+                return {"status": "error", "message": "Invalid proxy host"}
+
             port = proxy_config.get("port")
             user = proxy_config.get("username")
             password = proxy_config.get("password")
@@ -96,11 +100,14 @@ async def test_bot_connection(token: str, admin_id: str = None, proxy_url: str =
         protocol = "Direct"
         if proxy_config and proxy_config.get("host"):
             protocol = proxy_config.get("protocol", "http").upper()
-            host = proxy_config.get("host")
+            host = str(proxy_config.get("host"))
             # Sanitize host: remove any existing protocol prefix
             if "://" in host:
                 host = host.split("://")[-1]
             
+            if not host or host == "None":
+                return {"status": "error", "detail": "Invalid proxy host"}
+
             port = proxy_config.get("port")
             user = proxy_config.get("username")
             password = proxy_config.get("password")
