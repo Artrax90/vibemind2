@@ -99,13 +99,18 @@ async def speech_to_text(audio_path: str) -> str:
         
         # 3. Wyoming handshake & streaming
         try:
-            await async_write_event(Transcribe().event(), writer)
+            # ПЕРВЫМ: Намерение транскрибации
+            await async_write_event(Transcribe(language="ru").event(), writer)
+            logger.info("STT: Событие Transcribe(ru) отправлено.")
+            
+            # ВТОРЫМ: Параметры аудио
             await async_write_event(
                 AudioStart(rate=16000, width=2, channels=1).event(),
                 writer,
             )
             logger.info("STT: Событие AudioStart отправлено.")
             
+            # ТРЕТЬИМ: Аудио данные
             logger.info("STT: Отправка аудио данных чанками по 4096 байт...")
             with open(raw_path, "rb") as f:
                 while True:
@@ -117,9 +122,11 @@ async def speech_to_text(audio_path: str) -> str:
                         writer
                     )
             
+            # ПОСЛЕДНИМ: Остановка
             await async_write_event(AudioStop().event(), writer)
-            logger.info("STT: Событие AudioStop отправлено.")
-            logger.info("STT: Аудио данные отправлены, ожидаю результат...")
+            await writer.drain()  # Сброс буфера в сеть
+            logger.info("STT: Событие AudioStop отправлено и буфер сброшен.")
+            logger.info("STT: Ожидаю результат от сервера...")
             
             # 4. Ожидание результата
             transcript_text = ""
@@ -134,12 +141,12 @@ async def speech_to_text(audio_path: str) -> str:
                     logger.warning("STT: Соединение закрыто сервером до получения результата.")
                     break
                 
-                logger.info(f"STT: Пришло событие типа: {event.type}")
+                logger.info(f"STT: Ответ от сервера: {event.type}")
                 
                 if Transcript.is_type(event.type):
                     transcript = Transcript.from_event(event)
                     transcript_text = transcript.text
-                    logger.info(f"STT: Получен результат: «{transcript_text}»")
+                    logger.info(f"STT: Получен Transcript: «{transcript_text}»")
                     break
                     
             writer.close()
