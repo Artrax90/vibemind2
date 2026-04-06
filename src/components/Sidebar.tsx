@@ -273,37 +273,21 @@ export default function Sidebar({ notes, folders, activeNoteId, isLoading = fals
         <div className="p-6 flex items-center justify-between">
           <h1 className="text-xl font-bold text-primary tracking-tight">VibeMind</h1>
           
-          <div className="relative">
+          <div className="flex items-center space-x-1">
             <button 
-              onClick={(e) => { e.stopPropagation(); setPlusMenuOpen(!plusMenuOpen); }}
-              className="p-1.5 hover:bg-primary/10 rounded-full text-muted-foreground hover:text-primary transition-all duration-300"
+              onClick={(e) => { e.stopPropagation(); handleCreateNote(); }}
+              className="p-1.5 hover:bg-primary/10 rounded-lg text-muted-foreground hover:text-primary transition-all duration-300"
+              title={t('sidebar.newNote')}
             >
-              <Plus size={20} />
+              <FilePlus size={18} />
             </button>
-            
-            <AnimatePresence>
-              {plusMenuOpen && (
-                <motion.div 
-                  initial={{ opacity: 0, y: -10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: -10 }}
-                  className="absolute top-full right-0 mt-1 w-40 bg-popover border border-border rounded-lg shadow-xl z-50 overflow-hidden"
-                >
-                  <button 
-                    onClick={(e) => { e.stopPropagation(); handleCreateNote(); }}
-                    className="w-full flex items-center px-3 py-2 text-sm text-popover-foreground hover:bg-primary hover:text-primary-foreground transition-colors"
-                  >
-                    <FilePlus size={14} className="mr-2" /> {t('sidebar.newNote')}
-                  </button>
-                  <button 
-                    onClick={(e) => { e.stopPropagation(); setPlusMenuOpen(false); setIsCreateFolderOpen(true); }}
-                    className="w-full flex items-center px-3 py-2 text-sm text-popover-foreground hover:bg-primary hover:text-primary-foreground transition-colors"
-                  >
-                    <FolderPlus size={14} className="mr-2" /> {t('sidebar.newFolder')}
-                  </button>
-                </motion.div>
-              )}
-            </AnimatePresence>
+            <button 
+              onClick={(e) => { e.stopPropagation(); setIsCreateFolderOpen(true); }}
+              className="p-1.5 hover:bg-primary/10 rounded-lg text-muted-foreground hover:text-primary transition-all duration-300"
+              title={t('sidebar.newFolder')}
+            >
+              <FolderPlus size={18} />
+            </button>
           </div>
         </div>
 

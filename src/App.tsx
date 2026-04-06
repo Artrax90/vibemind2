@@ -214,9 +214,9 @@ export default function App() {
       </div>
       
       <main className="flex-1 flex flex-col relative border-r min-w-0 border-border/50">
-        {/* Header Toggle & Mobile Controls */}
+        {/* Header Toggle & Mobile Controls - Moved to bottom center to avoid overlap */}
         {!showSettings && (
-          <div className="absolute top-4 right-4 z-10 flex items-center space-x-2 rounded-lg border border-border/50 bg-background/80 backdrop-blur-sm p-1 shadow-lg">
+          <div className="absolute bottom-8 left-1/2 -translate-x-1/2 z-10 flex items-center space-x-2 rounded-lg border border-border/50 bg-background/80 backdrop-blur-sm p-1 shadow-lg">
             <button 
               onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
               className="p-1.5 rounded flex items-center text-muted-foreground hover:text-foreground hidden md:block transition-colors"

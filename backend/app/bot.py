@@ -47,48 +47,48 @@ async def start_bot(token: str, proxy_url: str = None, proxy_config: dict = None
     """Запуск бота с поддержкой прокси (HTTP, SOCKS4, SOCKS5)"""
     global current_bot
     try:
+        session = None
+        
+        # 1. Determine proxy URL string
+        final_proxy_url = None
         connector = None
+        
+        # Check proxy_config first (dictionary from UI)
         if proxy_config and proxy_config.get("host"):
             protocol = proxy_config.get("protocol", "http").lower()
             host = str(proxy_config.get("host"))
-            # Sanitize host: remove any existing protocol prefix
             if "://" in host:
                 host = host.split("://")[-1]
             
-            if not host or host == "None":
-                logger.error("Proxy host is empty after sanitization")
-                return {"status": "error", "message": "Invalid proxy host"}
+            if host and host != "None":
+                port = proxy_config.get("port")
+                user = proxy_config.get("username")
+                password = proxy_config.get("password")
+                
+                auth = f"{user}:{password}@" if user and password else ""
+                port_str = f":{port}" if port else ""
+                
+                if protocol in ["socks4", "socks5"]:
+                    socks_url = f"{protocol}://{auth}{host}{port_str}"
+                    connector = ProxyConnector.from_url(socks_url)
+                else:
+                    final_proxy_url = f"http://{auth}{host}{port_str}"
+        
+        # Fallback to legacy proxy_url string if it's actually a string
+        if not final_proxy_url and not connector and proxy_url and isinstance(proxy_url, str):
+            final_proxy_url = proxy_url
 
-            port = proxy_config.get("port")
-            user = proxy_config.get("username")
-            password = proxy_config.get("password")
-            
-            if protocol in ["socks4", "socks5"]:
-                proxy_url_socks = f"{protocol}://"
-                if user and password:
-                    proxy_url_socks += f"{user}:{password}@"
-                proxy_url_socks += f"{host}"
-                if port:
-                    proxy_url_socks += f":{port}"
-                connector = ProxyConnector.from_url(proxy_url_socks)
-                session = AiohttpSession(connector=connector)
-            else:
-                # HTTP Proxy
-                proxy_url_http = f"http://"
-                if user and password:
-                    proxy_url_http += f"{user}:{password}@"
-                proxy_url_http += f"{host}"
-                if port:
-                    proxy_url_http += f":{port}"
-                session = AiohttpSession(proxy=proxy_url_http)
-        elif proxy_url:
-            session = AiohttpSession(proxy=proxy_url)
+        # 2. Create session
+        if connector:
+            session = AiohttpSession(connector=connector)
+        elif final_proxy_url:
+            session = AiohttpSession(proxy=final_proxy_url)
         else:
             session = None
             
         current_bot = Bot(token=token, session=session)
         
-        logger.info(f"Запуск Telegram бота... Прокси: {proxy_config or proxy_url}")
+        logger.info(f"Запуск Telegram бота... Прокси: {final_proxy_url or 'Direct'}")
         await dp.start_polling(current_bot)
     except Exception as e:
         logger.error(f"Ошибка при запуске бота: {e}")
@@ -99,42 +99,44 @@ async def test_bot_connection(token: str, admin_id: str = None, proxy_url: str =
     print(f"DEBUG PROXY URL: '{proxy_url}'")
     print(f"DEBUG PROXY CONFIG: {proxy_config}")
     try:
+        session = None
+        final_proxy_url = None
         connector = None
-        protocol = "Direct"
+        protocol_name = "Direct"
+        
+        # 1. Determine proxy URL string
         if proxy_config and proxy_config.get("host"):
-            protocol = proxy_config.get("protocol", "http").upper()
+            protocol = proxy_config.get("protocol", "http").lower()
             host = str(proxy_config.get("host"))
-            # Sanitize host: remove any existing protocol prefix
             if "://" in host:
                 host = host.split("://")[-1]
             
-            if not host or host == "None":
-                return {"status": "error", "detail": "Invalid proxy host"}
+            if host and host != "None":
+                port = proxy_config.get("port")
+                user = proxy_config.get("username")
+                password = proxy_config.get("password")
+                
+                auth = f"{user}:{password}@" if user and password else ""
+                port_str = f":{port}" if port else ""
+                
+                if protocol in ["socks4", "socks5"]:
+                    socks_url = f"{protocol}://{auth}{host}{port_str}"
+                    connector = ProxyConnector.from_url(socks_url)
+                    protocol_name = protocol.upper()
+                else:
+                    final_proxy_url = f"http://{auth}{host}{port_str}"
+                    protocol_name = "HTTP"
+        
+        # Fallback to legacy proxy_url string if it's actually a string
+        if not final_proxy_url and not connector and proxy_url and isinstance(proxy_url, str):
+            final_proxy_url = proxy_url
+            protocol_name = "HTTP (Legacy)"
 
-            port = proxy_config.get("port")
-            user = proxy_config.get("username")
-            password = proxy_config.get("password")
-            
-            if protocol.lower() in ["socks4", "socks5"]:
-                proxy_url_socks = f"{protocol.lower()}://"
-                if user and password:
-                    proxy_url_socks += f"{user}:{password}@"
-                proxy_url_socks += f"{host}"
-                if port:
-                    proxy_url_socks += f":{port}"
-                connector = ProxyConnector.from_url(proxy_url_socks)
-                session = AiohttpSession(connector=connector)
-            else:
-                proxy_url_http = f"http://"
-                if user and password:
-                    proxy_url_http += f"{user}:{password}@"
-                proxy_url_http += f"{host}"
-                if port:
-                    proxy_url_http += f":{port}"
-                session = AiohttpSession(proxy=proxy_url_http)
-        elif proxy_url:
-            protocol = "HTTP (Legacy)"
-            session = AiohttpSession(proxy=proxy_url)
+        # 2. Create session
+        if connector:
+            session = AiohttpSession(connector=connector)
+        elif final_proxy_url:
+            session = AiohttpSession(proxy=final_proxy_url)
         else:
             session = None
             
@@ -144,12 +146,12 @@ async def test_bot_connection(token: str, admin_id: str = None, proxy_url: str =
         # Send message to admin if ID is provided
         if admin_id:
             try:
-                await test_bot.send_message(chat_id=admin_id, text=f"✅ VibeMind: Connection Successful! Protocol: {protocol}")
+                await test_bot.send_message(chat_id=admin_id, text=f"✅ VibeMind: Connection Successful! Protocol: {protocol_name}")
             except Exception as msg_err:
                 logger.warning(f"Failed to send test message to admin {admin_id}: {msg_err}")
         
         await test_bot.session.close()
-        return True, f"✅ VibeMind: Connection Successful! Protocol: {protocol}"
+        return True, f"✅ VibeMind: Connection Successful! Protocol: {protocol_name}"
     except Exception as e:
         print(f"DEBUG ERROR: {str(e)}")
         traceback.print_exc()
