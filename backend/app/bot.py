@@ -60,60 +60,91 @@ STT_PORT = 10208
 
 async def speech_to_text(audio_path: str) -> str:
     """Транскрибация аудио через Wyoming (Vosk)"""
+    wav_path = audio_path.replace(".ogg", ".wav")
+    logger.info(f"STT: Начинаю обработку. OGG: {audio_path}, WAV: {wav_path}")
+    
     try:
-        # Vosk требует WAV 16кГц Моно
-        audio = AudioSegment.from_file(audio_path)
-        audio = audio.set_frame_rate(16000).set_channels(1).set_sample_width(2)
+        # 1. Конвертация
+        try:
+            logger.info("STT: Конвертация OGG -> WAV (16kHz, Mono)...")
+            audio = AudioSegment.from_file(audio_path)
+            audio = audio.set_frame_rate(16000).set_channels(1).set_sample_width(2)
+            audio.export(wav_path, format="wav")
+            logger.info("STT: Конвертация успешно завершена.")
+        except Exception as conv_err:
+            logger.error(f"STT: Ошибка при конвертации аудио: {conv_err}")
+            logger.error(traceback.format_exc())
+            return ""
+
+        # 2. Подключение к Vosk
+        logger.info(f"STT: Подключаюсь к Vosk на {STT_HOST}:{STT_PORT} (timeout 10s)...")
+        try:
+            reader, writer = await asyncio.wait_for(
+                asyncio.open_connection(STT_HOST, STT_PORT), 
+                timeout=10.0
+            )
+            logger.info("STT: Соединение с Vosk установлено.")
+        except asyncio.TimeoutError:
+            logger.error(f"STT: Тайм-аут при подключении к Vosk ({STT_HOST}:{STT_PORT})")
+            return ""
+        except Exception as conn_err:
+            logger.error(f"STT: Ошибка подключения к Vosk: {conn_err}")
+            return ""
         
-        # Временный WAV файл
-        wav_path = audio_path.replace(".ogg", ".wav")
-        audio.export(wav_path, format="wav")
-        
-        reader, writer = await asyncio.open_connection(STT_HOST, STT_PORT)
-        
-        # Wyoming handshake
-        await async_write_event(Transcribe().event(), writer)
-        await async_write_event(
-            AudioStart(
-                rate=16000,
-                width=2,
-                channels=1,
-            ).event(),
-            writer,
-        )
-        
-        # Отправка аудио чанками
-        with open(wav_path, "rb") as f:
-            while True:
-                chunk = f.read(1024)
-                if not chunk:
-                    break
-                await async_write_event(AudioChunk(audio=chunk, rate=16000, width=2, channels=1).event(), writer)
-        
-        await async_write_event(AudioStop().event(), writer)
-        
-        # Ожидание результата
-        transcript_text = ""
-        while True:
-            event = await async_read_event(reader)
-            if event is None:
-                break
-            if Transcript.is_type(event.type):
-                transcript = Transcript.from_event(event)
-                transcript_text = transcript.text
-                break
-                
-        writer.close()
-        await writer.wait_closed()
-        
-        # Удаляем временные файлы
-        if os.path.exists(wav_path):
-            os.remove(wav_path)
+        # 3. Wyoming handshake & streaming
+        try:
+            await async_write_event(Transcribe().event(), writer)
+            await async_write_event(
+                AudioStart(rate=16000, width=2, channels=1).event(),
+                writer,
+            )
             
-        return transcript_text
+            logger.info("STT: Отправка аудио данных...")
+            with open(wav_path, "rb") as f:
+                while True:
+                    chunk = f.read(1024)
+                    if not chunk:
+                        break
+                    await async_write_event(
+                        AudioChunk(audio=chunk, rate=16000, width=2, channels=1).event(), 
+                        writer
+                    )
+            
+            await async_write_event(AudioStop().event(), writer)
+            logger.info("STT: Аудио данные отправлены, ожидаю результат...")
+            
+            # 4. Ожидание результата
+            transcript_text = ""
+            while True:
+                event = await async_read_event(reader)
+                if event is None:
+                    logger.warning("STT: Соединение закрыто сервером до получения результата.")
+                    break
+                if Transcript.is_type(event.type):
+                    transcript = Transcript.from_event(event)
+                    transcript_text = transcript.text
+                    logger.info(f"STT: Получен результат: «{transcript_text}»")
+                    break
+                    
+            writer.close()
+            await writer.wait_closed()
+            return transcript_text
+            
+        except Exception as stream_err:
+            logger.error(f"STT: Ошибка при передаче/получении данных: {stream_err}")
+            return ""
+            
     except Exception as e:
-        logger.error(f"STT Error: {e}")
+        logger.error(f"STT: Непредвиденная ошибка: {e}")
         return ""
+    finally:
+        # Удаляем временные файлы
+        for p in [audio_path, wav_path]:
+            if os.path.exists(p):
+                try:
+                    os.remove(p)
+                except:
+                    pass
 
 dp = Dispatcher()
 bot_task = None
@@ -196,6 +227,8 @@ async def handle_ask(message: types.Message):
 @dp.message(F.voice)
 async def handle_voice(message: types.Message):
     """Обработка голосовых сообщений (Vosk + Wyoming)"""
+    logger.info("Голосовое сообщение получено, начинаю скачивание...")
+    
     # Проверка admin_id
     if current_admin_id and str(message.from_user.id) != str(current_admin_id):
         logger.warning(f"Unauthorized access attempt from {message.from_user.id}")
@@ -212,17 +245,14 @@ async def handle_voice(message: types.Message):
         os.makedirs(temp_dir, exist_ok=True)
         ogg_path = os.path.join(temp_dir, f"{uuid.uuid4()}.ogg")
         
+        logger.info(f"Voice: Скачиваю файл в {ogg_path}")
         await message.bot.download_file(file.file_path, ogg_path)
         
-        # 2. Транскрибируем
+        # 2. Транскрибируем (speech_to_text сам удалит файлы)
         text = await speech_to_text(ogg_path)
-        
-        # Удаляем временный файл
-        if os.path.exists(ogg_path):
-            os.remove(ogg_path)
             
         if not text:
-            await message.answer("❌ Не удалось распознать речь.")
+            await message.answer("❌ Не удалось распознать речь (проверьте логи сервера).")
             return
             
         await message.answer(f"📝 Распознанный текст: «{text}»\nЗапускаю обработку...")
@@ -234,6 +264,7 @@ async def handle_voice(message: types.Message):
         
     except Exception as e:
         logger.error(f"Error handling voice: {e}")
+        logger.error(traceback.format_exc())
         await message.answer(f"❌ Ошибка при обработке голоса: {str(e)}")
 
 @dp.message(F.photo)
