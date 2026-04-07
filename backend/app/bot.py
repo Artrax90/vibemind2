@@ -468,31 +468,44 @@ async def handle_text(message: types.Message):
         return
         
     elif intent == "UPDATE":
-        fallback_keywords = ["в неё", "туда", "в эту"]
+        fallback_keywords = ["в неё", "туда", "в эту", "в нее"]
         use_fallback = any(kw in lower_text for kw in fallback_keywords)
         
         target_note_id = None
-        search_query = remaining
-        append_text = remaining
         
-        if use_fallback:
-            target_note_id = user_last_search_result.get(message.from_user.id)
-            for kw in fallback_keywords:
-                if remaining.lower().startswith(kw):
-                    append_text = remaining[len(kw):].strip()
+        if use_fallback and message.from_user.id in user_last_search_result:
+            target_note_id = user_last_search_result[message.from_user.id]
+            # Очищаем текст от служебных слов для добавления
+            append_text = text
+            while True:
+                old_len = len(append_text)
+                append_text = re.sub(r'^(добавь|добавить|дополни|запиши|в заметку|заметку|заметка|мне|туда|в не[её]|в эту|в|про)\s+', '', append_text, flags=re.IGNORECASE).strip()
+                if len(append_text) == old_len:
                     break
+            search_query = "fallback"
+            cleaned_query = "fallback"
         else:
-            # Пытаемся разбить на запрос и текст: "про фильмы интерстеллар" -> query="фильмы", text="интерстеллар"
-            m = re.match(r"^(?:в\s+|про\s+)?(\S+(?:\s+\S+)?)\s+(.+)$", remaining, flags=re.IGNORECASE)
-            if m:
-                search_query = m.group(1)
-                append_text = m.group(2)
+            # Очистка текста от служебных слов
+            cleaned_query = text
+            while True:
+                old_len = len(cleaned_query)
+                cleaned_query = re.sub(r'^(добавь|добавить|дополни|запиши|в заметку|заметку|заметка|мне|туда|в не[её]|в эту|в|про)\s+', '', cleaned_query, flags=re.IGNORECASE).strip()
+                if len(cleaned_query) == old_len:
+                    break
+                    
+            parts = cleaned_query.split(maxsplit=1)
+            if len(parts) == 2:
+                search_query = parts[0]
+                append_text = parts[1]
+            else:
+                search_query = cleaned_query
+                append_text = cleaned_query
                 
             results = await semantic_search_api(search_query)
             if results:
                 target_note_id = results[0]['id']
                 
-        logger.info(f"DEBUG PARSE: mode=update, search_query='{search_query}', target_note_id={target_note_id}")
+        logger.info(f"DEBUG PARSE: mode=update, cleaned_query='{search_query}', append_text='{append_text}', target_note_id={target_note_id}")
         
         if target_note_id:
             success, result = await patch_note_api(target_note_id, append_text)
