@@ -195,6 +195,22 @@ async def login(req: LoginRequest, db: Session = Depends(get_db)):
     
     return {"access_token": encoded_jwt, "token_type": "bearer"}
 
+@app.get("/api/settings")
+async def get_settings(db: Session = Depends(get_db)):
+    config = db.query(Config).first()
+    if not config:
+        return {}
+    return {
+        "tg_token": config.tg_token,
+        "tg_admin_id": config.tg_admin_id,
+        "llm_provider": config.llm_provider,
+        "api_key": config.api_key,
+        "proxy_url": config.proxy_url,
+        "base_url": config.base_url,
+        "model_name": config.model_name,
+        "proxy_config": config.proxy_config
+    }
+
 @app.post("/api/settings")
 async def update_settings(settings: SettingsUpdate, db: Session = Depends(get_db)):
     """Сохранение настроек в БД и перезапуск бота"""
@@ -331,11 +347,15 @@ class TestIntegrationRequest(BaseModel):
 @app.post("/api/integrations/test")
 async def test_integration(req: TestIntegrationRequest, current_user: User = Depends(get_current_user)):
     try:
-        if req.provider in ["openai", "ollama"]:
+        if req.provider in ["openai", "ollama", "openrouter"]:
             from openai import AsyncOpenAI
+            base_url = req.base_url
+            if req.provider == "openrouter" and not base_url:
+                base_url = "https://openrouter.ai/api/v1"
+            
             client = AsyncOpenAI(
                 api_key=req.api_key or "dummy",
-                base_url=req.base_url
+                base_url=base_url
             )
             # Make a minimal request
             response = await client.chat.completions.create(

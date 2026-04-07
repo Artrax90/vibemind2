@@ -195,25 +195,51 @@ async def parse_commands_llm(text: str, notes: list[dict] = None) -> list[dict]:
         notes = []
         
     try:
-        api_key = os.getenv("OPENAI_API_KEY")
+        # Пытаемся получить настройки из БД
+        settings = await get_settings_api()
+        
+        provider = settings.get("llm_provider", "openai")
+        api_key = settings.get("api_key") or os.getenv("OPENAI_API_KEY")
+        base_url = settings.get("base_url")
+        model = settings.get("model_name") or "gpt-4o-mini"
+        
         if not api_key:
-            logger.warning("OPENAI_API_KEY not found, falling back to regex parser")
+            logger.warning("No API key found for LLM, falling back to regex parser")
             return parse_commands(text)
             
-        client = AsyncOpenAI(api_key=api_key)
-        
-        user_content = f"notes:\n{json.dumps(notes, ensure_ascii=False)}\n\n\"{text}\""
-        
-        response = await client.chat.completions.create(
-            model="gpt-4o-mini",
-            messages=[
-                {"role": "system", "content": SYSTEM_PROMPT},
-                {"role": "user", "content": user_content}
-            ],
-            temperature=0.0
-        )
-        
-        content = response.choices[0].message.content.strip()
+        if provider == "gemini":
+            # Gemini API using httpx
+            url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={api_key}"
+            payload = {
+                "contents": [{"parts": [{"text": f"{SYSTEM_PROMPT}\n\nnotes:\n{json.dumps(notes, ensure_ascii=False)}\n\n\"{text}\""}]}],
+                "generationConfig": {"temperature": 0.0}
+            }
+            async with aiohttp.ClientSession() as session:
+                async with session.post(url, json=payload) as response:
+                    if response.status == 200:
+                        data = await response.json()
+                        content = data['candidates'][0]['content']['parts'][0]['text'].strip()
+                    else:
+                        logger.error(f"Gemini API error: {response.status}")
+                        return parse_commands(text)
+        else:
+            # OpenAI / OpenRouter / Ollama
+            if provider == "openrouter" and not base_url:
+                base_url = "https://openrouter.ai/api/v1"
+            
+            client = AsyncOpenAI(api_key=api_key, base_url=base_url)
+            
+            user_content = f"notes:\n{json.dumps(notes, ensure_ascii=False)}\n\n\"{text}\""
+            
+            response = await client.chat.completions.create(
+                model=model,
+                messages=[
+                    {"role": "system", "content": SYSTEM_PROMPT},
+                    {"role": "user", "content": user_content}
+                ],
+                temperature=0.0
+            )
+            content = response.choices[0].message.content.strip()
         
         if content.startswith("```json"):
             content = content[7:-3].strip()
@@ -785,6 +811,27 @@ async def get_all_notes_api() -> list[dict]:
     except Exception as e:
         logger.error(f"Ошибка при получении заметок: {e}")
         return []
+
+async def get_settings_api() -> Dict[str, Any]:
+    """Получение настроек через API"""
+    url = "http://localhost:3344/api/settings"
+    
+    # Генерируем токен
+    expire = datetime.utcnow() + timedelta(minutes=60)
+    to_encode = {"sub": "admin", "exp": expire}
+    token = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
+    
+    headers = {"Authorization": f"Bearer {token}"}
+    
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.get(url, headers=headers) as response:
+                if response.status == 200:
+                    return await response.json()
+                return {}
+    except Exception as e:
+        logger.error(f"Ошибка при получении настроек: {e}")
+        return {}
 
 @dp.message(F.text)
 async def handle_text(message: types.Message):

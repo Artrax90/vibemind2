@@ -227,7 +227,25 @@ export default function Settings({ onClose, theme, setTheme }: SettingsProps) {
   const updateProvider = (id: string, field: string, value: any) => {
     setProviders(providers.map(p => {
       if (p.id === id) {
-        const updated = { ...p, [field]: value };
+        let updated = { ...p, [field]: value };
+        
+        // Set defaults when provider type changes
+        if (field === 'provider') {
+          if (value === 'openai') {
+            updated.baseUrl = 'https://api.openai.com/v1';
+            updated.modelName = 'gpt-4o-mini';
+          } else if (value === 'gemini') {
+            updated.baseUrl = '';
+            updated.modelName = 'gemini-1.5-flash';
+          } else if (value === 'openrouter') {
+            updated.baseUrl = 'https://openrouter.ai/api/v1';
+            updated.modelName = 'google/gemini-2.0-flash-001';
+          } else if (value === 'ollama') {
+            updated.baseUrl = 'http://localhost:11434/v1';
+            updated.modelName = 'llama3';
+          }
+        }
+
         if (field === 'isActive' && value === true) {
           // Deactivate others
           return updated;
@@ -361,6 +379,7 @@ export default function Settings({ onClose, theme, setTheme }: SettingsProps) {
                             >
                               <option value="openai">OpenAI / Compatible</option>
                               <option value="gemini">Google Gemini</option>
+                              <option value="openrouter">OpenRouter</option>
                               <option value="ollama">Ollama (Local)</option>
                             </select>
                           </div>
