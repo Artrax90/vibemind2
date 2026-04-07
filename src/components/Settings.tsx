@@ -48,6 +48,7 @@ export default function Settings({ onClose, theme, setTheme }: SettingsProps) {
   const [testingProviderId, setTestingProviderId] = useState<string | null>(null);
 
   // Users State
+  const [isReindexing, setIsReindexing] = useState(false);
   const [users, setUsers] = useState<any[]>([]);
   const [isCreateUserOpen, setIsCreateUserOpen] = useState(false);
   const [editingUser, setEditingUser] = useState<any | null>(null);
@@ -433,20 +434,32 @@ export default function Settings({ onClose, theme, setTheme }: SettingsProps) {
                     </div>
                     <button 
                       onClick={async () => {
+                        setIsReindexing(true);
                         try {
                           const res = await fetch('/api/notes/reindex', {
                             method: 'POST',
-                            headers: { 'Authorization': `Bearer ${localStorage.getItem('access_token')}` }
+                            headers: { 
+                              'Authorization': `Bearer ${localStorage.getItem('access_token')}`,
+                              'Content-Type': 'application/json'
+                            }
                           });
                           const data = await res.json();
-                          alert(data.message || 'Re-indexing complete!');
+                          if (res.ok) {
+                            alert(data.message || 'Re-indexing complete!');
+                          } else {
+                            alert(`Error: ${data.detail || 'Failed to re-index'}`);
+                          }
                         } catch (e) {
-                          alert('Failed to re-index notes.');
+                          console.error(e);
+                          alert('Failed to re-index notes. Check console for details.');
+                        } finally {
+                          setIsReindexing(false);
                         }
                       }}
-                      className="px-4 py-2 bg-primary/10 text-primary hover:bg-primary/20 rounded-lg transition-colors flex items-center"
+                      disabled={isReindexing}
+                      className="px-4 py-2 bg-primary/10 text-primary hover:bg-primary/20 rounded-lg transition-colors flex items-center disabled:opacity-50"
                     >
-                      <Database size={16} className="mr-2" /> Re-index
+                      <Database size={16} className={`mr-2 ${isReindexing ? 'animate-spin' : ''}`} /> {isReindexing ? 'Re-indexing...' : 'Re-index'}
                     </button>
                   </div>
                 </section>
