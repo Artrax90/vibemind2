@@ -9,6 +9,7 @@ from sqlalchemy.orm import sessionmaker
 import asyncio
 import os
 import logging
+import httpx
 from passlib.context import CryptContext
 from jose import jwt
 from datetime import datetime, timedelta
@@ -344,7 +345,27 @@ async def test_integration(req: TestIntegrationRequest, current_user: User = Dep
             )
             return {"status": "success", "message": "Connection successful"}
         elif req.provider == "gemini":
-            return {"status": "success", "message": "Gemini connection successful"}
+            # Gemini API test using httpx
+            api_key = req.api_key
+            if not api_key:
+                raise HTTPException(status_code=400, detail="API key is required for Gemini")
+            
+            model = req.model_name or "gemini-1.5-flash"
+            url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={api_key}"
+            
+            async with httpx.AsyncClient() as client:
+                payload = {
+                    "contents": [{"parts": [{"text": "ping"}]}],
+                    "generationConfig": {"maxOutputTokens": 5}
+                }
+                response = await client.post(url, json=payload, timeout=10)
+                
+                if response.status_code == 200:
+                    return {"status": "success", "message": "Gemini connection successful"}
+                else:
+                    error_data = response.json()
+                    error_msg = error_data.get("error", {}).get("message", "Unknown Gemini error")
+                    raise HTTPException(status_code=response.status_code, detail=f"Gemini error: {error_msg}")
         else:
             raise HTTPException(status_code=400, detail="Unsupported provider")
     except Exception as e:
