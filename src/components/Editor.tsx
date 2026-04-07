@@ -4,6 +4,7 @@ import { api } from '../api/client';
 import { FileText, Eye, Edit3, Wand2, Share2, Bold, Italic, Link, Image, List, Code, Table, CheckCircle, Cloud, CloudOff, Hash, Network } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import remarkBreaks from 'remark-breaks';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import { useLanguage } from '../contexts/LanguageContext';
@@ -393,7 +394,7 @@ export default function Editor({ note, onUpdate, onWikilinkClick, onTagClick, is
           {isPreview ? (
             <div className="prose prose-invert max-w-none text-foreground/80" onClick={handleContentClick}>
               <ReactMarkdown 
-                remarkPlugins={[remarkGfm]}
+                remarkPlugins={[remarkGfm, remarkBreaks]}
                 components={{
                   code({node, inline, className, children, ...props}: any) {
                     const match = /language-(\w+)/.exec(className || '')
