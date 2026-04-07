@@ -29,7 +29,7 @@ services:
     image: ankane/pgvector:v0.5.1
     container_name: vibemind_db
     ports:
-      - "5433:5432"
+      - "5432:5432"
     environment:
       - POSTGRES_USER=vibemind
       - POSTGRES_PASSWORD=vibemind

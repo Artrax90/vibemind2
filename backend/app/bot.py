@@ -259,7 +259,7 @@ async def semantic_search_api(query: str):
         logger.error(f"Ошибка при семантическом поиске: {e}")
         return []
 
-@dp.message(F.text.regexp(r"^(?i)(найди|поиск|что там по)\s+(.+)"))
+@dp.message(F.text.regexp(r"^(найди|поиск|что там по)\s+(.+)", flags=re.IGNORECASE))
 async def handle_semantic_search(message: types.Message):
     """Семантический поиск по заметкам"""
     # Проверка admin_id
@@ -267,8 +267,7 @@ async def handle_semantic_search(message: types.Message):
         logger.warning(f"Unauthorized access attempt from {message.from_user.id}")
         return
 
-    import re
-    match = re.match(r"^(?i)(найди|поиск|что там по)\s+(.+)", message.text)
+    match = re.match(r"^(найди|поиск|что там по)\s+(.+)", message.text, flags=re.IGNORECASE)
     if not match:
         return
         
@@ -447,13 +446,13 @@ async def handle_text(message: types.Message):
     # 2. Режим Создания (Create): "создай заметку [Название] и добавь в неё [Текст]"
     if not target_title:
         # Ищем "создай заметку" или "создать заметку"
-        create_match = re.search(r'(?i)(?:создай|создать)\s+заметку\s+(.*)', text)
+        create_match = re.search(r'(?:создай|создать)\s+заметку\s+(.*)', text, flags=re.IGNORECASE)
         if create_match:
             mode = "create"
             remainder = create_match.group(1)
             
             # Ищем разделитель "и добавь в неё", "добавь в нее" и т.д.
-            parts = re.split(r'(?i)(?:и\s+)?добавь\s+в\s+не[её]\s+', remainder, maxsplit=1)
+            parts = re.split(r'(?:и\s+)?добавь\s+в\s+не[её]\s+', remainder, maxsplit=1, flags=re.IGNORECASE)
             
             if len(parts) == 2:
                 target_title = parts[0].strip()
