@@ -261,24 +261,26 @@ def parse_commands(text: str) -> list[dict]:
     text = text.lower()
     text = normalize_intent(text)
     
-    # 1. Pipeline очистки (стоп-слова)
-    stop_words = ["пожалуйста", "мне", "сделай", "хочу", "можешь", "заметку", "заметка", "с названием", "в неё", "в нее", "туда", "по названию"]
-    for word in stop_words:
-        text = re.sub(rf'\b{word}\b', '', text)
-    text = re.sub(r'\s+', ' ', text).strip()
-    
     commands = []
     
     # Глаголы действий для проверки
     action_verbs = ["добавь", "создай", "найди", "удали", "сделай", "напиши", "купи", "скажи", "покажи"]
     
     def is_valid_title(title: str) -> bool:
-        if len(title) > 30:
+        if not title:
             return False
-        for verb in action_verbs:
-            if re.search(rf'\b{verb}\b', title):
-                return False
+        if len(title) > 40:
+            return False
+        # Если заголовок состоит только из глагола действия - это не заголовок
+        if title in action_verbs:
+            return False
         return True
+
+    def clean_garbage(t: str) -> str:
+        garbage = ["пожалуйста", "мне", "сделай", "хочу", "можешь", "заметку", "заметка", "с названием", "в неё", "в нее", "туда", "по названию", "что-то", "про", "о", "об", "расскажи", "покажи"]
+        for word in garbage:
+            t = re.sub(rf'\b{word}\b', '', t)
+        return re.sub(r'\s+', ' ', t).strip()
 
     # Проверяем конструкцию CREATE + UPDATE
     create_update_match = re.search(r'^(создай.*?|создать.*?|новая.*?)\s+(?:и\s+)?(добавь\s+.*)$', text)
@@ -294,9 +296,10 @@ def parse_commands(text: str) -> list[dict]:
             
         if part.startswith("создай") or part.startswith("создать") or part.startswith("новая"):
             title = re.sub(r'^(создай|создать|новую|новая)\s*', '', part).strip()
+            title = clean_garbage(title)
             
             if not is_valid_title(title):
-                commands.append({"type": "SEARCH", "query": part})
+                commands.append({"type": "SEARCH", "query": clean_garbage(part)})
             else:
                 commands.append({
                     "type": "CREATE",
@@ -306,12 +309,14 @@ def parse_commands(text: str) -> list[dict]:
         elif part.startswith("добавь"):
             if i > 0 and commands and commands[-1]["type"] == "CREATE":
                 append_text = re.sub(r'^добавь\s+(в\s+)?', '', part).strip()
+                append_text = clean_garbage(append_text)
                 commands.append({
                     "type": "UPDATE",
                     "append": append_text
                 })
             else:
                 cleaned = re.sub(r'^добавь\s+(в\s+)?', '', part).strip()
+                cleaned = clean_garbage(cleaned)
                 subparts = cleaned.split(maxsplit=1)
                 
                 if len(subparts) == 2:
@@ -319,7 +324,7 @@ def parse_commands(text: str) -> list[dict]:
                     append_text = subparts[1]
                     
                     if not is_valid_title(search_query):
-                        commands.append({"type": "SEARCH", "query": part})
+                        commands.append({"type": "SEARCH", "query": clean_garbage(part)})
                     else:
                         commands.append({
                             "type": "UPDATE",
@@ -334,6 +339,7 @@ def parse_commands(text: str) -> list[dict]:
                     })
         elif part.startswith("найди") or part.startswith("покажи") or part.startswith("что есть про"):
             query = re.sub(r'^(найди|покажи|что есть про)\s*', '', part).strip()
+            query = clean_garbage(query)
             commands.append({
                 "type": "SEARCH",
                 "query": query
@@ -341,7 +347,7 @@ def parse_commands(text: str) -> list[dict]:
         else:
             commands.append({
                 "type": "SEARCH",
-                "query": part
+                "query": clean_garbage(part)
             })
             
     return commands
@@ -545,7 +551,9 @@ async def search_api(query: str) -> Dict[str, Any]:
             async with session.get(url, headers=headers) as response:
                 if response.status == 200:
                     data = await response.json()
-                    # search_notes returns a single note or None
+                    # search_notes returns a list of notes
+                    if isinstance(data, list):
+                        return {"status": "success", "data": data}
                     if data:
                         return {"status": "success", "data": [data]}
                     return {"status": "success", "data": []}
@@ -787,6 +795,13 @@ async def handle_text(message: types.Message):
                 logger.info(f"DEBUG: result_type={type(result)} result_value={result}")
                 if isinstance(result, dict) and result.get("status") == "success":
                     data = result.get("data", [])
+                    if not data:
+                        # Если обычный поиск не нашел, пробуем семантический
+                        logger.info("UPDATE: Обычный поиск не дал результатов, пробуем семантический...")
+                        result = await semantic_search_api(search_query)
+                        if isinstance(result, dict) and result.get("status") == "success":
+                            data = result.get("data", [])
+                            
                     if data and isinstance(data, list) and len(data) > 0:
                         target_note_id = data[0].get('id')
                     
