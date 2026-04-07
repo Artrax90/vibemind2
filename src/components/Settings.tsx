@@ -425,6 +425,33 @@ export default function Settings({ onClose, theme, setTheme }: SettingsProps) {
                 </section>
 
                 <section className="space-y-4">
+                  <h3 className="text-lg font-semibold text-foreground">Data Management</h3>
+                  <div className="bg-card p-4 rounded-lg border border-border/50 flex justify-between items-center">
+                    <div>
+                      <div className="text-foreground font-medium">Re-index AI Search</div>
+                      <div className="text-sm text-muted-foreground">Force regenerate all AI embeddings for your notes</div>
+                    </div>
+                    <button 
+                      onClick={async () => {
+                        try {
+                          const res = await fetch('/api/notes/reindex', {
+                            method: 'POST',
+                            headers: { 'Authorization': `Bearer ${localStorage.getItem('access_token')}` }
+                          });
+                          const data = await res.json();
+                          alert(data.message || 'Re-indexing complete!');
+                        } catch (e) {
+                          alert('Failed to re-index notes.');
+                        }
+                      }}
+                      className="px-4 py-2 bg-primary/10 text-primary hover:bg-primary/20 rounded-lg transition-colors flex items-center"
+                    >
+                      <Database size={16} className="mr-2" /> Re-index
+                    </button>
+                  </div>
+                </section>
+
+                <section className="space-y-4">
                   <h3 className="text-lg font-semibold text-foreground">{t('settings.export')}</h3>
                   <div className="bg-card p-4 rounded-lg border border-border/50 flex justify-between items-center">
                     <div>

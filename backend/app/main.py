@@ -424,37 +424,90 @@ class ChatRequest(BaseModel):
 
 @app.post("/api/chat")
 async def chat_with_notes(req: ChatRequest, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
-    """Чат с заметками (RAG)"""
+    """Чат с заметками (Hybrid RAG: Keywords + Semantic)"""
     from .utils.embeddings import embedding_manager
+    from sqlalchemy import or_
     
-    # 1. Семантический поиск релевантных заметок
+    # 0. Проверка на наличие заметок без эмбеддингов
+    notes_without_embeddings = db.query(Note).filter(
+        Note.user_id == current_user.id,
+        Note.embedding.is_(None)
+    ).all()
+    
+    if notes_without_embeddings:
+        for note in notes_without_embeddings:
+            text_to_embed = f"{note.title}\n{note.content or ''}"
+            note.embedding = embedding_manager.get_vector(text_to_embed)
+        db.commit()
+    
+    # 1. Ключевой поиск (Keyword Search)
+    # Очищаем запрос от знаков препинания и разбиваем на слова
+    import re
+    clean_query = re.sub(r'[^\w\s]', '', req.message).lower()
+    words = [w for w in clean_query.split() if len(w) > 2]
+    
+    keyword_filters = []
+    # Добавляем поиск по отдельным словам
+    for word in words:
+        keyword_filters.append(Note.title.ilike(f"%{word}%"))
+        keyword_filters.append(Note.content.ilike(f"%{word}%"))
+    
+    # Добавляем поиск по всей очищенной фразе (если слов больше одного)
+    if len(words) > 1:
+        keyword_filters.append(Note.title.ilike(f"%{clean_query}%"))
+        keyword_filters.append(Note.content.ilike(f"%{clean_query}%"))
+    
+    keyword_results = []
+    if keyword_filters:
+        keyword_results = db.query(Note).filter(
+            Note.user_id == current_user.id,
+            or_(*keyword_filters)
+        ).limit(3).all()
+    
+    # 2. Семантический поиск (Semantic Search)
     query_vector = embedding_manager.get_vector(req.message)
     
-    # Порог расстояния (чем меньше, тем строже)
-    distance_threshold = 0.6
+    # Делаем порог строже (0.5 вместо 0.6)
+    semantic_threshold = 0.5
     
-    results = db.query(
+    semantic_results = db.query(
         Note, 
         Note.embedding.cosine_distance(query_vector).label("distance")
     ).filter(
         Note.user_id == current_user.id,
         Note.embedding.is_not(None)
     ).filter(
-        Note.embedding.cosine_distance(query_vector) <= distance_threshold
+        Note.embedding.cosine_distance(query_vector) <= semantic_threshold
     ).order_by(
         Note.embedding.cosine_distance(query_vector)
     ).limit(3).all()
     
-    if not results:
+    # 3. Объединение результатов (Hybrid)
+    # Используем dict для дедупликации по ID
+    combined_notes = {}
+    
+    # Сначала добавляем результаты по ключевым словам (они обычно точнее для специфичных терминов)
+    for note in keyword_results:
+        combined_notes[note.id] = note
+        
+    # Затем добавляем семантические результаты, если их еще нет
+    for note, dist in semantic_results:
+        if note.id not in combined_notes:
+            combined_notes[note.id] = note
+            
+    # Ограничиваем общее количество контекста
+    final_notes = list(combined_notes.values())[:4]
+    
+    if not final_notes:
         return {
             "answer": "Я не нашел информации по вашему вопросу в ваших заметках.",
             "citations": []
         }
     
-    # 2. Формирование контекста для LLM
+    # 4. Формирование контекста для LLM
     context_parts = []
     citations = []
-    for i, (note, dist) in enumerate(results):
+    for i, note in enumerate(final_notes):
         context_parts.append(f"[{i+1}] {note.title}: {note.content}")
         citations.append({
             "id": note.id,
@@ -464,7 +517,7 @@ async def chat_with_notes(req: ChatRequest, db: Session = Depends(get_db), curre
     
     context_text = "\n\n".join(context_parts)
     
-    # 3. Получение конфигурации LLM
+    # 5. Получение конфигурации LLM
     config = db.query(Config).first()
     if not config or not config.llm_provider:
         return {
@@ -472,7 +525,7 @@ async def chat_with_notes(req: ChatRequest, db: Session = Depends(get_db), curre
             "citations": citations
         }
     
-    # 4. Запрос к LLM
+    # 6. Запрос к LLM
     prompt = f"""Вы — VibeMind AI, интеллектуальный помощник по заметкам. 
 Ваша задача — отвечать на вопросы пользователя, основываясь ТОЛЬКО на предоставленном контексте из его заметок.
 
@@ -481,7 +534,7 @@ async def chat_with_notes(req: ChatRequest, db: Session = Depends(get_db), curre
 
 ИНСТРУКЦИИ:
 - Отвечайте на языке вопроса (в данном случае на русском).
-- Если в контексте нет ответа, вежливо скажите, что информации недостаточно.
+- Если в контексте нет ответа на вопрос или предоставленные заметки не относятся к теме вопроса, вежливо скажите, что информации недостаточно.
 - Используйте номера цитат [1], [2] и т.д., когда ссылаетесь на конкретную заметку.
 - Будьте кратки и точны.
 
@@ -565,6 +618,21 @@ class NoteUpdate(BaseModel):
     title: str | None = None
     content: str | None = None
     folderId: str | None = None
+
+@app.post("/api/notes/reindex")
+async def reindex_notes(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    """Переиндексация всех заметок пользователя (генерация эмбеддингов)"""
+    from .utils.embeddings import embedding_manager
+    
+    notes = db.query(Note).filter(Note.user_id == current_user.id).all()
+    count = 0
+    for note in notes:
+        text_to_embed = f"{note.title}\n{note.content or ''}"
+        note.embedding = embedding_manager.get_vector(text_to_embed)
+        count += 1
+    
+    db.commit()
+    return {"status": "success", "message": f"Reindexed {count} notes"}
 
 @app.get("/api/notes/search")
 async def search_notes(query: str, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
