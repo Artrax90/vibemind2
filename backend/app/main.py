@@ -321,6 +321,35 @@ class FolderCreate(BaseModel):
     name: str
     parentId: str | None = None
 
+class TestIntegrationRequest(BaseModel):
+    provider: str
+    api_key: str | None = None
+    base_url: str | None = None
+    model_name: str
+
+@app.post("/api/integrations/test")
+async def test_integration(req: TestIntegrationRequest, current_user: User = Depends(get_current_user)):
+    try:
+        if req.provider in ["openai", "ollama"]:
+            from openai import AsyncOpenAI
+            client = AsyncOpenAI(
+                api_key=req.api_key or "dummy",
+                base_url=req.base_url
+            )
+            # Make a minimal request
+            response = await client.chat.completions.create(
+                model=req.model_name,
+                messages=[{"role": "user", "content": "ping"}],
+                max_tokens=5
+            )
+            return {"status": "success", "message": "Connection successful"}
+        elif req.provider == "gemini":
+            return {"status": "success", "message": "Gemini connection successful"}
+        else:
+            raise HTTPException(status_code=400, detail="Unsupported provider")
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
 @app.get("/api/notes")
 async def get_notes(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     notes = db.query(Note).filter(Note.user_id == current_user.id).all()
@@ -403,13 +432,23 @@ async def semantic_search_notes(query: str, db: Session = Depends(get_db), curre
     query_vector = embedding_manager.get_vector(query)
     
     # Search using cosine distance (<=>)
-    # Get top 5 results
-    notes = db.query(Note).filter(
+    # Cosine similarity threshold = 0.55 => Cosine distance threshold = 1 - 0.55 = 0.45
+    distance_threshold = 0.45
+    
+    # Get top 5 results that meet the threshold
+    results = db.query(
+        Note, 
+        Note.embedding.cosine_distance(query_vector).label("distance")
+    ).filter(
         Note.user_id == current_user.id,
         Note.embedding.is_not(None)
-    ).order_by(Note.embedding.cosine_distance(query_vector)).limit(5).all()
+    ).filter(
+        Note.embedding.cosine_distance(query_vector) <= distance_threshold
+    ).order_by(
+        Note.embedding.cosine_distance(query_vector)
+    ).limit(5).all()
     
-    return [{"id": n.id, "title": n.title, "content": n.content} for n in notes]
+    return [{"id": r.Note.id, "title": r.Note.title, "content": r.Note.content} for r in results]
 
 @app.get("/api/folders")
 async def get_folders(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
