@@ -103,7 +103,11 @@ export default function Chat({ notes, activeNoteId, onNoteClick }: ChatProps) {
             {msg.citations && msg.citations.length > 0 && (
               <div className="mt-2 space-y-2 w-full pr-4">
                 {msg.citations.map((cit, idx) => (
-                  <div key={idx} className="bg-card border border-border/50 rounded-lg p-2 text-xs cursor-pointer hover:border-primary transition-all">
+                  <div 
+                    key={idx} 
+                    onClick={() => onNoteClick(cit.id)}
+                    className="bg-card border border-border/50 rounded-lg p-2 text-xs cursor-pointer hover:border-primary transition-all"
+                  >
                     <div className="font-semibold text-primary flex items-center mb-1">
                       <span className="bg-primary text-primary-foreground rounded-full w-4 h-4 flex items-center justify-center mr-1 text-[10px]">{idx + 1}</span>
                       {cit.title}

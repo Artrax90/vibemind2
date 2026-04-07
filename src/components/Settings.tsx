@@ -29,7 +29,10 @@ export default function Settings({ onClose, theme, setTheme }: SettingsProps) {
 
   // AI & LLM State
   const [providers, setProviders] = useState([
-    { id: '1', label: 'OpenAI', provider: 'openai', apiKey: '', baseUrl: 'https://api.openai.com/v1', modelName: 'gpt-4-turbo', isActive: true, status: 'idle' }
+    { id: 'openai', label: 'OpenAI', provider: 'openai', apiKey: '', baseUrl: 'https://api.openai.com/v1', modelName: 'gpt-4o-mini', isActive: true, status: 'idle' },
+    { id: 'gemini', label: 'Google Gemini', provider: 'gemini', apiKey: '', baseUrl: '', modelName: 'gemini-1.5-flash', isActive: false, status: 'idle' },
+    { id: 'openrouter', label: 'OpenRouter', provider: 'openrouter', apiKey: '', baseUrl: 'https://openrouter.ai/api/v1', modelName: 'google/gemini-2.0-flash-001', isActive: false, status: 'idle' },
+    { id: 'ollama', label: 'Ollama', provider: 'ollama', apiKey: '', baseUrl: 'http://localhost:11434/v1', modelName: 'llama3', isActive: false, status: 'idle' }
   ]);
 
   // External DB State
@@ -66,7 +69,8 @@ export default function Settings({ onClose, theme, setTheme }: SettingsProps) {
                   isActive: true, 
                   apiKey: config.api_key || '', 
                   baseUrl: config.base_url || p.baseUrl,
-                  modelName: config.model_name || p.modelName
+                  modelName: config.model_name || p.modelName,
+                  status: 'connected'
                 };
               }
               return { ...p, isActive: false };
@@ -331,6 +335,62 @@ export default function Settings({ onClose, theme, setTheme }: SettingsProps) {
             
             {activeTab === 'general' && (
               <>
+                <section className="space-y-4">
+                  <h3 className="text-lg font-semibold text-foreground">System Status</h3>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div className="bg-card p-4 rounded-lg border border-border/50 flex items-center justify-between">
+                      <div className="flex items-center">
+                        <Cpu size={18} className="mr-3 text-primary" />
+                        <div>
+                          <div className="text-xs text-muted-foreground">AI Assistant</div>
+                          <div className="text-sm font-medium text-foreground">
+                            {providers.find(p => p.isActive)?.status === 'connected' ? 'Connected' : 'Not Configured'}
+                          </div>
+                        </div>
+                      </div>
+                      {providers.find(p => p.isActive)?.status === 'connected' ? (
+                        <CheckCircle size={16} className="text-accent" />
+                      ) : (
+                        <AlertCircle size={16} className="text-muted-foreground" />
+                      )}
+                    </div>
+
+                    <div className="bg-card p-4 rounded-lg border border-border/50 flex items-center justify-between">
+                      <div className="flex items-center">
+                        <MessageSquare size={18} className="mr-3 text-primary" />
+                        <div>
+                          <div className="text-xs text-muted-foreground">Telegram Bot</div>
+                          <div className="text-sm font-medium text-foreground">
+                            {botStatus === 'connected' ? 'Live' : 'Offline'}
+                          </div>
+                        </div>
+                      </div>
+                      {botStatus === 'connected' ? (
+                        <CheckCircle size={16} className="text-accent" />
+                      ) : (
+                        <AlertCircle size={16} className="text-muted-foreground" />
+                      )}
+                    </div>
+
+                    <div className="bg-card p-4 rounded-lg border border-border/50 flex items-center justify-between">
+                      <div className="flex items-center">
+                        <Server size={18} className="mr-3 text-primary" />
+                        <div>
+                          <div className="text-xs text-muted-foreground">Proxy</div>
+                          <div className="text-sm font-medium text-foreground">
+                            {proxyConfig.host ? 'Configured' : 'Direct'}
+                          </div>
+                        </div>
+                      </div>
+                      {proxyConfig.host ? (
+                        <CheckCircle size={16} className="text-accent" />
+                      ) : (
+                        <div className="w-4 h-4 rounded-full border border-border/50" />
+                      )}
+                    </div>
+                  </div>
+                </section>
+
                 <section className="space-y-4">
                   <h3 className="text-lg font-semibold text-foreground">{t('settings.language')}</h3>
                   <div className="flex items-center space-x-4 bg-card p-4 rounded-lg border border-border/50">
