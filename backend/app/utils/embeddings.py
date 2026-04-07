@@ -8,11 +8,15 @@ class EmbeddingManager:
     
     def __new__(cls):
         if cls._instance is None:
-            logger.info("Initializing FastEmbed model (intfloat/multilingual-e5-small)...")
             cls._instance = super(EmbeddingManager, cls).__new__(cls)
-            # Use multilingual model with 384 dimensions
-            cls._instance.model = TextEmbedding("intfloat/multilingual-e5-small")
-            logger.info("FastEmbed model loaded successfully.")
+            try:
+                logger.info("Initializing FastEmbed model (sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2)...")
+                cls._instance.model = TextEmbedding("sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2")
+                logger.info("FastEmbed model loaded successfully.")
+            except Exception as e:
+                logger.warning(f"Failed to load primary model: {e}. Falling back to BAAI/bge-small-en-v1.5...")
+                cls._instance.model = TextEmbedding("BAAI/bge-small-en-v1.5")
+                logger.info("Fallback FastEmbed model loaded successfully.")
         return cls._instance
 
     def get_vector(self, text: str) -> list[float]:
