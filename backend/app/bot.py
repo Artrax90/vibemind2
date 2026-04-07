@@ -13,6 +13,7 @@ from datetime import datetime, timedelta
 from jose import jwt
 from aiogram import Bot, Dispatcher, types, F
 from aiogram.filters import Command
+from aiogram.types import FSInputFile
 from aiogram.client.session.aiohttp import AiohttpSession
 from aiohttp_socks import ProxyConnector
 import aiohttp
@@ -606,6 +607,18 @@ async def handle_open_note(callback: types.CallbackQuery):
         
         response_text = f"📝 <b>{title_esc}</b>\n\n{content_esc}"
         await callback.message.answer(response_text, parse_mode="HTML")
+        
+        # Поиск и отправка изображений
+        image_matches = re.findall(r'!\[.*?\]\((/api/uploads/.*?)\)', content)
+        for img_path in image_matches:
+            filename = os.path.basename(img_path)
+            local_path = os.path.join('/app/storage/uploads', filename)
+            if os.path.exists(local_path):
+                try:
+                    photo = FSInputFile(local_path)
+                    await callback.message.answer_photo(photo)
+                except Exception as e:
+                    logger.error(f"Error sending photo {local_path}: {e}")
     else:
         await callback.message.answer("❌ Не удалось загрузить содержимое заметки.")
 
