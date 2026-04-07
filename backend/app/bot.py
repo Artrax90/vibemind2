@@ -27,55 +27,79 @@ logger = logging.getLogger(__name__)
 SECRET_KEY = os.getenv("ENCRYPTION_KEY", "fallback-zero-config-secret-key-change-in-production")
 ALGORITHM = "HS256"
 
-def normalize_text(text: str) -> str:
+def parse_commands(text: str) -> list[dict]:
     text = text.lower()
+    
+    # Нормализация
+    text = re.sub(r'\bдобавив\b', 'добавь', text)
+    text = re.sub(r'\bдобавить\b', 'добавь', text)
+    
     stop_words = ["пожалуйста", "мне", "сделай", "хочу", "можешь"]
     for word in stop_words:
-        text = re.sub(rf'\b{word}\b', '', text, flags=re.IGNORECASE)
+        text = re.sub(rf'\b{word}\b', '', text)
     text = re.sub(r'\s+', ' ', text).strip()
-    return text
-
-def split_commands(text: str) -> list[str]:
-    parts = re.split(r'\s+(?:и|потом|затем)\s+', text)
-    return [p.strip() for p in parts if p.strip()]
-
-def detect_intent(text: str) -> str:
-    create_keywords = ["создай", "создать", "новая заметка"]
-    search_keywords = ["найди", "поиск", "что там по"]
-    update_keywords = ["добавь", "дополни", "запиши"]
     
-    for kw in create_keywords:
-        if text.startswith(kw):
-            return "CREATE"
-    for kw in search_keywords:
-        if text.startswith(kw):
-            return "SEARCH"
-    for kw in update_keywords:
-        if text.startswith(kw):
-            return "UPDATE"
-    return "SEARCH"
-
-def extract_title(text: str) -> str:
-    text = re.sub(r'^(создай заметку|создай|создать|новую заметку|новая заметка|заметку)\s*', '', text).strip()
-    text = re.split(r'\s+(?:и\s+)?добавь', text, maxsplit=1)[0].strip()
-    return text
-
-def extract_update_parts(text: str) -> tuple[str, str]:
-    cleaned = text
-    while True:
-        old_len = len(cleaned)
-        cleaned = re.sub(r'^(добавь|дополни|запиши|в заметку|заметку|заметка|туда|в не[её]|в эту|в|про)\s+', '', cleaned).strip()
-        if len(cleaned) == old_len:
-            break
+    commands = []
+    
+    # Проверяем конструкцию CREATE + UPDATE
+    create_update_match = re.search(r'^(создай.*?|создать.*?|новая заметка.*?)\s+(?:и\s+)?(добавь\s+.*)$', text)
+    if create_update_match:
+        parts = [create_update_match.group(1), create_update_match.group(2)]
+    else:
+        parts = [text]
+        
+    for i, part in enumerate(parts):
+        part = part.strip()
+        if not part:
+            continue
             
-    parts = cleaned.split(maxsplit=1)
-    if len(parts) == 2:
-        return parts[0], parts[1]
-    return cleaned, cleaned
-
-def extract_search_query(text: str) -> str:
-    text = re.sub(r'^(найди|поиск|что там по)\s*', '', text).strip()
-    return text
+        if part.startswith("создай") or part.startswith("создать") or part.startswith("новая заметка"):
+            title = re.sub(r'\b(создай|создать|новую|новая|заметку|заметка)\b', '', part).strip()
+            title = re.sub(r'\s+', ' ', title).strip()
+            commands.append({
+                "type": "CREATE",
+                "title": title
+            })
+        elif part.startswith("добавь"):
+            if i > 0 and commands and commands[-1]["type"] == "CREATE":
+                append_text = re.sub(r'^добавь\s+(туда|в не[её]|в эту заметку|в заметку|в)\s*', '', part).strip()
+                if append_text == part:
+                    append_text = re.sub(r'^добавь\s+', '', part).strip()
+                commands.append({
+                    "type": "UPDATE",
+                    "append": append_text
+                })
+            else:
+                cleaned = re.sub(r'^добавь\s+(в заметку|в не[её]|туда|в)\s*', '', part).strip()
+                if cleaned == part:
+                    cleaned = re.sub(r'^добавь\s+', '', part).strip()
+                
+                subparts = cleaned.split(maxsplit=1)
+                if len(subparts) == 2:
+                    commands.append({
+                        "type": "UPDATE",
+                        "search_query": subparts[0],
+                        "append": subparts[1]
+                    })
+                else:
+                    commands.append({
+                        "type": "UPDATE",
+                        "search_query": cleaned,
+                        "append": cleaned
+                    })
+        elif part.startswith("найди") or part.startswith("покажи") or part.startswith("что есть про"):
+            query = re.sub(r'^(найди заметку про|найди заметку|найди|покажи|что есть про)\s*', '', part).strip()
+            commands.append({
+                "type": "SEARCH",
+                "query": query
+            })
+        else:
+            commands.append({
+                "type": "SEARCH",
+                "query": part
+            })
+            
+    return commands
 
 STT_HOST = "192.168.1.196"
 STT_PORT = 10300
@@ -424,20 +448,19 @@ async def handle_text(message: types.Message):
     if message.text.startswith('/'):
         return
         
-    normalized = normalize_text(message.text)
-    commands = split_commands(normalized)
+    commands = parse_commands(message.text)
     
     chain_note_id = None
     
     for cmd in commands:
-        intent = detect_intent(cmd)
+        intent = cmd.get("type")
         
         if intent == "CREATE":
-            title = extract_title(cmd)
+            title = cmd.get("title", "Без названия")
             if not title:
                 title = "Без названия"
                 
-            logger.info(f"DEBUG: normalized='{normalized}', commands={commands}, intent='{intent}', title='{title}'")
+            logger.info(f"DEBUG: parsed_command={cmd}")
             
             result = await save_note_to_api(title, title)
             logger.info(f"DEBUG: result_type={type(result)} result_value={result}")
@@ -451,12 +474,13 @@ async def handle_text(message: types.Message):
                 await message.answer(f"❌ Ошибка при создании заметки: {error_msg}")
                 
         elif intent == "UPDATE":
-            search_query, append_text = extract_update_parts(cmd)
-            logger.info(f"DEBUG: normalized='{normalized}', commands={commands}, intent='{intent}', search_query='{search_query}', append_text='{append_text}'")
+            search_query = cmd.get("search_query")
+            append_text = cmd.get("append", "")
+            logger.info(f"DEBUG: parsed_command={cmd}")
             
             target_note_id = chain_note_id
             
-            if not target_note_id:
+            if not target_note_id and search_query:
                 result = await semantic_search_api(search_query)
                 logger.info(f"DEBUG: result_type={type(result)} result_value={result}")
                 if isinstance(result, dict) and result.get("status") == "success":
@@ -479,8 +503,8 @@ async def handle_text(message: types.Message):
                 await message.answer("Не нашёл подходящую заметку для обновления.")
                 
         elif intent == "SEARCH":
-            search_query = extract_search_query(cmd)
-            logger.info(f"DEBUG: normalized='{normalized}', commands={commands}, intent='{intent}', search_query='{search_query}'")
+            search_query = cmd.get("query", "")
+            logger.info(f"DEBUG: parsed_command={cmd}")
             
             if not search_query:
                 await message.answer("Что именно нужно найти?")
