@@ -25,6 +25,16 @@ export const updateSettings = async (settings: SettingsPayload) => {
   return response.json();
 };
 
+export const getSettings = async () => {
+  const response = await fetch('/api/settings');
+  
+  if (!response.ok) {
+    throw new Error('Failed to get settings');
+  }
+  
+  return response.json();
+};
+
 export const getBotStatus = async () => {
   const response = await fetch('/api/bot/status');
   

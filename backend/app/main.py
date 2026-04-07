@@ -43,7 +43,7 @@ if not ENCRYPTION_KEY:
     ENCRYPTION_KEY = "fallback-zero-config-secret-key-change-in-production"
 
 # Настройка БД (Берем из ENV или используем SQLite для локальной разработки)
-SQLALCHEMY_DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./vibemind.db") 
+SQLALCHEMY_DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:////app/storage/vibemind.db") 
 
 engine = create_engine(SQLALCHEMY_DATABASE_URL)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
@@ -452,7 +452,9 @@ async def create_or_update_note(note: NoteCreate, db: Session = Depends(get_db),
     return note.dict()
 
 class NoteUpdate(BaseModel):
-    content: str
+    title: str | None = None
+    content: str | None = None
+    folderId: str | None = None
 
 @app.get("/api/notes/search")
 async def search_notes(query: str, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
@@ -508,18 +510,22 @@ async def patch_note(note_id: str, note_update: NoteUpdate, db: Session = Depend
     if not db_note:
         raise HTTPException(status_code=404, detail="Note not found")
         
-    # Append content
-    if db_note.content:
-        db_note.content += "\n" + note_update.content
-    else:
+    # Update fields if provided
+    if note_update.title is not None:
+        db_note.title = note_update.title
+    if note_update.content is not None:
         db_note.content = note_update.content
+    if note_update.folderId is not None:
+        # Allow clearing folderId by passing empty string or null
+        db_note.folderId = note_update.folderId if note_update.folderId else None
         
-    # Update embedding
-    text_to_embed = f"{db_note.title}\n{db_note.content or ''}"
-    db_note.embedding = embedding_manager.get_vector(text_to_embed)
+    # Update embedding if title or content changed
+    if note_update.title is not None or note_update.content is not None:
+        text_to_embed = f"{db_note.title}\n{db_note.content or ''}"
+        db_note.embedding = embedding_manager.get_vector(text_to_embed)
     
     db.commit()
-    return {"id": db_note.id, "title": db_note.title, "content": db_note.content}
+    return {"id": db_note.id, "title": db_note.title, "content": db_note.content, "folderId": db_note.folderId}
 
 @app.delete("/api/notes/{note_id}")
 async def delete_note(note_id: str, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):

@@ -4,7 +4,7 @@ import CreateUserModal from './modals/CreateUserModal';
 import AddDBModal from './modals/AddDBModal';
 import { api } from '../api/client';
 import { useLanguage } from '../contexts/LanguageContext';
-import { updateSettings, getBotStatus } from '../api/settings';
+import { updateSettings, getBotStatus, getSettings } from '../api/settings';
 
 type SettingsProps = {
   onClose: () => void;
@@ -48,6 +48,38 @@ export default function Settings({ onClose, theme, setTheme }: SettingsProps) {
   const [users, setUsers] = useState<any[]>([]);
   const [isCreateUserOpen, setIsCreateUserOpen] = useState(false);
   const [editingUser, setEditingUser] = useState<any | null>(null);
+
+  useEffect(() => {
+    const loadSettings = async () => {
+      try {
+        const config = await getSettings();
+        if (config) {
+          if (config.tg_token) setBotToken(config.tg_token);
+          if (config.tg_admin_id) setAdminId(config.tg_admin_id);
+          if (config.proxy_config) setProxyConfig(config.proxy_config);
+          
+          if (config.llm_provider) {
+            setProviders(prev => prev.map(p => {
+              if (p.provider === config.llm_provider) {
+                return { 
+                  ...p, 
+                  isActive: true, 
+                  apiKey: config.api_key || '', 
+                  baseUrl: config.base_url || p.baseUrl,
+                  modelName: config.model_name || p.modelName
+                };
+              }
+              return { ...p, isActive: false };
+            }));
+          }
+        }
+      } catch (e) {
+        console.error('Failed to load settings', e);
+      }
+    };
+    
+    loadSettings();
+  }, []);
 
   useEffect(() => {
     if (activeTab === 'users') {

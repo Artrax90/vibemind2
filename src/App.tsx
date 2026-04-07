@@ -47,7 +47,15 @@ export default function App() {
   const [shareResource, setShareResource] = useState<{ id: string, type: 'note' | 'folder', name: string } | null>(null);
   
   // Theme State
-  const [theme, setTheme] = useState<'dark' | 'light'>('dark');
+  const [theme, setTheme] = useState<'dark' | 'light'>(() => {
+    const saved = localStorage.getItem('app_theme');
+    return (saved as 'dark' | 'light') || 'dark';
+  });
+
+  const handleSetTheme = (newTheme: 'dark' | 'light') => {
+    setTheme(newTheme);
+    localStorage.setItem('app_theme', newTheme);
+  };
 
   useEffect(() => {
     if (theme === 'dark') {
@@ -262,7 +270,7 @@ export default function App() {
               exit={{ opacity: 0, y: -20 }}
               className="h-full w-full"
             >
-              <Settings onClose={() => setShowSettings(false)} theme={theme} setTheme={setTheme} />
+              <Settings onClose={() => setShowSettings(false)} theme={theme} setTheme={handleSetTheme} />
             </motion.div>
           ) : viewMode === 'graph' ? (
             <motion.div 
