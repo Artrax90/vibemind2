@@ -353,6 +353,30 @@ async def create_or_update_note(note: NoteCreate, db: Session = Depends(get_db),
     db.commit()
     return note.dict()
 
+class NoteUpdate(BaseModel):
+    content: str
+
+@app.patch("/api/notes/{note_id}")
+async def patch_note(note_id: str, note_update: NoteUpdate, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    from .utils.embeddings import embedding_manager
+    
+    db_note = db.query(Note).filter(Note.id == note_id, Note.user_id == current_user.id).first()
+    if not db_note:
+        raise HTTPException(status_code=404, detail="Note not found")
+        
+    # Append content
+    if db_note.content:
+        db_note.content += "\n" + note_update.content
+    else:
+        db_note.content = note_update.content
+        
+    # Update embedding
+    text_to_embed = f"{db_note.title}\n{db_note.content or ''}"
+    db_note.embedding = embedding_manager.get_vector(text_to_embed)
+    
+    db.commit()
+    return {"id": db_note.id, "title": db_note.title, "content": db_note.content}
+
 @app.delete("/api/notes/{note_id}")
 async def delete_note(note_id: str, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     db.query(Note).filter(Note.id == note_id, Note.user_id == current_user.id).delete()

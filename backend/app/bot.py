@@ -259,47 +259,7 @@ async def semantic_search_api(query: str):
         logger.error(f"Ошибка при семантическом поиске: {e}")
         return []
 
-@dp.message(F.text.regexp(r"^(найди|поиск|что там по)\s+(.+)", flags=re.IGNORECASE))
-async def handle_semantic_search(message: types.Message):
-    """Семантический поиск по заметкам"""
-    # Проверка admin_id
-    if current_admin_id and str(message.from_user.id) != str(current_admin_id):
-        logger.warning(f"Unauthorized access attempt from {message.from_user.id}")
-        return
 
-    match = re.match(r"^(найди|поиск|что там по)\s+(.+)", message.text, flags=re.IGNORECASE)
-    if not match:
-        return
-        
-    query = match.group(2).strip()
-    await message.answer(f"🔍 Ищу заметки по запросу: «{query}»...")
-    
-    results = await semantic_search_api(query)
-    
-    if not results:
-        await message.answer("К сожалению, ничего не найдено. 😔")
-        return
-        
-    from aiogram.utils.keyboard import InlineKeyboardBuilder
-    
-    response_text = f"Вот что я нашел по запросу «{query}»:\n\n"
-    builder = InlineKeyboardBuilder()
-    
-    for i, note in enumerate(results, 1):
-        title = note.get('title', 'Без названия')
-        content = note.get('content', '')
-        # Обрезаем контент для превью
-        preview = content[:100] + "..." if len(content) > 100 else content
-        preview = preview.replace('\n', ' ')
-        
-        response_text += f"{i}. *{title}*\n_{preview}_\n\n"
-        
-        # Добавляем кнопку
-        builder.button(text=f"Открыть {i}", callback_data=f"open_note_{note['id']}")
-        
-    builder.adjust(1)
-    
-    await message.answer(response_text, parse_mode="Markdown", reply_markup=builder.as_markup())
 
 @dp.callback_query(F.data.startswith("open_note_"))
 async def handle_open_note(callback: types.CallbackQuery):
@@ -406,9 +366,33 @@ async def handle_photo(message: types.Message):
         logger.error(f"Error handling photo: {e}")
         await message.answer("❌ Ошибка при сохранении изображения.")
 
+async def patch_note_api(note_id: str, content: str):
+    """Обновление контента заметки через API"""
+    url = f"http://localhost:3344/api/notes/{note_id}"
+    
+    # Генерируем токен
+    expire = datetime.utcnow() + timedelta(minutes=60)
+    to_encode = {"sub": "admin", "exp": expire}
+    token = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
+    
+    headers = {"Authorization": f"Bearer {token}"}
+    payload = {"content": content}
+    
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.patch(url, json=payload, headers=headers) as response:
+                if response.status == 200:
+                    return True, await response.json()
+                return False, f"Ошибка: {response.status}"
+    except Exception as e:
+        logger.error(f"Ошибка при обновлении заметки: {e}")
+        return False, str(e)
+
+user_last_search_result = {} # {user_id: note_id}
+
 @dp.message(F.text)
 async def handle_text(message: types.Message):
-    """Сохранение текстовых сообщений как .md заметок или обновление существующих"""
+    """Единый обработчик текстовых сообщений с системой интентов"""
     # Проверка admin_id
     if current_admin_id and str(message.from_user.id) != str(current_admin_id):
         logger.warning(f"Unauthorized access attempt from {message.from_user.id}")
@@ -420,89 +404,139 @@ async def handle_text(message: types.Message):
     text = message.text.strip()
     lower_text = text.lower()
     
-    target_title = None
-    new_content = None
-    mode = "none"
-
-    # Позиционный парсинг
-    # 1. Режим Добавления (Append): "добавь в [название] [текст]"
-    if lower_text.startswith("добавь в"):
-        mode = "append"
-        # Ищем начало заголовка
-        if lower_text.startswith("добавь в заметку"):
-            start_idx = len("добавь в заметку")
-        else:
-            start_idx = len("добавь в")
+    # Определяем интент
+    intent = "CREATE"
+    matched_keyword = ""
+    
+    create_keywords = ["создай", "создать", "новая заметка"]
+    search_keywords = ["найди", "поиск", "что там по"]
+    update_keywords = ["добавь в заметку", "добавь в неё", "добавь", "дополни", "запиши"]
+    
+    for kw in search_keywords:
+        if lower_text.startswith(kw):
+            intent = "SEARCH"
+            matched_keyword = kw
+            break
+            
+    if intent == "CREATE":
+        for kw in update_keywords:
+            if lower_text.startswith(kw):
+                intent = "UPDATE"
+                matched_keyword = kw
+                break
+                
+    if intent == "CREATE":
+        for kw in create_keywords:
+            if lower_text.startswith(kw):
+                intent = "CREATE"
+                matched_keyword = kw
+                break
+                
+    # Если ключевое слово не найдено, считаем это CREATE
+    remaining = text[len(matched_keyword):].strip() if matched_keyword else text
+    
+    if intent == "SEARCH":
+        query = remaining
+        if not query:
+            await message.answer("Что именно нужно найти?")
+            return
+            
+        await message.answer(f"🔍 Ищу заметки по запросу: «{query}»...")
+        results = await semantic_search_api(query)
         
-        remaining = text[start_idx:].strip()
-        parts = remaining.split(None, 1)
-        if len(parts) == 2:
-            target_title = parts[0]
-            new_content = parts[1]
-        elif len(parts) == 1:
-            target_title = parts[0]
-            new_content = ""
-
-    # 2. Режим Создания (Create): "создай заметку [Название] и добавь в неё [Текст]"
-    if not target_title:
-        # Ищем "создай заметку" или "создать заметку"
+        if not results:
+            await message.answer("К сожалению, ничего не найдено. 😔")
+            return
+            
+        # Сохраняем топ-1 результат для фоллбека
+        user_last_search_result[message.from_user.id] = results[0]['id']
+            
+        from aiogram.utils.keyboard import InlineKeyboardBuilder
+        response_text = f"Вот что я нашел по запросу «{query}»:\n\n"
+        builder = InlineKeyboardBuilder()
+        
+        for i, note in enumerate(results, 1):
+            title = note.get('title', 'Без названия')
+            content = note.get('content', '')
+            preview = content[:100] + "..." if len(content) > 100 else content
+            preview = preview.replace('\n', ' ')
+            response_text += f"{i}. *{title}*\n_{preview}_\n\n"
+            builder.button(text=f"Открыть {i}", callback_data=f"open_note_{note['id']}")
+            
+        builder.adjust(1)
+        await message.answer(response_text, parse_mode="Markdown", reply_markup=builder.as_markup())
+        return
+        
+    elif intent == "UPDATE":
+        fallback_keywords = ["в неё", "туда", "в эту"]
+        use_fallback = any(kw in lower_text for kw in fallback_keywords)
+        
+        target_note_id = None
+        search_query = remaining
+        append_text = remaining
+        
+        if use_fallback:
+            target_note_id = user_last_search_result.get(message.from_user.id)
+            for kw in fallback_keywords:
+                if remaining.lower().startswith(kw):
+                    append_text = remaining[len(kw):].strip()
+                    break
+        else:
+            # Пытаемся разбить на запрос и текст: "про фильмы интерстеллар" -> query="фильмы", text="интерстеллар"
+            m = re.match(r"^(?:в\s+|про\s+)?(\S+(?:\s+\S+)?)\s+(.+)$", remaining, flags=re.IGNORECASE)
+            if m:
+                search_query = m.group(1)
+                append_text = m.group(2)
+                
+            results = await semantic_search_api(search_query)
+            if results:
+                target_note_id = results[0]['id']
+                
+        logger.info(f"DEBUG PARSE: mode=update, search_query='{search_query}', target_note_id={target_note_id}")
+        
+        if target_note_id:
+            success, result = await patch_note_api(target_note_id, append_text)
+            if success:
+                title = result.get('title', 'Без названия')
+                await message.answer(f"✅ Добавил текст в заметку «{title}»!")
+            else:
+                await message.answer(f"❌ Ошибка при обновлении заметки: {result}")
+        else:
+            await message.answer("Не нашёл подходящую заметку. Создать новую?")
+        return
+        
+    elif intent == "CREATE":
+        # Парсинг для CREATE: "создай заметку [Название] и добавь в неё [Текст]"
+        target_title = None
+        new_content = None
+        
         create_match = re.search(r'(?:создай|создать)\s+заметку\s+(.*)', text, flags=re.IGNORECASE)
         if create_match:
-            mode = "create"
             remainder = create_match.group(1)
-            
-            # Ищем разделитель "и добавь в неё", "добавь в нее" и т.д.
             parts = re.split(r'(?:и\s+)?добавь\s+в\s+не[её]\s+', remainder, maxsplit=1, flags=re.IGNORECASE)
-            
             if len(parts) == 2:
                 target_title = parts[0].strip()
                 new_content = parts[1].strip()
             else:
                 target_title = parts[0].strip()
-                new_content = target_title # Дублируем заголовок в контент, если он не указан явно
-
-    # Очистка
-    if target_title:
-        target_title = clean_text_cyclic(target_title)
-    if new_content:
-        new_content = clean_text_cyclic(new_content)
-
-    if target_title:
-        logger.info(f"DEBUG PARSE: mode={mode}, title='{target_title}', content='{new_content}'")
-        
-        # 1. Ищем заметку
-        existing_note = await search_note_by_title(target_title)
-        
-        if existing_note:
-            # 2. Обновляем существующую
-            # Убедимся, что не дублируем заголовок в контент, если парсер их не разделил
-            if mode == "create" and new_content == target_title:
-                updated_content = existing_note['content']
-            else:
-                updated_content = f"{existing_note['content']}\n\n{new_content}" if new_content else existing_note['content']
-                
-            # ПРИНУДИТЕЛЬНО устанавливаем title = target_title, чтобы затереть старый мусор
-            success, result_msg = await save_note_to_api(target_title, updated_content, existing_note['id'])
-            if success:
-                await message.answer(f"Обновил заметку «{target_title}»! ✅")
-            else:
-                await message.answer(result_msg)
+                new_content = target_title
         else:
-            # 3. Создаем новую
-            # Если контент пустой, используем заголовок как контент
-            final_content = new_content if new_content else target_title
-            success, result_msg = await save_note_to_api(target_title, final_content)
-            if success:
-                await message.answer(f"Создал новую заметку «{target_title}»! 📝")
-            else:
-                await message.answer(result_msg)
+            # Если просто текст без "создай заметку", берем первую строку как заголовок
+            lines = text.split('\n', 1)
+            target_title = lines[0].strip()
+            new_content = text
+            
+        target_title = clean_text_cyclic(target_title)
+        new_content = clean_text_cyclic(new_content)
+        
+        logger.info(f"DEBUG PARSE: mode=create, title='{target_title}'")
+        
+        success, result_msg = await save_note_to_api(target_title, new_content)
+        if success:
+            await message.answer(f"Создал новую заметку «{target_title}»! 📝")
+        else:
+            await message.answer(result_msg)
         return
-
-    # Обычный режим сохранения
-    title = text[:30] + "..." if len(text) > 30 else text
-    logger.info(f"DEBUG PARSE: mode=simple, title='{title}', content='{text}'")
-    success, result_msg = await save_note_to_api(title, text)
-    await message.answer(result_msg)
 
 async def start_bot(token: str, proxy_url: str = None, proxy_config: dict = None, admin_id: str = None):
     """Запуск бота с поддержкой прокси (HTTP, SOCKS4, SOCKS5)"""
