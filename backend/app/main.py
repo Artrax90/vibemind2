@@ -385,40 +385,6 @@ async def create_or_update_note(note: NoteCreate, db: Session = Depends(get_db),
 class NoteUpdate(BaseModel):
     content: str
 
-@app.get("/api/notes/{note_id}")
-async def get_note(note_id: str, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
-    note = db.query(Note).filter(Note.id == note_id, Note.user_id == current_user.id).first()
-    if not note:
-        raise HTTPException(status_code=404, detail="Note not found")
-    return {"id": note.id, "title": note.title, "content": note.content, "folderId": note.folderId}
-
-@app.patch("/api/notes/{note_id}")
-async def patch_note(note_id: str, note_update: NoteUpdate, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
-    from .utils.embeddings import embedding_manager
-    
-    db_note = db.query(Note).filter(Note.id == note_id, Note.user_id == current_user.id).first()
-    if not db_note:
-        raise HTTPException(status_code=404, detail="Note not found")
-        
-    # Append content
-    if db_note.content:
-        db_note.content += "\n" + note_update.content
-    else:
-        db_note.content = note_update.content
-        
-    # Update embedding
-    text_to_embed = f"{db_note.title}\n{db_note.content or ''}"
-    db_note.embedding = embedding_manager.get_vector(text_to_embed)
-    
-    db.commit()
-    return {"id": db_note.id, "title": db_note.title, "content": db_note.content}
-
-@app.delete("/api/notes/{note_id}")
-async def delete_note(note_id: str, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
-    db.query(Note).filter(Note.id == note_id, Note.user_id == current_user.id).delete()
-    db.commit()
-    return {"status": "success"}
-
 @app.get("/api/notes/search")
 async def search_notes(query: str, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     """Поиск заметок по заголовку или содержимому (частичное совпадение)"""
@@ -456,7 +422,41 @@ async def semantic_search_notes(query: str, db: Session = Depends(get_db), curre
         Note.embedding.cosine_distance(query_vector)
     ).limit(5).all()
     
-    return [{"id": r.Note.id, "title": r.Note.title, "content": r.Note.content} for r in results]
+    return [{"id": r[0].id, "title": r[0].title, "content": r[0].content, "distance": float(r[1])} for r in results]
+
+@app.get("/api/notes/{note_id}")
+async def get_note(note_id: str, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    note = db.query(Note).filter(Note.id == note_id, Note.user_id == current_user.id).first()
+    if not note:
+        raise HTTPException(status_code=404, detail="Note not found")
+    return {"id": note.id, "title": note.title, "content": note.content, "folderId": note.folderId}
+
+@app.patch("/api/notes/{note_id}")
+async def patch_note(note_id: str, note_update: NoteUpdate, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    from .utils.embeddings import embedding_manager
+    
+    db_note = db.query(Note).filter(Note.id == note_id, Note.user_id == current_user.id).first()
+    if not db_note:
+        raise HTTPException(status_code=404, detail="Note not found")
+        
+    # Append content
+    if db_note.content:
+        db_note.content += "\n" + note_update.content
+    else:
+        db_note.content = note_update.content
+        
+    # Update embedding
+    text_to_embed = f"{db_note.title}\n{db_note.content or ''}"
+    db_note.embedding = embedding_manager.get_vector(text_to_embed)
+    
+    db.commit()
+    return {"id": db_note.id, "title": db_note.title, "content": db_note.content}
+
+@app.delete("/api/notes/{note_id}")
+async def delete_note(note_id: str, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    db.query(Note).filter(Note.id == note_id, Note.user_id == current_user.id).delete()
+    db.commit()
+    return {"status": "success"}
 
 @app.get("/api/folders")
 async def get_folders(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
