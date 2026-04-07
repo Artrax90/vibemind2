@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { motion } from 'framer-motion';
-import { Lock, User, ShieldCheck, Zap } from 'lucide-react';
+import { Lock, User, ShieldCheck, Sparkles } from 'lucide-react';
 
 interface LoginProps {
   onLogin: (token: string) => void;
@@ -57,14 +57,14 @@ export default function Login({ onLogin }: LoginProps) {
           <motion.div 
             initial={{ scale: 0.8 }}
             animate={{ scale: 1 }}
-            className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-primary/10 border border-primary/30 mb-4 shadow-[0_0_20px_rgba(var(--primary-rgb),0.2)]"
+            className="inline-flex items-center justify-center w-20 h-20 rounded-2xl bg-gradient-to-br from-amber-200 to-amber-500 mb-4 shadow-[0_0_30px_rgba(245,158,11,0.3)]"
           >
-            <Zap className="text-primary w-8 h-8" />
+            <Sparkles className="text-white w-10 h-10" />
           </motion.div>
-          <h1 className="text-4xl font-bold tracking-tighter text-foreground mb-2">
-            VIBE<span className="text-primary">MIND</span>
+          <h1 className="text-5xl font-bold tracking-tighter text-foreground mb-2">
+            VibeMind
           </h1>
-          <p className="text-muted-foreground font-mono text-sm uppercase tracking-widest">Neural Access Protocol v1.9</p>
+          <p className="text-muted-foreground font-mono text-sm uppercase tracking-widest">Neural Access Protocol v2.0</p>
         </div>
 
         <div className="bg-card border border-border/50 rounded-2xl p-8 shadow-2xl relative overflow-hidden">
@@ -127,7 +127,7 @@ export default function Login({ onLogin }: LoginProps) {
               ) : (
                 <>
                   INITIALIZE SESSION
-                  <Zap className="ml-2 w-4 h-4 group-hover:animate-pulse" />
+                  <Sparkles className="ml-2 w-4 h-4 group-hover:animate-pulse" />
                 </>
               )}
             </button>

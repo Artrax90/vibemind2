@@ -211,6 +211,7 @@ export default function App() {
           onDeleteFolder={deleteFolder}
           onRenameFolder={renameFolder}
           onShare={handleShare}
+          onClose={() => setIsMobileMenuOpen(false)}
         />
       </div>
       

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
-import { Folder, FileText, Settings as SettingsIcon, Plus, MoreVertical, Search, ChevronRight, ChevronDown, FilePlus, FolderPlus, Edit2, Trash2, Share2, FolderInput } from 'lucide-react';
+import { Folder, FileText, Settings as SettingsIcon, Plus, MoreVertical, Search, ChevronRight, ChevronDown, FilePlus, FolderPlus, Edit2, Trash2, Share2, FolderInput, Sparkles } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Note, Folder as FolderType } from '../App';
 import CreateFolderModal from './modals/CreateFolderModal';
@@ -28,6 +28,7 @@ type SidebarProps = {
   onDeleteFolder: (id: string) => void;
   onRenameFolder: (id: string, newName: string) => void;
   onShare: (type: 'note' | 'folder', id: string) => void;
+  onClose?: () => void;
 };
 
 // Sortable Note Item
@@ -104,7 +105,7 @@ function DroppableFolder({ folder, isExpanded, isSelected, isRenaming, renameVal
   );
 }
 
-export default function Sidebar({ notes, folders, activeNoteId, isLoading = false, onSelectNote, onOpenSettings, onOpenSearch, onNotesChange, onFoldersChange, onAddNote, onAddFolder, onDeleteNote, onDeleteFolder, onRenameFolder, onShare }: SidebarProps) {
+export default function Sidebar({ notes, folders, activeNoteId, isLoading = false, onSelectNote, onOpenSettings, onOpenSearch, onNotesChange, onFoldersChange, onAddNote, onAddFolder, onDeleteNote, onDeleteFolder, onRenameFolder, onShare, onClose }: SidebarProps) {
   const { t } = useLanguage();
   const [isCreateFolderOpen, setIsCreateFolderOpen] = useState(false);
   const [plusMenuOpen, setPlusMenuOpen] = useState(false);
@@ -271,7 +272,12 @@ export default function Sidebar({ notes, folders, activeNoteId, isLoading = fals
         onClick={() => setSelectedFolderId(undefined)}
       >
         <div className="p-6 flex items-center justify-between">
-          <h1 className="text-xl font-bold text-primary tracking-tight">VibeMind</h1>
+          <div className="flex items-center space-x-3">
+            <div className="flex items-center justify-center p-1.5 bg-gradient-to-br from-amber-200 to-amber-500 rounded-lg shadow-lg shadow-amber-500/20">
+              <Sparkles size={20} className="text-white" />
+            </div>
+            <h1 className="text-xl font-bold text-foreground tracking-tight">VibeMind</h1>
+          </div>
           
           <div className="flex items-center space-x-1">
             <button 
@@ -288,6 +294,14 @@ export default function Sidebar({ notes, folders, activeNoteId, isLoading = fals
             >
               <FolderPlus size={18} />
             </button>
+            {onClose && (
+              <button 
+                onClick={(e) => { e.stopPropagation(); onClose(); }}
+                className="md:hidden p-1.5 hover:bg-secondary rounded-lg text-muted-foreground hover:text-foreground transition-all ml-1"
+              >
+                <X size={20} />
+              </button>
+            )}
           </div>
         </div>
 
