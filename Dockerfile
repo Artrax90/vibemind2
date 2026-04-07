@@ -7,7 +7,7 @@ COPY . .
 RUN npm run build
 
 # Build backend
-FROM python:3.11-slim-bookworm
+FROM python:3.11-slim
 WORKDIR /app
 
 # Install system dependencies for PostgreSQL and compilation

@@ -285,8 +285,9 @@ async def handle_voice(message: types.Message):
         
         # 3. Передаем текст в основной обработчик
         # Создаем "фейковое" сообщение с текстом
-        message.text = text
-        await handle_text(message)
+        logger.info(f"Перенаправляю распознанный текст в обработчик команд: {text}")
+        fake_msg = message.model_copy(update={"text": text})
+        await handle_text(fake_msg)
         
     except Exception as e:
         logger.error(f"Error handling voice: {e}")
