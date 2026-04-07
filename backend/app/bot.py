@@ -368,38 +368,23 @@ async def handle_text(message: types.Message):
             target_title = parts[0]
             new_content = ""
 
-    # 2. Режим Создания (Create): "создай [что-то] [название] и добавь [текст]"
-    if not target_title and "создай" in lower_text:
-        mode = "create"
-        # Ищем ключевые слова для заголовка
-        idx_name = lower_text.find("названием")
-        idx_note = lower_text.find("заметку")
-        
-        start_title_idx = -1
-        if idx_name != -1:
-            start_title_idx = idx_name + len("названием")
-        elif idx_note != -1:
-            start_title_idx = idx_note + len("заметку")
+    # 2. Режим Создания (Create): "создай заметку [Название] и добавь в неё [Текст]"
+    if not target_title:
+        # Ищем "создай заметку" или "создать заметку"
+        create_match = re.search(r'(?i)(?:создай|создать)\s+заметку\s+(.*)', text)
+        if create_match:
+            mode = "create"
+            remainder = create_match.group(1)
             
-        if start_title_idx != -1:
-            # Ищем "добавь" как основной разделитель между Title и Content
-            idx_add = lower_text.find("добавь", start_title_idx)
+            # Ищем разделитель "и добавь в неё", "добавь в нее" и т.д.
+            parts = re.split(r'(?i)(?:и\s+)?добавь\s+в\s+не[её]\s+', remainder, maxsplit=1)
             
-            if idx_add != -1:
-                # Title - всё между ключевым словом и "добавь"
-                target_title = text[start_title_idx:idx_add].strip()
-                # Content - всё после "добавь"
-                new_content = text[idx_add + len("добавь"):].strip()
+            if len(parts) == 2:
+                target_title = parts[0].strip()
+                new_content = parts[1].strip()
             else:
-                # Если "добавь" не найдено, откатываемся к старому методу (первое слово после ключевого слова)
-                after_pivot = text[start_title_idx:].strip()
-                parts = after_pivot.split(None, 1)
-                if len(parts) >= 1:
-                    target_title = parts[0]
-                    if len(parts) == 2:
-                        new_content = parts[1]
-                    else:
-                        new_content = ""
+                target_title = parts[0].strip()
+                new_content = target_title # Дублируем заголовок в контент, если он не указан явно
 
     # Очистка
     if target_title:
@@ -407,7 +392,7 @@ async def handle_text(message: types.Message):
     if new_content:
         new_content = clean_text_cyclic(new_content)
 
-    if target_title and new_content:
+    if target_title:
         logger.info(f"DEBUG PARSE: mode={mode}, title='{target_title}', content='{new_content}'")
         
         # 1. Ищем заметку
@@ -415,7 +400,7 @@ async def handle_text(message: types.Message):
         
         if existing_note:
             # 2. Обновляем существующую (с двойным переносом строки для Markdown)
-            updated_content = f"{existing_note['content']}\n\n{new_content}"
+            updated_content = f"{existing_note['content']}\n\n{new_content}" if new_content else existing_note['content']
             success, result_msg = await save_note_to_api(existing_note['title'], updated_content, existing_note['id'])
             if success:
                 await message.answer(f"Обновил заметку «{existing_note['title']}»! ✅")
@@ -423,7 +408,9 @@ async def handle_text(message: types.Message):
                 await message.answer(result_msg)
         else:
             # 3. Создаем новую
-            success, result_msg = await save_note_to_api(target_title, new_content)
+            # Если контент пустой, используем заголовок как контент
+            final_content = new_content if new_content else target_title
+            success, result_msg = await save_note_to_api(target_title, final_content)
             if success:
                 await message.answer(f"Создал новую заметку «{target_title}»! 📝")
             else:
