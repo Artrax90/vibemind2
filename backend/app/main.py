@@ -385,6 +385,13 @@ async def create_or_update_note(note: NoteCreate, db: Session = Depends(get_db),
 class NoteUpdate(BaseModel):
     content: str
 
+@app.get("/api/notes/{note_id}")
+async def get_note(note_id: str, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    note = db.query(Note).filter(Note.id == note_id, Note.user_id == current_user.id).first()
+    if not note:
+        raise HTTPException(status_code=404, detail="Note not found")
+    return {"id": note.id, "title": note.title, "content": note.content, "folderId": note.folderId}
+
 @app.patch("/api/notes/{note_id}")
 async def patch_note(note_id: str, note_update: NoteUpdate, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     from .utils.embeddings import embedding_manager

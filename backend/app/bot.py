@@ -591,10 +591,18 @@ async def semantic_search_api(query: str) -> Dict[str, Any]:
 @dp.callback_query(F.data.startswith("open_note_"))
 async def handle_open_note(callback: types.CallbackQuery):
     note_id = callback.data.replace("open_note_", "")
-    # В идеале здесь нужно сходить в БД и достать полную заметку,
-    # но для простоты покажем сообщение
-    await callback.answer(f"Открытие заметки {note_id}...")
-    await callback.message.answer(f"Вы выбрали заметку с ID: {note_id}. (Здесь можно вывести полный текст)")
+    await callback.answer()
+    
+    result = await get_note_api(note_id)
+    if result.get("status") == "success":
+        note = result.get("data", {})
+        title = note.get("title", "Без названия")
+        content = note.get("content", "Пусто")
+        
+        response_text = f"📝 *{title}*\n\n{content}"
+        await callback.message.answer(response_text, parse_mode="Markdown")
+    else:
+        await callback.message.answer("❌ Не удалось загрузить содержимое заметки.")
 
 @dp.message(Command("start"))
 async def handle_start(message: types.Message):
@@ -693,6 +701,28 @@ async def handle_photo(message: types.Message):
     except Exception as e:
         logger.error(f"Error handling photo: {e}")
         await message.answer("❌ Ошибка при сохранении изображения.")
+
+async def get_note_api(note_id: str) -> Dict[str, Any]:
+    """Получение заметки по ID через API"""
+    url = f"http://localhost:3344/api/notes/{note_id}"
+    
+    # Генерируем токен
+    expire = datetime.utcnow() + timedelta(minutes=60)
+    to_encode = {"sub": "admin", "exp": expire}
+    token = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
+    
+    headers = {"Authorization": f"Bearer {token}"}
+    
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.get(url, headers=headers) as response:
+                if response.status == 200:
+                    data = await response.json()
+                    return {"status": "success", "data": data}
+                return {"status": "error", "message": f"Ошибка: {response.status}"}
+    except Exception as e:
+        logger.error(f"Ошибка при получении заметки: {e}")
+        return {"status": "error", "message": str(e)}
 
 async def patch_note_api(note_id: str, content: str) -> Dict[str, Any]:
     """Обновление контента заметки через API"""
