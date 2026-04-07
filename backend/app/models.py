@@ -13,6 +13,8 @@ class Config(Base):
     llm_provider = Column(String, nullable=True)
     api_key = Column(String, nullable=True)
     proxy_url = Column(String, nullable=True) # Keep for backward compatibility
+    base_url = Column(String, nullable=True)
+    model_name = Column(String, nullable=True)
     proxy_config = Column(JSON, nullable=True) # {protocol, host, port, username, password}
     external_dbs = Column(JSON, nullable=True) # List of {type, name, connection_string}
 

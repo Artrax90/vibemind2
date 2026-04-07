@@ -58,6 +58,33 @@ except Exception as e:
 # Создаем таблицы (в проде лучше использовать Alembic)
 Base.metadata.create_all(bind=engine)
 
+# Добавляем недостающие колонки в configs (для миграции на лету)
+try:
+    with engine.connect() as conn:
+        # Проверяем наличие колонок base_url и model_name
+        result = conn.execute(text("SELECT column_name FROM information_schema.columns WHERE table_name='configs'"))
+        columns = [row[0] for row in result]
+        
+        if 'base_url' not in columns:
+            conn.execute(text("ALTER TABLE configs ADD COLUMN base_url VARCHAR;"))
+            logger.info("Added base_url column to configs table")
+        
+        if 'model_name' not in columns:
+            conn.execute(text("ALTER TABLE configs ADD COLUMN model_name VARCHAR;"))
+            logger.info("Added model_name column to configs table")
+
+        if 'proxy_config' not in columns:
+            conn.execute(text("ALTER TABLE configs ADD COLUMN proxy_config JSON;"))
+            logger.info("Added proxy_config column to configs table")
+
+        if 'external_dbs' not in columns:
+            conn.execute(text("ALTER TABLE configs ADD COLUMN external_dbs JSON;"))
+            logger.info("Added external_dbs column to configs table")
+            
+        conn.commit()
+except Exception as e:
+    logger.warning(f"Could not migrate configs table: {e}")
+
 app = FastAPI(title="VibeMind Backend")
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="api/auth/login")
