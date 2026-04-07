@@ -5,6 +5,7 @@ import ast
 import os
 import uuid
 import re
+from typing import Dict, Any
 from datetime import datetime, timedelta
 from jose import jwt
 from aiogram import Bot, Dispatcher, types, F
@@ -55,7 +56,7 @@ def detect_intent(text: str) -> str:
     return "SEARCH"
 
 def extract_title(text: str) -> str:
-    text = re.sub(r'^(создай заметку|создай|создать|новая заметка)\s*', '', text).strip()
+    text = re.sub(r'^(создай заметку|создай|создать|новую заметку|новая заметка|заметку)\s*', '', text).strip()
     text = re.split(r'\s+(?:и\s+)?добавь', text, maxsplit=1)[0].strip()
     return text
 
@@ -198,7 +199,7 @@ bot_task = None
 current_bot = None
 current_admin_id = None
 
-async def save_note_to_api(title: str, content: str, note_id: str = None):
+async def save_note_to_api(title: str, content: str, note_id: str = None) -> Dict[str, Any]:
     """Отправка заметки в API FastAPI (создание или обновление)"""
     url = "http://localhost:3344/api/notes"
     
@@ -227,14 +228,15 @@ async def save_note_to_api(title: str, content: str, note_id: str = None):
                 resp_text = await response.text()
                 logger.info(f"Ответ API: {response.status}, Тело: {resp_text}")
                 if response.status in [200, 201]:
-                    return True, "✅ Заметка успешно сохранена!"
+                    data = await response.json()
+                    return {"status": "success", "note_id": data.get("id"), "data": data}
                 else:
-                    return False, f"❌ Ошибка при сохранении: {response.status}"
+                    return {"status": "error", "message": f"Ошибка при сохранении: {response.status}"}
     except Exception as e:
         logger.error(f"Ошибка при обращении к API: {e}")
-        return False, f"❌ Ошибка при обращении к API: {str(e)}"
+        return {"status": "error", "message": f"Ошибка при обращении к API: {str(e)}"}
 
-async def search_note_by_title(title: str):
+async def search_note_by_title(title: str) -> Dict[str, Any]:
     """Поиск заметки по заголовку через API"""
     url = f"http://localhost:3344/api/notes/search?query={title}"
     
@@ -250,13 +252,13 @@ async def search_note_by_title(title: str):
             async with session.get(url, headers=headers) as response:
                 if response.status == 200:
                     data = await response.json()
-                    return data
-                return None
+                    return {"status": "success", "data": data}
+                return {"status": "error", "message": f"Ошибка: {response.status}"}
     except Exception as e:
         logger.error(f"Ошибка при поиске заметки: {e}")
-        return None
+        return {"status": "error", "message": str(e)}
 
-async def semantic_search_api(query: str):
+async def semantic_search_api(query: str) -> Dict[str, Any]:
     """Семантический поиск через API"""
     import urllib.parse
     encoded_query = urllib.parse.quote(query)
@@ -274,11 +276,11 @@ async def semantic_search_api(query: str):
             async with session.get(url, headers=headers) as response:
                 if response.status == 200:
                     data = await response.json()
-                    return data
-                return []
+                    return {"status": "success", "data": data}
+                return {"status": "error", "message": f"Ошибка: {response.status}"}
     except Exception as e:
         logger.error(f"Ошибка при семантическом поиске: {e}")
-        return []
+        return {"status": "error", "message": str(e)}
 
 
 
@@ -377,17 +379,18 @@ async def handle_photo(message: types.Message):
         title = f"Photo from Telegram {datetime.now().strftime('%Y-%m-%d %H:%M')}"
         content = f"![image]({img_url})"
         
-        success, result_msg = await save_note_to_api(title, content)
-        if success:
-            await message.answer(f"📸 Изображение сохранено!\n{result_msg}")
+        result = await save_note_to_api(title, content)
+        if isinstance(result, dict) and result.get("status") == "success":
+            await message.answer(f"📸 Изображение сохранено!\n✅ Заметка успешно сохранена!")
         else:
-            await message.answer(result_msg)
+            error_msg = result.get("message", "Неизвестная ошибка") if isinstance(result, dict) else str(result)
+            await message.answer(error_msg)
             
     except Exception as e:
         logger.error(f"Error handling photo: {e}")
         await message.answer("❌ Ошибка при сохранении изображения.")
 
-async def patch_note_api(note_id: str, content: str):
+async def patch_note_api(note_id: str, content: str) -> Dict[str, Any]:
     """Обновление контента заметки через API"""
     url = f"http://localhost:3344/api/notes/{note_id}"
     
@@ -403,11 +406,12 @@ async def patch_note_api(note_id: str, content: str):
         async with aiohttp.ClientSession() as session:
             async with session.patch(url, json=payload, headers=headers) as response:
                 if response.status == 200:
-                    return True, await response.json()
-                return False, f"Ошибка: {response.status}"
+                    data = await response.json()
+                    return {"status": "success", "note_id": data.get("id"), "data": data}
+                return {"status": "error", "message": f"Ошибка: {response.status}"}
     except Exception as e:
         logger.error(f"Ошибка при обновлении заметки: {e}")
-        return False, str(e)
+        return {"status": "error", "message": str(e)}
 
 @dp.message(F.text)
 async def handle_text(message: types.Message):
@@ -435,12 +439,16 @@ async def handle_text(message: types.Message):
                 
             logger.info(f"DEBUG: normalized='{normalized}', commands={commands}, intent='{intent}', title='{title}'")
             
-            success, result = await save_note_to_api(title, title)
-            if success:
-                chain_note_id = result.get('id')
+            result = await save_note_to_api(title, title)
+            logger.info(f"DEBUG: result_type={type(result)} result_value={result}")
+            
+            if isinstance(result, dict) and result.get("status") == "success":
+                chain_note_id = result.get("note_id")
                 await message.answer(f"Создал новую заметку «{title}»! 📝")
             else:
-                await message.answer(f"❌ Ошибка при создании заметки: {result}")
+                chain_note_id = None
+                error_msg = result.get("message", "Неизвестная ошибка") if isinstance(result, dict) else str(result)
+                await message.answer(f"❌ Ошибка при создании заметки: {error_msg}")
                 
         elif intent == "UPDATE":
             search_query, append_text = extract_update_parts(cmd)
@@ -449,18 +457,24 @@ async def handle_text(message: types.Message):
             target_note_id = chain_note_id
             
             if not target_note_id:
-                results = await semantic_search_api(search_query)
-                if results:
-                    target_note_id = results[0]['id']
+                result = await semantic_search_api(search_query)
+                logger.info(f"DEBUG: result_type={type(result)} result_value={result}")
+                if isinstance(result, dict) and result.get("status") == "success":
+                    data = result.get("data", [])
+                    if data and isinstance(data, list) and len(data) > 0:
+                        target_note_id = data[0].get('id')
                     
             if target_note_id:
-                success, result = await patch_note_api(target_note_id, append_text)
-                if success:
-                    title = result.get('title', 'Без названия')
+                result = await patch_note_api(target_note_id, append_text)
+                logger.info(f"DEBUG: result_type={type(result)} result_value={result}")
+                if isinstance(result, dict) and result.get("status") == "success":
+                    data = result.get("data", {})
+                    title = data.get('title', 'Без названия')
                     await message.answer(f"✅ Добавил текст в заметку «{title}»!")
                     chain_note_id = target_note_id
                 else:
-                    await message.answer(f"❌ Ошибка при обновлении заметки: {result}")
+                    error_msg = result.get("message", "Неизвестная ошибка") if isinstance(result, dict) else str(result)
+                    await message.answer(f"❌ Ошибка при обновлении заметки: {error_msg}")
             else:
                 await message.answer("Не нашёл подходящую заметку для обновления.")
                 
@@ -473,26 +487,32 @@ async def handle_text(message: types.Message):
                 continue
                 
             await message.answer(f"🔍 Ищу заметки по запросу: «{search_query}»...")
-            results = await semantic_search_api(search_query)
+            result = await semantic_search_api(search_query)
+            logger.info(f"DEBUG: result_type={type(result)} result_value={result}")
             
-            if not results:
-                await message.answer("К сожалению, ничего не найдено. 😔")
-                continue
+            if isinstance(result, dict) and result.get("status") == "success":
+                results = result.get("data", [])
+                if not results:
+                    await message.answer("К сожалению, ничего не найдено. 😔")
+                    continue
+                    
+                from aiogram.utils.keyboard import InlineKeyboardBuilder
+                response_text = f"Вот что я нашел по запросу «{search_query}»:\n\n"
+                builder = InlineKeyboardBuilder()
                 
-            from aiogram.utils.keyboard import InlineKeyboardBuilder
-            response_text = f"Вот что я нашел по запросу «{search_query}»:\n\n"
-            builder = InlineKeyboardBuilder()
-            
-            for i, note in enumerate(results, 1):
-                title = note.get('title', 'Без названия')
-                content = note.get('content', '')
-                preview = content[:100] + "..." if len(content) > 100 else content
-                preview = preview.replace('\n', ' ')
-                response_text += f"{i}. *{title}*\n_{preview}_\n\n"
-                builder.button(text=f"Открыть {i}", callback_data=f"open_note_{note['id']}")
-                
-            builder.adjust(1)
-            await message.answer(response_text, parse_mode="Markdown", reply_markup=builder.as_markup())
+                for i, note in enumerate(results, 1):
+                    title = note.get('title', 'Без названия')
+                    content = note.get('content', '')
+                    preview = content[:100] + "..." if len(content) > 100 else content
+                    preview = preview.replace('\n', ' ')
+                    response_text += f"{i}. *{title}*\n_{preview}_\n\n"
+                    builder.button(text=f"Открыть {i}", callback_data=f"open_note_{note['id']}")
+                    
+                builder.adjust(1)
+                await message.answer(response_text, parse_mode="Markdown", reply_markup=builder.as_markup())
+            else:
+                error_msg = result.get("message", "Неизвестная ошибка") if isinstance(result, dict) else str(result)
+                await message.answer(f"❌ Ошибка при поиске: {error_msg}")
 
 async def start_bot(token: str, proxy_url: str = None, proxy_config: dict = None, admin_id: str = None):
     """Запуск бота с поддержкой прокси (HTTP, SOCKS4, SOCKS5)"""
