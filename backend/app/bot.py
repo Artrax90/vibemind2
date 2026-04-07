@@ -47,17 +47,36 @@ async def parse_commands_llm(text: str, notes: list[dict] = None) -> list[dict]:
         notes = []
         
     try:
-        api_key = os.getenv("OPENAI_API_KEY")
-        if not api_key:
-            logger.warning("OPENAI_API_KEY not found, returning UNKNOWN")
-            return [{"type": "UNKNOWN"}]
-            
-        client = AsyncOpenAI(api_key=api_key)
+        # 1. Получаем активного провайдера из БД
+        from .main import SessionLocal
+        from .models import Config
         
+        db = SessionLocal()
+        config = db.query(Config).first()
+        db.close()
+        
+        provider = config.llm_provider if config else None
+        api_key = config.api_key if config else os.getenv("OPENAI_API_KEY")
+        base_url = config.base_url if config else None
+        model_name = config.model_name if config else "gpt-4o-mini"
+        
+        if not provider and not api_key:
+            logger.warning("No LLM provider or API key found, falling back to regex parser")
+            return parse_commands(text)
+            
+        # 2. Инициализация клиента
+        if provider == "ollama":
+            client = AsyncOpenAI(api_key="ollama", base_url=base_url or "http://localhost:11434/v1")
+        else:
+            if not api_key:
+                logger.warning("OpenAI API key missing, falling back to regex parser")
+                return parse_commands(text)
+            client = AsyncOpenAI(api_key=api_key, base_url=base_url)
+            
         user_content = f"notes:\n{json.dumps(notes, ensure_ascii=False)}\n\n\"{text}\""
         
         response = await client.chat.completions.create(
-            model="gpt-4o-mini",
+            model=model_name or "gpt-4o-mini",
             messages=[
                 {"role": "system", "content": SYSTEM_PROMPT},
                 {"role": "user", "content": user_content}
@@ -99,10 +118,10 @@ async def parse_commands_llm(text: str, notes: list[dict] = None) -> list[dict]:
                     item["search_query"] = clean_field(item.get("search_query", ""))
                     item["query"] = clean_field(item.get("query", ""))
             return parsed
-        return [{"type": "UNKNOWN"}]
+        return parse_commands(text)
     except Exception as e:
         logger.error(f"LLM Parsing error: {e}")
-        return [{"type": "UNKNOWN"}]
+        return parse_commands(text)
 
 def normalize_intent(text: str) -> str:
     if not text:
@@ -137,7 +156,7 @@ def parse_commands(text: str) -> list[dict]:
     text = text.lower()
     text = normalize_intent(text)
     
-    # 1. Pipeline очистки (стоп-слова)
+    # 1. Pipeline очистки (стоп-слова) - НЕ удаляем "добавь" здесь, чтобы не сломать логику
     stop_words = ["пожалуйста", "мне", "сделай", "хочу", "можешь", "заметку", "заметка", "с названием", "в неё", "в нее", "туда", "по названию"]
     for word in stop_words:
         text = re.sub(rf'\b{word}\b', '', text)
@@ -148,6 +167,13 @@ def parse_commands(text: str) -> list[dict]:
     # Глаголы действий для проверки
     action_verbs = ["добавь", "создай", "найди", "удали", "сделай", "напиши", "купи", "скажи", "покажи"]
     
+    def clean_stubborn(val: str) -> str:
+        stubborn = ["в неё", "в нее", "туда", "неё", "нее", "заметку", "заметка", "с названием", "добавь"]
+        v = val.strip()
+        for word in stubborn:
+            v = re.sub(rf'\b{word}\b', '', v, flags=re.IGNORECASE)
+        return re.sub(r'\s+', ' ', v).strip()
+
     def is_valid_title(title: str) -> bool:
         if len(title) > 30:
             return False
@@ -170,6 +196,7 @@ def parse_commands(text: str) -> list[dict]:
             
         if part.startswith("создай") or part.startswith("создать") or part.startswith("новая"):
             title = re.sub(r'^(создай|создать|новую|новая)\s*', '', part).strip()
+            title = clean_stubborn(title)
             
             if not is_valid_title(title):
                 commands.append({"type": "SEARCH", "query": part})
@@ -182,6 +209,7 @@ def parse_commands(text: str) -> list[dict]:
         elif part.startswith("добавь"):
             if i > 0 and commands and commands[-1]["type"] == "CREATE":
                 append_text = re.sub(r'^добавь\s+(в\s+)?', '', part).strip()
+                append_text = clean_stubborn(append_text)
                 commands.append({
                     "type": "UPDATE",
                     "append": append_text
@@ -191,8 +219,8 @@ def parse_commands(text: str) -> list[dict]:
                 subparts = cleaned.split(maxsplit=1)
                 
                 if len(subparts) == 2:
-                    search_query = subparts[0]
-                    append_text = subparts[1]
+                    search_query = clean_stubborn(subparts[0])
+                    append_text = clean_stubborn(subparts[1])
                     
                     if not is_valid_title(search_query):
                         commands.append({"type": "SEARCH", "query": part})
@@ -205,19 +233,19 @@ def parse_commands(text: str) -> list[dict]:
                 else:
                     commands.append({
                         "type": "UPDATE",
-                        "search_query": cleaned,
-                        "append": cleaned
+                        "search_query": clean_stubborn(cleaned),
+                        "append": clean_stubborn(cleaned)
                     })
         elif part.startswith("найди") or part.startswith("покажи") or part.startswith("что есть про"):
             query = re.sub(r'^(найди|покажи|что есть про)\s*', '', part).strip()
             commands.append({
                 "type": "SEARCH",
-                "query": query
+                "query": clean_stubborn(query)
             })
         else:
             commands.append({
                 "type": "SEARCH",
-                "query": part
+                "query": clean_stubborn(part)
             })
             
     return commands

@@ -14,6 +14,8 @@ class Config(Base):
     api_key = Column(String, nullable=True)
     proxy_url = Column(String, nullable=True) # Keep for backward compatibility
     proxy_config = Column(JSON, nullable=True) # {protocol, host, port, username, password}
+    base_url = Column(String, nullable=True)
+    model_name = Column(String, nullable=True)
     external_dbs = Column(JSON, nullable=True) # List of {type, name, connection_string}
 
 class User(Base):
