@@ -4,7 +4,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
-from sqlalchemy import create_engine, text, or_
+from sqlalchemy import create_engine, text, or_, inspect
 from sqlalchemy.orm import sessionmaker
 import asyncio
 import os
@@ -15,7 +15,8 @@ from jose import jwt
 from datetime import datetime, timedelta
 
 from .models import Base, Config, User, Note, Folder
-from .bot import restart_bot, current_bot, test_bot_connection
+from . import bot as bot_module
+from .bot import restart_bot, test_bot_connection
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -60,28 +61,28 @@ Base.metadata.create_all(bind=engine)
 
 # Добавляем недостающие колонки в configs (для миграции на лету)
 try:
-    with engine.connect() as conn:
-        # Проверяем наличие колонок base_url и model_name
-        result = conn.execute(text("SELECT column_name FROM information_schema.columns WHERE table_name='configs'"))
-        columns = [row[0] for row in result]
+    inspector = inspect(engine)
+    if 'configs' in inspector.get_table_names():
+        columns = [c['name'] for c in inspector.get_columns('configs')]
         
-        if 'base_url' not in columns:
-            conn.execute(text("ALTER TABLE configs ADD COLUMN base_url VARCHAR;"))
-            logger.info("Added base_url column to configs table")
-        
-        if 'model_name' not in columns:
-            conn.execute(text("ALTER TABLE configs ADD COLUMN model_name VARCHAR;"))
-            logger.info("Added model_name column to configs table")
-
-        if 'proxy_config' not in columns:
-            conn.execute(text("ALTER TABLE configs ADD COLUMN proxy_config JSON;"))
-            logger.info("Added proxy_config column to configs table")
-
-        if 'external_dbs' not in columns:
-            conn.execute(text("ALTER TABLE configs ADD COLUMN external_dbs JSON;"))
-            logger.info("Added external_dbs column to configs table")
+        with engine.connect() as conn:
+            if 'base_url' not in columns:
+                conn.execute(text("ALTER TABLE configs ADD COLUMN base_url VARCHAR;"))
+                logger.info("Added base_url column to configs table")
             
-        conn.commit()
+            if 'model_name' not in columns:
+                conn.execute(text("ALTER TABLE configs ADD COLUMN model_name VARCHAR;"))
+                logger.info("Added model_name column to configs table")
+
+            if 'proxy_config' not in columns:
+                conn.execute(text("ALTER TABLE configs ADD COLUMN proxy_config JSON;"))
+                logger.info("Added proxy_config column to configs table")
+
+            if 'external_dbs' not in columns:
+                conn.execute(text("ALTER TABLE configs ADD COLUMN external_dbs JSON;"))
+                logger.info("Added external_dbs column to configs table")
+                
+            conn.commit()
 except Exception as e:
     logger.warning(f"Could not migrate configs table: {e}")
 
@@ -558,78 +559,14 @@ async def delete_folder(folder_id: str, db: Session = Depends(get_db), current_u
 @app.get("/api/bot/status")
 async def get_bot_status():
     """Проверка статуса фонового процесса бота"""
-    is_running = current_bot is not None
+    is_running = bot_module.current_bot is not None
     return {"status": "connected" if is_running else "disconnected"}
-    
+
 @app.on_event("startup")
 async def startup_event():
     """При старте FastAPI сервера поднимаем бота, если есть токен, и создаем админа"""
-    # Ensure all tables are created (useful if models were added after initial create_all)
-    Base.metadata.create_all(bind=engine)
-    
     db = SessionLocal()
     try:
-        # Schema Migration: Check and add proxy_config if missing
-        try:
-            db.execute(text("SELECT proxy_config FROM configs LIMIT 1"))
-        except Exception:
-            db.rollback()
-            logger.info("Adding proxy_config column to configs table...")
-            try:
-                db.execute(text("ALTER TABLE configs ADD COLUMN proxy_config JSON"))
-                db.commit()
-            except Exception as e:
-                logger.error(f"Failed to add proxy_config column: {e}")
-                db.rollback()
-
-        # Миграция схемы: добавляем email и is_active в users, если их нет
-        try:
-            db.execute(text("SELECT email FROM users LIMIT 1"))
-        except Exception:
-            db.rollback()
-            try:
-                db.execute(text("ALTER TABLE users ADD COLUMN email VARCHAR"))
-                db.commit()
-            except Exception as e:
-                logger.error(f"Failed to add email column: {e}")
-                db.rollback()
-                
-        try:
-            db.execute(text("SELECT is_active FROM users LIMIT 1"))
-        except Exception:
-            db.rollback()
-            try:
-                db.execute(text("ALTER TABLE users ADD COLUMN is_active INTEGER DEFAULT 1"))
-                db.commit()
-            except Exception as e:
-                logger.error(f"Failed to add is_active column: {e}")
-                db.rollback()
-
-        # Migration: Add user_id to notes and folders
-        for table in ["notes", "folders"]:
-            try:
-                db.execute(text(f"SELECT user_id FROM {table} LIMIT 1"))
-            except Exception:
-                db.rollback()
-                try:
-                    db.execute(text(f"ALTER TABLE {table} ADD COLUMN user_id INTEGER"))
-                    db.commit()
-                except Exception as e:
-                    logger.error(f"Failed to add user_id column to {table}: {e}")
-                    db.rollback()
-
-        # Migration: Add embedding to notes
-        try:
-            db.execute(text("SELECT embedding FROM notes LIMIT 1"))
-        except Exception:
-            db.rollback()
-            try:
-                db.execute(text("ALTER TABLE notes ADD COLUMN embedding vector(384)"))
-                db.commit()
-            except Exception as e:
-                logger.error(f"Failed to add embedding column to notes: {e}")
-                db.rollback()
-
         # 1. Создание дефолтного админа, если таблица пуста
         try:
             user_count = db.query(User).count()

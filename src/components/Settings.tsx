@@ -29,7 +29,7 @@ export default function Settings({ onClose, theme, setTheme }: SettingsProps) {
 
   // AI & LLM State
   const [providers, setProviders] = useState([
-    { id: '1', label: 'OpenAI', provider: 'openai', apiKey: '', baseUrl: 'https://api.openai.com/v1', modelName: 'gpt-4-turbo', isActive: true }
+    { id: '1', label: 'OpenAI', provider: 'openai', apiKey: '', baseUrl: 'https://api.openai.com/v1', modelName: 'gpt-4-turbo', isActive: true, status: 'idle' }
   ]);
 
   // External DB State
@@ -128,8 +128,6 @@ export default function Settings({ onClose, theme, setTheme }: SettingsProps) {
     } finally {
       setIsTesting(false);
     }
-    
-    setTimeout(() => setBotStatus('disconnected'), 5000);
   };
 
   const handleTestProxy = async () => {
@@ -193,12 +191,15 @@ export default function Settings({ onClose, theme, setTheme }: SettingsProps) {
       });
       const data = await response.json();
       if (response.ok && data.status === 'success') {
+        setProviders(providers.map(p => p.id === provider.id ? { ...p, status: 'connected' } : p));
         alert('✅ Connection Successful!');
       } else {
+        setProviders(providers.map(p => p.id === provider.id ? { ...p, status: 'error' } : p));
         alert(`❌ Failed: ${data.detail || data.message || 'Unknown error'}`);
       }
     } catch (error) {
       console.error('Test Provider Error:', error);
+      setProviders(providers.map(p => p.id === provider.id ? { ...p, status: 'error' } : p));
       alert('❌ Failed to test connection.');
     } finally {
       setTestingProviderId(null);
@@ -221,7 +222,7 @@ export default function Settings({ onClose, theme, setTheme }: SettingsProps) {
   };
 
   const addProvider = () => {
-    setProviders([...providers, { id: Date.now().toString(), label: 'New Provider', provider: 'custom', apiKey: '', baseUrl: 'https://api.example.com/v1', modelName: 'default-model', isActive: false }]);
+    setProviders([...providers, { id: Date.now().toString(), label: 'New Provider', provider: 'custom', apiKey: '', baseUrl: 'https://api.example.com/v1', modelName: 'default-model', isActive: false, status: 'idle' }]);
   };
 
   const updateProvider = (id: string, field: string, value: any) => {
@@ -410,7 +411,13 @@ export default function Settings({ onClose, theme, setTheme }: SettingsProps) {
                             <input type="password" value={provider.apiKey} onChange={(e) => updateProvider(provider.id, 'apiKey', e.target.value)} placeholder="sk-..." className="w-full bg-background border border-border rounded-lg p-2 text-foreground focus:border-primary focus:ring-1 focus:ring-primary outline-none transition-all" />
                           </div>
                         </div>
-                        <div className="flex justify-end mt-2">
+                        <div className="flex items-center justify-between mt-2">
+                          <div className="flex items-center space-x-2">
+                            <span className="text-xs text-muted-foreground">Status:</span>
+                            {provider.status === 'connected' && <span className="flex items-center text-accent text-xs"><CheckCircle size={14} className="mr-1" /> Connected</span>}
+                            {provider.status === 'error' && <span className="flex items-center text-destructive text-xs"><AlertCircle size={14} className="mr-1" /> Error</span>}
+                            {provider.status === 'idle' && <span className="text-muted-foreground text-xs">Not Tested</span>}
+                          </div>
                           <button 
                             onClick={() => handleTestProvider(provider)}
                             disabled={testingProviderId === provider.id}

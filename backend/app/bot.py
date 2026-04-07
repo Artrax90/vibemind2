@@ -1117,18 +1117,25 @@ async def stop_bot():
 async def restart_bot(token: str, proxy_url: str = None, proxy_config: dict = None, admin_id: str = None):
     """Динамический перезапуск бота (вызывается из FastAPI)"""
     global bot_task
+    logger.info(f"Запрос на перезапуск бота. Токен: {token[:5]}... Админ: {admin_id}")
     
     # Останавливаем текущего бота
     await stop_bot()
     
     # Отменяем текущую фоновую задачу
     if bot_task and not bot_task.done():
+        logger.info("Отмена текущей задачи бота...")
         bot_task.cancel()
         try:
             await bot_task
         except asyncio.CancelledError:
-            pass
+            logger.info("Задача бота успешно отменена.")
+        except Exception as e:
+            logger.error(f"Ошибка при отмене задачи бота: {e}")
             
     # Запускаем новую задачу, если передан токен
     if token:
+        logger.info("Создание новой задачи для запуска бота...")
         bot_task = asyncio.create_task(start_bot(token, proxy_url, proxy_config, admin_id))
+    else:
+        logger.warning("Токен не передан, бот не будет запущен.")
