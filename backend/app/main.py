@@ -328,7 +328,7 @@ class TestIntegrationRequest(BaseModel):
     model_name: str
 
 @app.post("/api/integrations/test")
-async def test_integration(req: TestIntegrationRequest, current_user: User = Depends(get_current_user)):
+async def test_integration(req: TestIntegrationRequest):
     try:
         if req.provider in ["openai", "ollama"]:
             from openai import AsyncOpenAI

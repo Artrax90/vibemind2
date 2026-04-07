@@ -30,162 +30,16 @@ logger = logging.getLogger(__name__)
 SECRET_KEY = os.getenv("ENCRYPTION_KEY", "fallback-zero-config-secret-key-change-in-production")
 ALGORITHM = "HS256"
 
-SYSTEM_PROMPT = """Ты — интеллектуальный парсер голосовых команд для заметок.
-Возвращаешь только JSON.
-
----
-# 📌 ТИПЫ
-* CREATE
-* UPDATE
-* SEARCH
-
----
-# 🧠 ВХОД
-* text (команда пользователя)
-* notes (массив заметок)
-
----
-# ❗ КРИТИЧЕСКИЕ ПРАВИЛА
-## 1. 🚫 ЗАПРЕЩЕНО ДУБЛИРОВАТЬ TITLE В CONTENT
-При CREATE:
-❌ НЕЛЬЗЯ:
-"content": "фильмы"
-✅ ВСЕГДА:
-"content": ""
-
-## 2. 🔥 SEARCH — ТОЛЬКО ЛУЧШИЕ РЕЗУЛЬТАТЫ
-Ты НЕ возвращаешь всё подряд.
+SYSTEM_PROMPT = """Ты — парсер команд для бота заметок. Переводи текст из STT в JSON.
 Правила:
-* максимум 3 результата
-* только реально релевантные
-* если найден 1 идеальный → вернуть только 1
-* если слабое совпадение → НЕ возвращать
+Игнорируй мусор: "заметку", "в неё", "туда", "неё", "с названием".
 
----
-# 🧠 ШАГ 1. НОРМАЛИЗАЦИЯ
-## УДАЛИ МУСОР:
-* заметку, заметка
-* в неё, неё, нее, не неё, не нее
-* добавь в, добавь туда
-* что-то, что то, про, пожалуйста
+Форматы:
+Создание: {"type": "CREATE", "title": "...", "content": "..."}
+Обновление: {"type": "UPDATE", "search_query": "Название", "append": "Текст"}
+Поиск: {"type": "SEARCH", "query": "..."}
 
-## ОЧИСТИ append:
-"неё форсаж" → "форсаж"
-"в шашлык маринад мясо" → "маринад мясо"
-
-## ИСПРАВЬ ПАДЕЖИ:
-* покупке → покупки
-* машиной → машины
-
-## УДАЛИ ДУБЛИ:
-"покупки молоко" → "молоко"
-
----
-# 🧠 ШАГ 2. ТИП
-* создай → CREATE
-* добавь → UPDATE
-* найди → SEARCH
-
----
-# 🧠 ШАГ 3. CREATE
-Название = очищенная сущность
-{
-  "type": "CREATE",
-  "title": "<title>",
-  "content": ""
-}
-
----
-# 🧠 ШАГ 4. UPDATE
-1. Найди заметку по:
-* точному совпадению
-* затем по смыслу
-
-## ЕСЛИ НАШЁЛ:
-{
-  "type": "UPDATE",
-  "note_id": "<id>",
-  "append": "<чистый текст>"
-}
-
-## ЕСЛИ НЕ НАШЁЛ:
-👉 ОБЯЗАТЕЛЬНО СОЗДАЙ
-[
-  {
-    "type": "CREATE",
-    "title": "<title>",
-    "content": ""
-  },
-  {
-    "type": "UPDATE",
-    "append": "<текст>"
-  }
-]
-
----
-# 🧠 ШАГ 5. SEARCH
-1. Очисти запрос:
-"найди что-то про шашлык" → "шашлык"
-
-2. Отфильтруй заметки:
-* оставь только релевантные
-* максимум 3
-* сортируй по релевантности
-
-## ФОРМАТ:
-{
-  "type": "SEARCH",
-  "query": "<запрос>"
-}
-
----
-# 🧪 ПРИМЕРЫ
-## CREATE
-"создай заметку фильмы"
-→
-{
-  "type": "CREATE",
-  "title": "фильмы",
-  "content": ""
-}
-
-## UPDATE
-"добавь фильмы форсаж"
-→
-{
-  "type": "UPDATE",
-  "note_id": "1",
-  "append": "форсаж"
-}
-
-## CREATE + UPDATE
-"добавь музыка рок"
-→
-[
-  {
-    "type": "CREATE",
-    "title": "музыка",
-    "content": ""
-  },
-  {
-    "type": "UPDATE",
-    "append": "рок"
-  }
-]
-
-## SEARCH (важно)
-notes:
-* кисель рецепт
-* фильмы
-* покупки
-"найди что-то про кисель"
-→
-{
-  "type": "SEARCH",
-  "query": "кисель"
-}
-(вернётся только релевантное, не всё подряд)
-
+Если команда неясна, верни {"type": "UNKNOWN"}.
 Всегда возвращай только JSON."""
 
 async def parse_commands_llm(text: str, notes: list[dict] = None) -> list[dict]:
@@ -195,8 +49,8 @@ async def parse_commands_llm(text: str, notes: list[dict] = None) -> list[dict]:
     try:
         api_key = os.getenv("OPENAI_API_KEY")
         if not api_key:
-            logger.warning("OPENAI_API_KEY not found, falling back to regex parser")
-            return parse_commands(text)
+            logger.warning("OPENAI_API_KEY not found, returning UNKNOWN")
+            return [{"type": "UNKNOWN"}]
             
         client = AsyncOpenAI(api_key=api_key)
         
@@ -219,14 +73,36 @@ async def parse_commands_llm(text: str, notes: list[dict] = None) -> list[dict]:
             content = content[3:-3].strip()
             
         parsed = json.loads(content)
+        
+        # Final cleaning of "stubborn" words
+        stubborn_words = ["в неё", "в нее", "туда", "неё", "нее", "заметку", "заметка", "с названием"]
+        
+        def clean_field(val: Any) -> Any:
+            if isinstance(val, str):
+                v = val.strip()
+                for word in stubborn_words:
+                    v = re.sub(rf'\b{word}\b', '', v, flags=re.IGNORECASE)
+                return re.sub(r'\s+', ' ', v).strip()
+            return val
+
         if isinstance(parsed, dict):
+            parsed["title"] = clean_field(parsed.get("title", ""))
+            parsed["append"] = clean_field(parsed.get("append", ""))
+            parsed["search_query"] = clean_field(parsed.get("search_query", ""))
+            parsed["query"] = clean_field(parsed.get("query", ""))
             return [parsed]
         elif isinstance(parsed, list):
+            for item in parsed:
+                if isinstance(item, dict):
+                    item["title"] = clean_field(item.get("title", ""))
+                    item["append"] = clean_field(item.get("append", ""))
+                    item["search_query"] = clean_field(item.get("search_query", ""))
+                    item["query"] = clean_field(item.get("query", ""))
             return parsed
-        return []
+        return [{"type": "UNKNOWN"}]
     except Exception as e:
         logger.error(f"LLM Parsing error: {e}")
-        return parse_commands(text)
+        return [{"type": "UNKNOWN"}]
 
 def normalize_intent(text: str) -> str:
     if not text:
@@ -727,6 +603,10 @@ async def handle_text(message: types.Message):
     for cmd in commands:
         intent = cmd.get("type")
         
+        if intent == "UNKNOWN":
+            await message.answer("Извините, я не совсем понял команду. Попробуйте переформулировать. 🤔")
+            continue
+            
         if intent == "CREATE":
             title = cmd.get("title", "Без названия")
             content = cmd.get("content", "")
@@ -765,7 +645,7 @@ async def handle_text(message: types.Message):
             if target_note_id:
                 # Если append_text это список, объединяем его в строку
                 if isinstance(append_text, list):
-                    append_text = "\\n- " + "\\n- ".join(append_text)
+                    append_text = "\n- " + "\n- ".join(append_text)
                     
                 result = await patch_note_api(target_note_id, append_text)
                 logger.info(f"DEBUG: result_type={type(result)} result_value={result}")
@@ -778,7 +658,7 @@ async def handle_text(message: types.Message):
                     error_msg = result.get("message", "Неизвестная ошибка") if isinstance(result, dict) else str(result)
                     await message.answer(f"❌ Ошибка при обновлении заметки: {error_msg}")
             else:
-                await message.answer("Не нашёл подходящую заметку для обновления.")
+                await message.answer("Ничего не найдено. 😔")
                 
         elif intent == "SEARCH":
             search_query = cmd.get("query", "")
