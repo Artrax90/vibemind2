@@ -4,7 +4,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
-from sqlalchemy import create_engine, text
+from sqlalchemy import create_engine, text, or_
 from sqlalchemy.orm import sessionmaker
 import asyncio
 import os
@@ -414,14 +414,15 @@ async def delete_note(note_id: str, db: Session = Depends(get_db), current_user:
 
 @app.get("/api/notes/search")
 async def search_notes(query: str, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
-    """Поиск заметки по заголовку (точное совпадение или частичное)"""
-    note = db.query(Note).filter(
+    """Поиск заметок по заголовку или содержимому (частичное совпадение)"""
+    notes = db.query(Note).filter(
         Note.user_id == current_user.id,
-        Note.title.ilike(f"%{query}%")
-    ).first()
-    if note:
-        return {"id": note.id, "title": note.title, "content": note.content}
-    return None
+        or_(
+            Note.title.ilike(f"%{query}%"),
+            Note.content.ilike(f"%{query}%")
+        )
+    ).limit(5).all()
+    return [{"id": n.id, "title": n.title, "content": n.content} for n in notes]
 
 @app.get("/api/notes/semantic-search")
 async def semantic_search_notes(query: str, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):

@@ -527,6 +527,33 @@ async def search_note_by_title(title: str) -> Dict[str, Any]:
         logger.error(f"Ошибка при поиске заметки: {e}")
         return {"status": "error", "message": str(e)}
 
+async def search_api(query: str) -> Dict[str, Any]:
+    """Поиск через API (по заголовку и содержимому)"""
+    import urllib.parse
+    encoded_query = urllib.parse.quote(query)
+    url = f"http://localhost:3344/api/notes/search?query={encoded_query}"
+    
+    # Генерируем токен
+    expire = datetime.utcnow() + timedelta(minutes=60)
+    to_encode = {"sub": "admin", "exp": expire}
+    token = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
+    
+    headers = {"Authorization": f"Bearer {token}"}
+    
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.get(url, headers=headers) as response:
+                if response.status == 200:
+                    data = await response.json()
+                    # search_notes returns a single note or None
+                    if data:
+                        return {"status": "success", "data": [data]}
+                    return {"status": "success", "data": []}
+                return {"status": "error", "message": f"Ошибка: {response.status}"}
+    except Exception as e:
+        logger.error(f"Search API error: {e}")
+        return {"status": "error", "message": str(e)}
+
 async def semantic_search_api(query: str) -> Dict[str, Any]:
     """Семантический поиск через API"""
     import urllib.parse
@@ -755,7 +782,8 @@ async def handle_text(message: types.Message):
             target_note_id = note_id or chain_note_id
             
             if not target_note_id and search_query:
-                result = await semantic_search_api(search_query)
+                # Используем обычный поиск (как в приложении)
+                result = await search_api(search_query)
                 logger.info(f"DEBUG: result_type={type(result)} result_value={result}")
                 if isinstance(result, dict) and result.get("status") == "success":
                     data = result.get("data", [])
@@ -765,7 +793,7 @@ async def handle_text(message: types.Message):
             if target_note_id:
                 # Если append_text это список, объединяем его в строку
                 if isinstance(append_text, list):
-                    append_text = "\\n- " + "\\n- ".join(append_text)
+                    append_text = "\n- " + "\n- ".join(append_text)
                     
                 result = await patch_note_api(target_note_id, append_text)
                 logger.info(f"DEBUG: result_type={type(result)} result_value={result}")
@@ -789,11 +817,19 @@ async def handle_text(message: types.Message):
                 continue
                 
             await message.answer(f"🔍 Ищу заметки по запросу: «{search_query}»...")
-            result = await semantic_search_api(search_query)
+            # Используем обычный поиск (как в приложении)
+            result = await search_api(search_query)
             logger.info(f"DEBUG: result_type={type(result)} result_value={result}")
             
             if isinstance(result, dict) and result.get("status") == "success":
                 results = result.get("data", [])
+                if not results:
+                    # Если обычный поиск не нашел, пробуем семантический
+                    logger.info("Обычный поиск не дал результатов, пробуем семантический...")
+                    result = await semantic_search_api(search_query)
+                    if isinstance(result, dict) and result.get("status") == "success":
+                        results = result.get("data", [])
+                
                 if not results:
                     await message.answer("К сожалению, ничего не найдено. 😔")
                     continue
