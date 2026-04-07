@@ -178,6 +178,8 @@ export default function Sidebar({ notes, folders, activeNoteId, isLoading = fals
         // Dropped a note onto a folder
         const updatedNotes = notes.map(n => n.id === active.id ? { ...n, folderId: over.id as string } : n);
         onNotesChange(updatedNotes);
+        // Persist the change
+        api.updateNote(active.id as string, { folderId: over.id as string }).catch(console.error);
       } else {
         // Basic reordering logic
         const oldIndex = notes.findIndex(n => n.id === active.id);
@@ -210,6 +212,8 @@ export default function Sidebar({ notes, folders, activeNoteId, isLoading = fals
     if (movingNoteId) {
       const updatedNotes = notes.map(n => n.id === movingNoteId ? { ...n, folderId } : n);
       onNotesChange(updatedNotes);
+      // Persist the change
+      api.updateNote(movingNoteId, { folderId }).catch(console.error);
       setMovingNoteId(null);
     }
   };
@@ -312,7 +316,7 @@ export default function Sidebar({ notes, folders, activeNoteId, isLoading = fals
           >
             <div className="flex items-center">
               <Search size={14} className="mr-2" />
-              <span>{t('sidebar.search')}...</span>
+              <span>{t('sidebar.searchPlaceholder')}</span>
             </div>
             <kbd className="text-[10px] bg-background px-1.5 py-0.5 rounded border border-border">⌘K</kbd>
           </button>
@@ -351,44 +355,44 @@ export default function Sidebar({ notes, folders, activeNoteId, isLoading = fals
           >
             {contextMenu.type === 'note' && (
               <>
-                <button 
-                  onClick={() => {
-                    setMovingNoteId(contextMenu.id);
-                    setContextMenu(null);
-                  }}
-                  className="w-full flex items-center px-4 py-2 text-sm text-popover-foreground hover:bg-secondary hover:text-foreground transition-colors"
-                >
-                  <FolderInput size={14} className="mr-2" /> Move to...
-                </button>
-                <button 
-                  onClick={() => handleShareClick('note', contextMenu.id)}
-                  className="w-full flex items-center px-4 py-2 text-sm text-popover-foreground hover:bg-secondary hover:text-foreground transition-colors"
-                >
-                  <Share2 size={14} className="mr-2" /> Share
-                </button>
+                  <button 
+                    onClick={() => {
+                      setMovingNoteId(contextMenu.id);
+                      setContextMenu(null);
+                    }}
+                    className="w-full flex items-center px-4 py-2 text-sm text-popover-foreground hover:bg-secondary hover:text-foreground transition-colors"
+                  >
+                    <FolderInput size={14} className="mr-2" /> {t('sidebar.moveTo')}
+                  </button>
+                  <button 
+                    onClick={() => handleShareClick('note', contextMenu.id)}
+                    className="w-full flex items-center px-4 py-2 text-sm text-popover-foreground hover:bg-secondary hover:text-foreground transition-colors"
+                  >
+                    <Share2 size={14} className="mr-2" /> {t('sidebar.share')}
+                  </button>
               </>
             )}
             {contextMenu.type === 'folder' && (
               <>
-                <button 
-                  onClick={() => {
-                    const folder = folders.find(f => f.id === contextMenu.id);
-                    if (folder) {
-                      setRenameValue(folder.name);
-                      setRenamingFolderId(folder.id);
-                    }
-                    setContextMenu(null);
-                  }}
-                  className="w-full flex items-center px-4 py-2 text-sm text-popover-foreground hover:bg-secondary hover:text-foreground transition-colors"
-                >
-                  <Edit2 size={14} className="mr-2" /> Rename
-                </button>
-                <button 
-                  onClick={() => handleShareClick('folder', contextMenu.id)}
-                  className="w-full flex items-center px-4 py-2 text-sm text-popover-foreground hover:bg-secondary hover:text-foreground transition-colors"
-                >
-                  <Share2 size={14} className="mr-2" /> Share
-                </button>
+                  <button 
+                    onClick={() => {
+                      const folder = folders.find(f => f.id === contextMenu.id);
+                      if (folder) {
+                        setRenameValue(folder.name);
+                        setRenamingFolderId(folder.id);
+                      }
+                      setContextMenu(null);
+                    }}
+                    className="w-full flex items-center px-4 py-2 text-sm text-popover-foreground hover:bg-secondary hover:text-foreground transition-colors"
+                  >
+                    <Edit2 size={14} className="mr-2" /> {t('sidebar.rename')}
+                  </button>
+                  <button 
+                    onClick={() => handleShareClick('folder', contextMenu.id)}
+                    className="w-full flex items-center px-4 py-2 text-sm text-popover-foreground hover:bg-secondary hover:text-foreground transition-colors"
+                  >
+                    <Share2 size={14} className="mr-2" /> {t('sidebar.share')}
+                  </button>
               </>
             )}
             <button 
@@ -399,7 +403,7 @@ export default function Sidebar({ notes, folders, activeNoteId, isLoading = fals
               }}
               className="w-full flex items-center px-4 py-2 text-sm text-destructive hover:bg-destructive/10 transition-colors"
             >
-              <Trash2 size={14} className="mr-2" /> Delete
+              <Trash2 size={14} className="mr-2" /> {t('sidebar.delete')}
             </button>
           </div>,
           document.body
@@ -411,14 +415,14 @@ export default function Sidebar({ notes, folders, activeNoteId, isLoading = fals
         <div className="fixed inset-0 bg-background/80 backdrop-blur-sm z-[9999] flex items-center justify-center">
           <div className="bg-card border border-border rounded-xl shadow-2xl w-full max-w-sm overflow-hidden">
             <div className="px-6 py-4 border-b border-border/50">
-              <h2 className="text-lg font-bold text-foreground">Move Note</h2>
+              <h2 className="text-lg font-bold text-foreground">{t('sidebar.moveNoteTitle')}</h2>
             </div>
             <div className="p-4 max-h-[300px] overflow-y-auto scrollbar-thin">
               <button 
                 onClick={() => handleMoveNote(undefined)}
                 className="w-full flex items-center px-4 py-2 text-sm text-foreground hover:bg-secondary rounded-lg transition-colors"
               >
-                <Folder size={16} className="mr-2 text-muted-foreground" /> Root (Workspace)
+                <Folder size={16} className="mr-2 text-muted-foreground" /> {t('sidebar.root')}
               </button>
               {folders.map(f => (
                 <button 
@@ -435,7 +439,7 @@ export default function Sidebar({ notes, folders, activeNoteId, isLoading = fals
                 onClick={() => setMovingNoteId(null)}
                 className="px-4 py-2 text-sm text-muted-foreground hover:text-foreground transition-colors"
               >
-                Cancel
+                {t('sidebar.cancel')}
               </button>
             </div>
           </div>

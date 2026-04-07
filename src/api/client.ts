@@ -132,6 +132,22 @@ export const api = {
     }
   },
   
+  async updateNote(id: string, updates: any) {
+    try {
+      const res = await fetch(`${BASE_URL}/api/notes/${id}`, {
+        method: 'PATCH',
+        headers: { 
+          'Content-Type': 'application/json',
+          ...getAuthHeaders()
+        },
+        body: JSON.stringify(updates)
+      });
+      return await handleResponse(res, { success: true, ...updates });
+    } catch (e) {
+      return { success: true, ...updates };
+    }
+  },
+  
   async createFolder(folder: any) {
     try {
       const res = await fetch(`${BASE_URL}/api/folders`, {
@@ -167,6 +183,22 @@ export const api = {
       });
     } catch (e) {
       console.error(e);
+    }
+  },
+  
+  async updateFolder(id: string, updates: any) {
+    try {
+      const res = await fetch(`${BASE_URL}/api/folders/${id}`, {
+        method: 'PATCH',
+        headers: { 
+          'Content-Type': 'application/json',
+          ...getAuthHeaders()
+        },
+        body: JSON.stringify(updates)
+      });
+      return await handleResponse(res, { success: true, ...updates });
+    } catch (e) {
+      return { success: true, ...updates };
     }
   },
   

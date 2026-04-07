@@ -158,13 +158,14 @@ export default function Editor({ note, onUpdate, onWikilinkClick, onTagClick, is
     const match = textBeforeCursor.match(/\[\[([^\]]*)$/);
     if (match) {
       const startPos = cursor - match[1].length;
-      const newContent = content.substring(0, startPos) + linkTitle + ']]' + textAfterCursor;
+      const hasClosing = textAfterCursor.startsWith(']]');
+      const newContent = content.substring(0, startPos) + linkTitle + (hasClosing ? '' : ']]') + textAfterCursor;
       setContent(newContent);
       setShowAutocomplete(false);
       
       setTimeout(() => {
         if (textareaRef.current) {
-          const newCursorPos = startPos + linkTitle.length + 2;
+          const newCursorPos = startPos + linkTitle.length + (hasClosing ? 0 : 2);
           textareaRef.current.setSelectionRange(newCursorPos, newCursorPos);
           textareaRef.current.focus();
         }
@@ -286,7 +287,7 @@ export default function Editor({ note, onUpdate, onWikilinkClick, onTagClick, is
             value={title}
             onChange={(e) => setTitle(e.target.value)}
             className="text-2xl font-bold text-foreground bg-transparent outline-none flex-1"
-            placeholder="Note Title"
+            placeholder={t('editor.noteTitlePlaceholder')}
           />
         </div>
         
@@ -295,12 +296,12 @@ export default function Editor({ note, onUpdate, onWikilinkClick, onTagClick, is
             {isSaving ? (
               <>
                 <Cloud className="w-4 h-4 text-primary animate-pulse" />
-                <span className="text-primary uppercase tracking-widest">Syncing</span>
+                <span className="text-primary uppercase tracking-widest">{t('editor.syncing')}</span>
               </>
             ) : (
               <>
                 <CheckCircle className="w-4 h-4 text-emerald-500" />
-                <span className="text-emerald-500 uppercase tracking-widest">Saved</span>
+                <span className="text-emerald-500 uppercase tracking-widest">{t('editor.saved')}</span>
               </>
             )}
           </div>
@@ -378,7 +379,7 @@ export default function Editor({ note, onUpdate, onWikilinkClick, onTagClick, is
                   onClick={() => insertCodeBlock('')}
                   className="w-full text-left px-2 py-1 text-xs hover:bg-secondary rounded text-muted-foreground border-t border-border/50 mt-1"
                 >
-                  Plain Text
+                  {t('editor.plainText')}
                 </button>
               </div>
             )}
@@ -457,7 +458,7 @@ export default function Editor({ note, onUpdate, onWikilinkClick, onTagClick, is
               onDragOver={handleDragOver}
               onDrop={handleDrop}
               className="w-full h-full bg-transparent text-foreground/80 resize-none outline-none font-mono text-sm leading-relaxed"
-              placeholder="Start writing..."
+              placeholder={t('editor.startWriting')}
             />
           )}
         </div>
@@ -466,7 +467,7 @@ export default function Editor({ note, onUpdate, onWikilinkClick, onTagClick, is
         {relatedNotes.length > 0 && (
           <div className="mt-12 pt-8 border-t border-border/30">
             <h3 className="text-sm font-bold uppercase tracking-widest text-muted-foreground mb-4 flex items-center">
-              <Network size={14} className="mr-2 text-primary" /> Related Notes
+              <Network size={14} className="mr-2 text-primary" /> {t('editor.relatedNotes')}
             </h3>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               {relatedNotes.map(rn => (
@@ -492,7 +493,7 @@ export default function Editor({ note, onUpdate, onWikilinkClick, onTagClick, is
       {/* Autocomplete Dropdown */}
       {showAutocomplete && !isPreview && (
         <div className="absolute z-50 bg-popover border border-border rounded-md shadow-lg p-1 max-h-48 overflow-y-auto w-64 bottom-8 left-8">
-          <div className="text-xs text-muted-foreground px-2 py-1 mb-1 border-b border-border/50">Link to note</div>
+          <div className="text-xs text-muted-foreground px-2 py-1 mb-1 border-b border-border/50">{t('editor.linkToNote')}</div>
           {filteredNotes.length > 0 ? (
             filteredNotes.map(n => (
               <button
@@ -510,7 +511,7 @@ export default function Editor({ note, onUpdate, onWikilinkClick, onTagClick, is
               className="w-full text-left px-2 py-1.5 text-sm hover:bg-secondary rounded text-foreground flex items-center"
             >
               <Edit3 size={12} className="mr-2 text-muted-foreground" />
-              <span className="truncate text-muted-foreground">Create: {autocompleteQuery}</span>
+              <span className="truncate text-muted-foreground">{t('editor.create')}: {autocompleteQuery}</span>
             </button>
           )}
         </div>

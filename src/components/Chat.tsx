@@ -1,6 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { Send, Bot, Link as LinkIcon, FileText } from 'lucide-react';
 import { Note } from '../App';
+import { useLanguage } from '../contexts/LanguageContext';
 
 type ChatProps = {
   notes: Note[];
@@ -9,10 +10,11 @@ type ChatProps = {
 };
 
 export default function Chat({ notes, activeNoteId, onNoteClick }: ChatProps) {
+  const { t } = useLanguage();
   const [messages, setMessages] = useState([
     { 
       role: 'assistant', 
-      content: 'I am VibeMind AI. I have indexed your notes. What would you like to know?',
+      content: t('chat.welcome'),
       citations: [] as {id: string, title: string, snippet: string}[]
     }
   ]);
@@ -103,7 +105,7 @@ export default function Chat({ notes, activeNoteId, onNoteClick }: ChatProps) {
       <div className="p-4 border-t border-border/50 bg-secondary/30 shrink-0 max-h-[40%] overflow-y-auto">
         <div className="mb-6">
           <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2 flex items-center">
-            <LinkIcon size={12} className="mr-1" /> Backlinks
+            <LinkIcon size={12} className="mr-1" /> {t('chat.backlinks')}
           </h4>
           <div className="space-y-2">
             {backlinks.length > 0 ? (
@@ -123,7 +125,7 @@ export default function Chat({ notes, activeNoteId, onNoteClick }: ChatProps) {
               ))
             ) : (
               <div className="text-xs text-muted-foreground italic">
-                No backlinks found for this note.
+                {t('chat.noBacklinks')}
               </div>
             )}
           </div>
@@ -131,7 +133,7 @@ export default function Chat({ notes, activeNoteId, onNoteClick }: ChatProps) {
 
         <div>
           <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2 flex items-center">
-            <LinkIcon size={12} className="mr-1" /> Outgoing Links
+            <LinkIcon size={12} className="mr-1" /> {t('chat.outgoingLinks')}
           </h4>
           <div className="space-y-2">
             {outgoingLinks.length > 0 ? (
@@ -165,7 +167,7 @@ export default function Chat({ notes, activeNoteId, onNoteClick }: ChatProps) {
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && handleSend()}
-            placeholder="Ask your notes..."
+            placeholder={t('chat.placeholder')}
             className="w-full bg-background border border-border rounded-full py-2 pl-4 pr-10 text-sm text-foreground focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary transition-all"
           />
           <button 
