@@ -197,6 +197,7 @@ async def save_note_to_api(title: str, content: str, note_id: str = None):
         "content": content
     }
     
+    logger.info(f"Final Payload: {payload}")
     logger.info(f"Отправка заметки на URL: {url} для пользователя: {current_admin_id}")
     
     try:
@@ -399,11 +400,17 @@ async def handle_text(message: types.Message):
         existing_note = await search_note_by_title(target_title)
         
         if existing_note:
-            # 2. Обновляем существующую (с двойным переносом строки для Markdown)
-            updated_content = f"{existing_note['content']}\n\n{new_content}" if new_content else existing_note['content']
-            success, result_msg = await save_note_to_api(existing_note['title'], updated_content, existing_note['id'])
+            # 2. Обновляем существующую
+            # Убедимся, что не дублируем заголовок в контент, если парсер их не разделил
+            if mode == "create" and new_content == target_title:
+                updated_content = existing_note['content']
+            else:
+                updated_content = f"{existing_note['content']}\n\n{new_content}" if new_content else existing_note['content']
+                
+            # ПРИНУДИТЕЛЬНО устанавливаем title = target_title, чтобы затереть старый мусор
+            success, result_msg = await save_note_to_api(target_title, updated_content, existing_note['id'])
             if success:
-                await message.answer(f"Обновил заметку «{existing_note['title']}»! ✅")
+                await message.answer(f"Обновил заметку «{target_title}»! ✅")
             else:
                 await message.answer(result_msg)
         else:
