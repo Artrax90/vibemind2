@@ -1,5 +1,6 @@
 from sqlalchemy import Column, Integer, String, Text, JSON
 from sqlalchemy.ext.declarative import declarative_base
+from pgvector.sqlalchemy import Vector
 
 Base = declarative_base()
 
@@ -38,11 +39,4 @@ class Note(Base):
     content = Column(Text, nullable=True)
     folderId = Column(String, nullable=True)
     user_id = Column(Integer, index=True)
-
-# Примечание: Для pgvector вам понадобится добавить:
-# from pgvector.sqlalchemy import Vector
-# class Note(Base):
-#     __tablename__ = "notes"
-#     id = Column(Integer, primary_key=True)
-#     content = Column(Text)
-#     embedding = Column(Vector(1536)) # размерность зависит от модели
+    embedding = Column(Vector(384), nullable=True)

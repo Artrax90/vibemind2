@@ -235,6 +235,81 @@ async def search_note_by_title(title: str):
         logger.error(f"Ошибка при поиске заметки: {e}")
         return None
 
+async def semantic_search_api(query: str):
+    """Семантический поиск через API"""
+    import urllib.parse
+    encoded_query = urllib.parse.quote(query)
+    url = f"http://localhost:3344/api/notes/semantic-search?query={encoded_query}"
+    
+    # Генерируем токен
+    expire = datetime.utcnow() + timedelta(minutes=60)
+    to_encode = {"sub": "admin", "exp": expire}
+    token = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
+    
+    headers = {"Authorization": f"Bearer {token}"}
+    
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.get(url, headers=headers) as response:
+                if response.status == 200:
+                    data = await response.json()
+                    return data
+                return []
+    except Exception as e:
+        logger.error(f"Ошибка при семантическом поиске: {e}")
+        return []
+
+@dp.message(F.text.regexp(r"^(?i)(найди|поиск|что там по)\s+(.+)"))
+async def handle_semantic_search(message: types.Message):
+    """Семантический поиск по заметкам"""
+    # Проверка admin_id
+    if current_admin_id and str(message.from_user.id) != str(current_admin_id):
+        logger.warning(f"Unauthorized access attempt from {message.from_user.id}")
+        return
+
+    import re
+    match = re.match(r"^(?i)(найди|поиск|что там по)\s+(.+)", message.text)
+    if not match:
+        return
+        
+    query = match.group(2).strip()
+    await message.answer(f"🔍 Ищу заметки по запросу: «{query}»...")
+    
+    results = await semantic_search_api(query)
+    
+    if not results:
+        await message.answer("К сожалению, ничего не найдено. 😔")
+        return
+        
+    from aiogram.utils.keyboard import InlineKeyboardBuilder
+    
+    response_text = f"Вот что я нашел по запросу «{query}»:\n\n"
+    builder = InlineKeyboardBuilder()
+    
+    for i, note in enumerate(results, 1):
+        title = note.get('title', 'Без названия')
+        content = note.get('content', '')
+        # Обрезаем контент для превью
+        preview = content[:100] + "..." if len(content) > 100 else content
+        preview = preview.replace('\n', ' ')
+        
+        response_text += f"{i}. *{title}*\n_{preview}_\n\n"
+        
+        # Добавляем кнопку
+        builder.button(text=f"Открыть {i}", callback_data=f"open_note_{note['id']}")
+        
+    builder.adjust(1)
+    
+    await message.answer(response_text, parse_mode="Markdown", reply_markup=builder.as_markup())
+
+@dp.callback_query(F.data.startswith("open_note_"))
+async def handle_open_note(callback: types.CallbackQuery):
+    note_id = callback.data.replace("open_note_", "")
+    # В идеале здесь нужно сходить в БД и достать полную заметку,
+    # но для простоты покажем сообщение
+    await callback.answer(f"Открытие заметки {note_id}...")
+    await callback.message.answer(f"Вы выбрали заметку с ID: {note_id}. (Здесь можно вывести полный текст)")
+
 @dp.message(Command("start"))
 async def handle_start(message: types.Message):
     """Приветствие пользователя"""

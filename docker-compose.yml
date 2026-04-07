@@ -26,8 +26,10 @@ services:
         condition: service_started
 
   db:
-    image: pgvector/pgvector:pg16
+    image: ankane/pgvector:v0.5.1
     container_name: vibemind_db
+    ports:
+      - "5432:5432"
     environment:
       - POSTGRES_USER=vibemind
       - POSTGRES_PASSWORD=vibemind

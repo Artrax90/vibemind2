@@ -46,6 +46,14 @@ SQLALCHEMY_DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./vibemind.db")
 engine = create_engine(SQLALCHEMY_DATABASE_URL)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
+# Create vector extension before creating tables
+try:
+    with engine.connect() as conn:
+        conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector;"))
+        conn.commit()
+except Exception as e:
+    logger.warning(f"Could not create vector extension (might be sqlite or already exists): {e}")
+
 # Создаем таблицы (в проде лучше использовать Alembic)
 Base.metadata.create_all(bind=engine)
 
@@ -320,18 +328,26 @@ async def get_notes(db: Session = Depends(get_db), current_user: User = Depends(
 
 @app.post("/api/notes")
 async def create_or_update_note(note: NoteCreate, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    from .utils.embeddings import embedding_manager
+    
+    # Generate embedding for title + content
+    text_to_embed = f"{note.title}\n{note.content or ''}"
+    vector = embedding_manager.get_vector(text_to_embed)
+    
     db_note = db.query(Note).filter(Note.id == note.id, Note.user_id == current_user.id).first()
     if db_note:
         db_note.title = note.title
         db_note.content = note.content
         db_note.folderId = note.folderId
+        db_note.embedding = vector
     else:
         db_note = Note(
             id=note.id,
             title=note.title,
             content=note.content,
             folderId=note.folderId,
-            user_id=current_user.id
+            user_id=current_user.id,
+            embedding=vector
         )
         db.add(db_note)
     db.commit()
@@ -353,6 +369,23 @@ async def search_notes(query: str, db: Session = Depends(get_db), current_user: 
     if note:
         return {"id": note.id, "title": note.title, "content": note.content}
     return None
+
+@app.get("/api/notes/semantic-search")
+async def semantic_search_notes(query: str, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    """Семантический поиск по заметкам"""
+    from .utils.embeddings import embedding_manager
+    
+    # Generate vector for the query
+    query_vector = embedding_manager.get_vector(query)
+    
+    # Search using cosine distance (<=>)
+    # Get top 5 results
+    notes = db.query(Note).filter(
+        Note.user_id == current_user.id,
+        Note.embedding.is_not(None)
+    ).order_by(Note.embedding.cosine_distance(query_vector)).limit(5).all()
+    
+    return [{"id": n.id, "title": n.title, "content": n.content} for n in notes]
 
 @app.get("/api/folders")
 async def get_folders(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
@@ -445,6 +478,18 @@ async def startup_event():
                 except Exception as e:
                     logger.error(f"Failed to add user_id column to {table}: {e}")
                     db.rollback()
+
+        # Migration: Add embedding to notes
+        try:
+            db.execute(text("SELECT embedding FROM notes LIMIT 1"))
+        except Exception:
+            db.rollback()
+            try:
+                db.execute(text("ALTER TABLE notes ADD COLUMN embedding vector(384)"))
+                db.commit()
+            except Exception as e:
+                logger.error(f"Failed to add embedding column to notes: {e}")
+                db.rollback()
 
         # 1. Создание дефолтного админа, если таблица пуста
         try:
