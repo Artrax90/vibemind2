@@ -29,93 +29,143 @@ logger = logging.getLogger(__name__)
 SECRET_KEY = os.getenv("ENCRYPTION_KEY", "fallback-zero-config-secret-key-change-in-production")
 ALGORITHM = "HS256"
 
-SYSTEM_PROMPT = """Ты — парсер голосовых команд для заметок.
-Твоя задача — преобразовать текст пользователя в JSON-команды.
+SYSTEM_PROMPT = """Ты — интеллектуальный парсер голосовых команд для заметок.
+Ты понимаешь смысл речи, исправляешь ошибки и возвращаешь точные JSON-команды.
 
 ---
-# 📌 ПОДДЕРЖИВАЕМЫЕ ТИПЫ
-1. CREATE — создать заметку
-2. UPDATE — добавить текст в существующую заметку
-3. SEARCH — найти заметки
+# 📌 ТИПЫ КОМАНД
+* CREATE
+* UPDATE
+* SEARCH
 
 ---
-# 🧠 ОБЩИЕ ПРАВИЛА
-* Игнорируй слова: "заметку", "заметка", "в неё", "в нее", "туда"
-* Работай с естественной речью (ошибки допустимы)
-* Всегда старайся выделить:
-  * название заметки (search_query или title)
-  * текст для добавления (append)
+# 🧠 ВХОДНЫЕ ДАННЫЕ
+Тебе передаётся:
+1. Текст пользователя
+2. Список заметок в формате JSON:
+[
+  { "id": "...", "title": "...", "content": "..." }
+]
+
+---
+# 🔥 ГЛАВНОЕ ПОВЕДЕНИЕ
+* исправляй речь
+* убирай мусор
+* выбирай правильную заметку
+* если заметки нет → СОЗДАВАЙ
+
+---
+# 🧠 ШАГ 1. НОРМАЛИЗАЦИЯ
+## УДАЛИ МУСОР:
+* заметку, заметка
+* в неё, в нее, неё, нее, не неё, не нее
+* туда, сюда
+* добавь в, добавь туда
+
+## ОЧИСТИ append:
+❌ "неё бампера" → "бампера"
+❌ "не нее титаник" → "титаник"
+
+## ИСПРАВЬ ПАДЕЖИ:
+* покупке → покупки
+* машиной → машины
+* фильме → фильмы
+
+## УДАЛИ ДУБЛИ:
+"покупки молоко" → "молоко"
+
+---
+# 🧠 ШАГ 2. ОПРЕДЕЛИ ТИП
+* "создай" → CREATE
+* "добавь" → UPDATE
+* "найди" → SEARCH
+
+---
+# 🧠 ШАГ 3. ВЫБОР ЗАМЕТКИ
+Для UPDATE:
+### 1. Вытащи название заметки из текста
+"добавь покупки молоко" → "покупки"
+
+### 2. Найди совпадение среди notes:
+* точное совпадение → приоритет
+* частичное совпадение → допустимо
+* близкий смысл → допустимо
+
+### 3. ЕСЛИ НАШЁЛ:
+{
+  "type": "UPDATE",
+  "note_id": "<id>",
+  "append": "<текст>"
+}
+
+### 🚨 4. ЕСЛИ НЕ НАШЁЛ (ВАЖНО)
+Ты ОБЯЗАН:
+👉 создать новую заметку
+👉 и добавить в неё текст
+
+Формат:
+[
+  {
+    "type": "CREATE",
+    "title": "<название заметки>"
+  },
+  {
+    "type": "UPDATE",
+    "append": "<текст>"
+  }
+]
+
+📌 название заметки = первая смысловая часть команды
 
 ---
 # 🟢 CREATE
-Если пользователь говорит:
-* "создай заметку <X>"
-* "создать новую заметку <X>"
-Верни:
 {
   "type": "CREATE",
-  "title": "<X>"
+  "title": "<нормализованное название>"
 }
 
 ---
 # 🟡 UPDATE
-## Основное правило
-Если есть "добавь":
-→ это UPDATE
-
-## 🟡 Вариант 1: добавить в существующую
-Фраза: "добавь заметку покупки молоко"
-Разбор:
-* "заметку" игнорируем
-* первое слово после — это название заметки
-* остальное — что добавить
-Результат:
 {
   "type": "UPDATE",
-  "search_query": "покупки",
-  "append": "молоко"
+  "note_id": "<id>",
+  "append": "<очищенный текст>"
 }
-
-## 🟡 Вариант 2: добавить в заметку
-"добавь в заметку кино пила"
-→
+или список:
 {
   "type": "UPDATE",
-  "search_query": "кино",
-  "append": "пила"
+  "note_id": "<id>",
+  "append": ["хлеб", "молоко"]
 }
-
-## 🟡 Вариант 3: короткая форма
-"добавь кино пила"
-→
-{
-  "type": "UPDATE",
-  "search_query": "кино",
-  "append": "пила"
-}
-
-## 🟡 Вариант 4: список
-"добавь заметку покупки хлеб молоко яйца"
-→
-{
-  "type": "UPDATE",
-  "search_query": "покупки",
-  "append": ["хлеб", "молоко", "яйца"]
-}
-
-## ⚠️ ПРАВИЛА РАЗБИВКИ СПИСКА
-Если в append несколько слов:
-* Если это список (еда, предметы и т.д.) → разбивай в массив
-* Если это фраза ("герои меча и магии") → НЕ разбивай
-
-## ⚠️ УБИРАНИЕ ДУБЛЕЙ
-Если append начинается с названия заметки — убери его
-Пример: "покупки молоко" → "молоко"
 
 ---
-# 🔵 CREATE + UPDATE (ОДНА КОМАНДА)
-Фраза: "создай заметку покупки и добавь туда хлеб молоко"
-→ ДВЕ команды:
+# 🔵 CREATE + UPDATE
+"создай заметку фильмы и добавь титаник"
+→
+[
+  {
+    "type": "CREATE",
+    "title": "фильмы"
+  },
+  {
+    "type": "UPDATE",
+    "append": "титаник"
+  }
+]
+
+---
+# 🔍 SEARCH
+{
+  "type": "SEARCH",
+  "query": "<очищенный текст>"
+}
+
+---
+# 🧪 ПРИМЕРЫ
+### 1
+notes: []
+"добавь покупки молоко"
+→
 [
   {
     "type": "CREATE",
@@ -123,38 +173,51 @@ SYSTEM_PROMPT = """Ты — парсер голосовых команд для 
   },
   {
     "type": "UPDATE",
-    "append": ["хлеб", "молоко"]
+    "append": "молоко"
   }
 ]
-⚠️ В UPDATE без search_query — значит использовать только что созданную заметку
 
----
-# 🔍 SEARCH
-Если пользователь говорит:
-* "найди"
-* "поиск"
-* "что-нибудь про"
+### 2
+notes: [{"id":"1","title":"покупки"}]
+"добавь покупке лимонад"
 →
 {
-  "type": "SEARCH",
-  "query": "<смысл запроса>"
+  "type": "UPDATE",
+  "note_id": "1",
+  "append": "лимонад"
 }
 
----
-# 📌 ВАЖНО
-* Никогда не добавляй лишние слова в title или append
-* Всегда очищай команды от "заметку", "туда", "в неё"
-* Предпочитай короткие и точные значения
-* Если команда сложная — разбивай на несколько
+### 3
+notes: [{"id":"1","title":"фильмы"}]
+"добавь фильмы титаник"
+→
+{
+  "type": "UPDATE",
+  "note_id": "1",
+  "append": "титаник"
+}
 
----
-# ✅ ФОРМАТ ОТВЕТА
-Всегда возвращай:
-* либо один JSON объект
-* либо массив JSON объектов
-Без текста. Только JSON."""
+### 4
+notes: [{"id":"1","title":"игры"}]
+"добавь музыку рок"
+→
+[
+  {
+    "type": "CREATE",
+    "title": "музыка"
+  },
+  {
+    "type": "UPDATE",
+    "append": "рок"
+  }
+]
 
-async def parse_commands_llm(text: str) -> list[dict]:
+Всегда возвращай только JSON."""
+
+async def parse_commands_llm(text: str, notes: list[dict] = None) -> list[dict]:
+    if notes is None:
+        notes = []
+        
     try:
         api_key = os.getenv("OPENAI_API_KEY")
         if not api_key:
@@ -163,11 +226,13 @@ async def parse_commands_llm(text: str) -> list[dict]:
             
         client = AsyncOpenAI(api_key=api_key)
         
+        user_content = f"notes:\n{json.dumps(notes, ensure_ascii=False)}\n\n\"{text}\""
+        
         response = await client.chat.completions.create(
             model="gpt-4o-mini",
             messages=[
                 {"role": "system", "content": SYSTEM_PROMPT},
-                {"role": "user", "content": text}
+                {"role": "user", "content": user_content}
             ],
             temperature=0.0
         )
@@ -599,6 +664,27 @@ async def patch_note_api(note_id: str, content: str) -> Dict[str, Any]:
         logger.error(f"Ошибка при обновлении заметки: {e}")
         return {"status": "error", "message": str(e)}
 
+async def get_all_notes_api() -> list[dict]:
+    """Получение всех заметок пользователя через API"""
+    url = "http://localhost:3344/api/notes"
+    
+    # Генерируем токен
+    expire = datetime.utcnow() + timedelta(minutes=60)
+    to_encode = {"sub": "admin", "exp": expire}
+    token = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
+    
+    headers = {"Authorization": f"Bearer {token}"}
+    
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.get(url, headers=headers) as response:
+                if response.status == 200:
+                    return await response.json()
+                return []
+    except Exception as e:
+        logger.error(f"Ошибка при получении заметок: {e}")
+        return []
+
 @dp.message(F.text)
 async def handle_text(message: types.Message):
     """Единый обработчик текстовых сообщений с системой интентов"""
@@ -610,7 +696,11 @@ async def handle_text(message: types.Message):
     if message.text.startswith('/'):
         return
         
-    commands = await parse_commands_llm(message.text)
+    # Получаем список заметок для контекста LLM
+    notes = await get_all_notes_api()
+    notes_context = [{"id": n.get("id"), "title": n.get("title"), "content": n.get("content")} for n in notes]
+        
+    commands = await parse_commands_llm(message.text, notes_context)
     
     chain_note_id = None
     
@@ -637,10 +727,11 @@ async def handle_text(message: types.Message):
                 
         elif intent == "UPDATE":
             search_query = cmd.get("search_query")
+            note_id = cmd.get("note_id")
             append_text = cmd.get("append", "")
             logger.info(f"DEBUG: parsed_command={cmd}")
             
-            target_note_id = chain_note_id
+            target_note_id = note_id or chain_note_id
             
             if not target_note_id and search_query:
                 result = await semantic_search_api(search_query)
