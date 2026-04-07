@@ -6,6 +6,7 @@ import os
 import uuid
 import re
 import json
+import difflib
 from typing import Dict, Any
 from datetime import datetime, timedelta
 from jose import jwt
@@ -227,22 +228,60 @@ async def parse_commands_llm(text: str, notes: list[dict] = None) -> list[dict]:
         logger.error(f"LLM Parsing error: {e}")
         return parse_commands(text)
 
+def normalize_intent(text: str) -> str:
+    if not text:
+        return text
+    words = text.split()
+    if not words:
+        return text
+        
+    first_word = words[0].lower()
+    intents = {
+        "создай": "создай", "создать": "создай", 
+        "добавь": "добавь", "добавить": "добавь", 
+        "удали": "удали", "удалить": "удали", 
+        "найди": "найди", "найти": "найди", "поиск": "найди"
+    }
+    
+    best_match = None
+    best_ratio = 0
+    
+    for intent in intents.keys():
+        ratio = difflib.SequenceMatcher(None, first_word, intent).ratio()
+        if ratio > best_ratio:
+            best_ratio = ratio
+            best_match = intents[intent]
+            
+    if best_ratio > 0.8:
+        words[0] = best_match
+        return " ".join(words)
+    return text
+
 def parse_commands(text: str) -> list[dict]:
     text = text.lower()
+    text = normalize_intent(text)
     
-    # Нормализация
-    text = re.sub(r'\bдобавив\b', 'добавь', text)
-    text = re.sub(r'\bдобавить\b', 'добавь', text)
-    
-    stop_words = ["пожалуйста", "мне", "сделай", "хочу", "можешь"]
+    # 1. Pipeline очистки (стоп-слова)
+    stop_words = ["пожалуйста", "мне", "сделай", "хочу", "можешь", "заметку", "заметка", "с названием", "в неё", "в нее", "туда", "по названию"]
     for word in stop_words:
         text = re.sub(rf'\b{word}\b', '', text)
     text = re.sub(r'\s+', ' ', text).strip()
     
     commands = []
     
+    # Глаголы действий для проверки
+    action_verbs = ["добавь", "создай", "найди", "удали", "сделай", "напиши", "купи", "скажи", "покажи"]
+    
+    def is_valid_title(title: str) -> bool:
+        if len(title) > 30:
+            return False
+        for verb in action_verbs:
+            if re.search(rf'\b{verb}\b', title):
+                return False
+        return True
+
     # Проверяем конструкцию CREATE + UPDATE
-    create_update_match = re.search(r'^(создай.*?|создать.*?|новая заметка.*?)\s+(?:и\s+)?(добавь\s+.*)$', text)
+    create_update_match = re.search(r'^(создай.*?|создать.*?|новая.*?)\s+(?:и\s+)?(добавь\s+.*)$', text)
     if create_update_match:
         parts = [create_update_match.group(1), create_update_match.group(2)]
     else:
@@ -253,34 +292,40 @@ def parse_commands(text: str) -> list[dict]:
         if not part:
             continue
             
-        if part.startswith("создай") or part.startswith("создать") or part.startswith("новая заметка"):
-            title = re.sub(r'\b(создай|создать|новую|новая|заметку|заметка)\b', '', part).strip()
-            title = re.sub(r'\s+', ' ', title).strip()
-            commands.append({
-                "type": "CREATE",
-                "title": title
-            })
+        if part.startswith("создай") or part.startswith("создать") or part.startswith("новая"):
+            title = re.sub(r'^(создай|создать|новую|новая)\s*', '', part).strip()
+            
+            if not is_valid_title(title):
+                commands.append({"type": "SEARCH", "query": part})
+            else:
+                commands.append({
+                    "type": "CREATE",
+                    "title": title,
+                    "content": ""
+                })
         elif part.startswith("добавь"):
             if i > 0 and commands and commands[-1]["type"] == "CREATE":
-                append_text = re.sub(r'^добавь\s+(туда|в не[её]|в эту заметку|в заметку|в)\s*', '', part).strip()
-                if append_text == part:
-                    append_text = re.sub(r'^добавь\s+', '', part).strip()
+                append_text = re.sub(r'^добавь\s+(в\s+)?', '', part).strip()
                 commands.append({
                     "type": "UPDATE",
                     "append": append_text
                 })
             else:
-                cleaned = re.sub(r'^добавь\s+(в заметку|в не[её]|туда|в)\s*', '', part).strip()
-                if cleaned == part:
-                    cleaned = re.sub(r'^добавь\s+', '', part).strip()
-                
+                cleaned = re.sub(r'^добавь\s+(в\s+)?', '', part).strip()
                 subparts = cleaned.split(maxsplit=1)
+                
                 if len(subparts) == 2:
-                    commands.append({
-                        "type": "UPDATE",
-                        "search_query": subparts[0],
-                        "append": subparts[1]
-                    })
+                    search_query = subparts[0]
+                    append_text = subparts[1]
+                    
+                    if not is_valid_title(search_query):
+                        commands.append({"type": "SEARCH", "query": part})
+                    else:
+                        commands.append({
+                            "type": "UPDATE",
+                            "search_query": search_query,
+                            "append": append_text
+                        })
                 else:
                     commands.append({
                         "type": "UPDATE",
@@ -288,7 +333,7 @@ def parse_commands(text: str) -> list[dict]:
                         "append": cleaned
                     })
         elif part.startswith("найди") or part.startswith("покажи") or part.startswith("что есть про"):
-            query = re.sub(r'^(найди заметку про|найди заметку|найди|покажи|что есть про)\s*', '', part).strip()
+            query = re.sub(r'^(найди|покажи|что есть про)\s*', '', part).strip()
             commands.append({
                 "type": "SEARCH",
                 "query": query
@@ -669,11 +714,13 @@ async def handle_text(message: types.Message):
     if message.text.startswith('/'):
         return
         
+    normalized_text = normalize_intent(message.text)
+        
     # Получаем список заметок для контекста LLM
     notes = await get_all_notes_api()
     notes_context = [{"id": n.get("id"), "title": n.get("title"), "content": n.get("content")} for n in notes]
         
-    commands = await parse_commands_llm(message.text, notes_context)
+    commands = await parse_commands_llm(normalized_text, notes_context)
     
     chain_note_id = None
     

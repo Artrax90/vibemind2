@@ -42,6 +42,7 @@ export default function Settings({ onClose, theme, setTheme }: SettingsProps) {
   const [botStatus, setBotStatus] = useState<'disconnected' | 'connected' | 'error'>('disconnected');
   const [isSaving, setIsSaving] = useState(false);
   const [isTesting, setIsTesting] = useState(false);
+  const [testingProviderId, setTestingProviderId] = useState<string | null>(null);
 
   // Users State
   const [users, setUsers] = useState<any[]>([]);
@@ -171,6 +172,36 @@ export default function Settings({ onClose, theme, setTheme }: SettingsProps) {
     } catch (e) {
       console.error(e);
       alert('Error connecting to external database.');
+    }
+  };
+
+  const handleTestProvider = async (provider: any) => {
+    setTestingProviderId(provider.id);
+    try {
+      const response = await fetch('/api/integrations/test', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('token')}`
+        },
+        body: JSON.stringify({
+          provider: provider.provider,
+          api_key: provider.apiKey,
+          base_url: provider.baseUrl,
+          model_name: provider.modelName
+        })
+      });
+      const data = await response.json();
+      if (response.ok && data.status === 'success') {
+        alert('✅ Connection Successful!');
+      } else {
+        alert(`❌ Failed: ${data.detail || data.message || 'Unknown error'}`);
+      }
+    } catch (error) {
+      console.error('Test Provider Error:', error);
+      alert('❌ Failed to test connection.');
+    } finally {
+      setTestingProviderId(null);
     }
   };
 
@@ -340,6 +371,15 @@ export default function Settings({ onClose, theme, setTheme }: SettingsProps) {
                             <label className="block text-sm text-muted-foreground mb-1">Model Name</label>
                             <input type="text" value={provider.modelName} onChange={(e) => updateProvider(provider.id, 'modelName', e.target.value)} placeholder="e.g., deepseek-chat" className="w-full bg-background border border-border rounded-lg p-2 text-foreground focus:border-primary focus:ring-1 focus:ring-primary outline-none transition-all" />
                           </div>
+                        </div>
+                        <div className="flex justify-end mt-2">
+                          <button 
+                            onClick={() => handleTestProvider(provider)}
+                            disabled={testingProviderId === provider.id}
+                            className="px-4 py-2 bg-secondary text-foreground hover:bg-secondary/80 rounded-lg border border-border/50 hover:border-primary transition-all disabled:opacity-50"
+                          >
+                            {testingProviderId === provider.id ? 'Testing...' : 'Test Connection'}
+                          </button>
                         </div>
                       </div>
                     </div>
