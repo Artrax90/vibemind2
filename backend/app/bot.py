@@ -5,6 +5,7 @@ import ast
 import os
 import uuid
 import re
+import json
 from typing import Dict, Any
 from datetime import datetime, timedelta
 from jose import jwt
@@ -18,6 +19,7 @@ from pydub import AudioSegment
 from wyoming.asr import Transcribe, Transcript
 from wyoming.audio import AudioChunk, AudioStart, AudioStop
 from wyoming.event import async_read_event, async_write_event
+from openai import AsyncOpenAI
 
 # Настройка логирования
 logging.basicConfig(level=logging.INFO)
@@ -26,6 +28,166 @@ logger = logging.getLogger(__name__)
 # JWT Settings (must match main.py)
 SECRET_KEY = os.getenv("ENCRYPTION_KEY", "fallback-zero-config-secret-key-change-in-production")
 ALGORITHM = "HS256"
+
+SYSTEM_PROMPT = """Ты — парсер голосовых команд для заметок.
+Твоя задача — преобразовать текст пользователя в JSON-команды.
+
+---
+# 📌 ПОДДЕРЖИВАЕМЫЕ ТИПЫ
+1. CREATE — создать заметку
+2. UPDATE — добавить текст в существующую заметку
+3. SEARCH — найти заметки
+
+---
+# 🧠 ОБЩИЕ ПРАВИЛА
+* Игнорируй слова: "заметку", "заметка", "в неё", "в нее", "туда"
+* Работай с естественной речью (ошибки допустимы)
+* Всегда старайся выделить:
+  * название заметки (search_query или title)
+  * текст для добавления (append)
+
+---
+# 🟢 CREATE
+Если пользователь говорит:
+* "создай заметку <X>"
+* "создать новую заметку <X>"
+Верни:
+{
+  "type": "CREATE",
+  "title": "<X>"
+}
+
+---
+# 🟡 UPDATE
+## Основное правило
+Если есть "добавь":
+→ это UPDATE
+
+## 🟡 Вариант 1: добавить в существующую
+Фраза: "добавь заметку покупки молоко"
+Разбор:
+* "заметку" игнорируем
+* первое слово после — это название заметки
+* остальное — что добавить
+Результат:
+{
+  "type": "UPDATE",
+  "search_query": "покупки",
+  "append": "молоко"
+}
+
+## 🟡 Вариант 2: добавить в заметку
+"добавь в заметку кино пила"
+→
+{
+  "type": "UPDATE",
+  "search_query": "кино",
+  "append": "пила"
+}
+
+## 🟡 Вариант 3: короткая форма
+"добавь кино пила"
+→
+{
+  "type": "UPDATE",
+  "search_query": "кино",
+  "append": "пила"
+}
+
+## 🟡 Вариант 4: список
+"добавь заметку покупки хлеб молоко яйца"
+→
+{
+  "type": "UPDATE",
+  "search_query": "покупки",
+  "append": ["хлеб", "молоко", "яйца"]
+}
+
+## ⚠️ ПРАВИЛА РАЗБИВКИ СПИСКА
+Если в append несколько слов:
+* Если это список (еда, предметы и т.д.) → разбивай в массив
+* Если это фраза ("герои меча и магии") → НЕ разбивай
+
+## ⚠️ УБИРАНИЕ ДУБЛЕЙ
+Если append начинается с названия заметки — убери его
+Пример: "покупки молоко" → "молоко"
+
+---
+# 🔵 CREATE + UPDATE (ОДНА КОМАНДА)
+Фраза: "создай заметку покупки и добавь туда хлеб молоко"
+→ ДВЕ команды:
+[
+  {
+    "type": "CREATE",
+    "title": "покупки"
+  },
+  {
+    "type": "UPDATE",
+    "append": ["хлеб", "молоко"]
+  }
+]
+⚠️ В UPDATE без search_query — значит использовать только что созданную заметку
+
+---
+# 🔍 SEARCH
+Если пользователь говорит:
+* "найди"
+* "поиск"
+* "что-нибудь про"
+→
+{
+  "type": "SEARCH",
+  "query": "<смысл запроса>"
+}
+
+---
+# 📌 ВАЖНО
+* Никогда не добавляй лишние слова в title или append
+* Всегда очищай команды от "заметку", "туда", "в неё"
+* Предпочитай короткие и точные значения
+* Если команда сложная — разбивай на несколько
+
+---
+# ✅ ФОРМАТ ОТВЕТА
+Всегда возвращай:
+* либо один JSON объект
+* либо массив JSON объектов
+Без текста. Только JSON."""
+
+async def parse_commands_llm(text: str) -> list[dict]:
+    try:
+        api_key = os.getenv("OPENAI_API_KEY")
+        if not api_key:
+            logger.warning("OPENAI_API_KEY not found, falling back to regex parser")
+            return parse_commands(text)
+            
+        client = AsyncOpenAI(api_key=api_key)
+        
+        response = await client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[
+                {"role": "system", "content": SYSTEM_PROMPT},
+                {"role": "user", "content": text}
+            ],
+            temperature=0.0
+        )
+        
+        content = response.choices[0].message.content.strip()
+        
+        if content.startswith("```json"):
+            content = content[7:-3].strip()
+        elif content.startswith("```"):
+            content = content[3:-3].strip()
+            
+        parsed = json.loads(content)
+        if isinstance(parsed, dict):
+            return [parsed]
+        elif isinstance(parsed, list):
+            return parsed
+        return []
+    except Exception as e:
+        logger.error(f"LLM Parsing error: {e}")
+        return parse_commands(text)
 
 def parse_commands(text: str) -> list[dict]:
     text = text.lower()
@@ -448,7 +610,7 @@ async def handle_text(message: types.Message):
     if message.text.startswith('/'):
         return
         
-    commands = parse_commands(message.text)
+    commands = await parse_commands_llm(message.text)
     
     chain_note_id = None
     
@@ -489,6 +651,10 @@ async def handle_text(message: types.Message):
                         target_note_id = data[0].get('id')
                     
             if target_note_id:
+                # Если append_text это список, объединяем его в строку
+                if isinstance(append_text, list):
+                    append_text = "\\n- " + "\\n- ".join(append_text)
+                    
                 result = await patch_note_api(target_note_id, append_text)
                 logger.info(f"DEBUG: result_type={type(result)} result_value={result}")
                 if isinstance(result, dict) and result.get("status") == "success":
