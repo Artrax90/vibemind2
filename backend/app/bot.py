@@ -56,7 +56,7 @@ def clean_text_cyclic(text: str) -> str:
     return text.strip()
 
 STT_HOST = "192.168.1.196"
-STT_PORT = 10208
+STT_PORT = 10300
 
 async def speech_to_text(audio_path: str) -> str:
     """Транскрибация аудио через Wyoming (Vosk)"""
@@ -101,6 +101,7 @@ async def speech_to_text(audio_path: str) -> str:
         try:
             # ПЕРВЫМ: Намерение транскрибации
             await async_write_event(Transcribe(language="ru").event(), writer)
+            await writer.drain()
             logger.info("STT: Событие Transcribe(ru) отправлено.")
             
             # ВТОРЫМ: Параметры аудио
@@ -108,6 +109,7 @@ async def speech_to_text(audio_path: str) -> str:
                 AudioStart(rate=16000, width=2, channels=1).event(),
                 writer,
             )
+            await writer.drain()
             logger.info("STT: Событие AudioStart отправлено.")
             
             # ТРЕТЬИМ: Аудио данные
@@ -121,6 +123,7 @@ async def speech_to_text(audio_path: str) -> str:
                         AudioChunk(audio=chunk, rate=16000, width=2, channels=1).event(), 
                         writer
                     )
+                    await writer.drain()
             
             # ПОСЛЕДНИМ: Остановка
             await async_write_event(AudioStop().event(), writer)
@@ -141,7 +144,7 @@ async def speech_to_text(audio_path: str) -> str:
                     logger.warning("STT: Соединение закрыто сервером до получения результата.")
                     break
                 
-                logger.info(f"STT: Ответ от сервера: {event.type}")
+                logger.info(f"STT: Получено событие {event.type}")
                 
                 if Transcript.is_type(event.type):
                     transcript = Transcript.from_event(event)
