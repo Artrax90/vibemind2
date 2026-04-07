@@ -419,6 +419,116 @@ async def test_integration(req: TestIntegrationRequest, current_user: User = Dep
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
+class ChatRequest(BaseModel):
+    message: str
+
+@app.post("/api/chat")
+async def chat_with_notes(req: ChatRequest, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    """Чат с заметками (RAG)"""
+    from .utils.embeddings import embedding_manager
+    
+    # 1. Семантический поиск релевантных заметок
+    query_vector = embedding_manager.get_vector(req.message)
+    
+    # Порог расстояния (чем меньше, тем строже)
+    distance_threshold = 0.6
+    
+    results = db.query(
+        Note, 
+        Note.embedding.cosine_distance(query_vector).label("distance")
+    ).filter(
+        Note.user_id == current_user.id,
+        Note.embedding.is_not(None)
+    ).filter(
+        Note.embedding.cosine_distance(query_vector) <= distance_threshold
+    ).order_by(
+        Note.embedding.cosine_distance(query_vector)
+    ).limit(3).all()
+    
+    if not results:
+        return {
+            "answer": "Я не нашел информации по вашему вопросу в ваших заметках.",
+            "citations": []
+        }
+    
+    # 2. Формирование контекста для LLM
+    context_parts = []
+    citations = []
+    for i, (note, dist) in enumerate(results):
+        context_parts.append(f"[{i+1}] {note.title}: {note.content}")
+        citations.append({
+            "id": note.id,
+            "title": note.title,
+            "snippet": note.content[:100] + "..." if note.content else ""
+        })
+    
+    context_text = "\n\n".join(context_parts)
+    
+    # 3. Получение конфигурации LLM
+    config = db.query(Config).first()
+    if not config or not config.llm_provider:
+        return {
+            "answer": "ИИ-провайдер не настроен. Пожалуйста, настройте его в настройках.",
+            "citations": citations
+        }
+    
+    # 4. Запрос к LLM
+    prompt = f"""Вы — VibeMind AI, интеллектуальный помощник по заметкам. 
+Ваша задача — отвечать на вопросы пользователя, основываясь ТОЛЬКО на предоставленном контексте из его заметок.
+
+КОНТЕКСТ ИЗ ЗАМЕТОК:
+{context_text}
+
+ИНСТРУКЦИИ:
+- Отвечайте на языке вопроса (в данном случае на русском).
+- Если в контексте нет ответа, вежливо скажите, что информации недостаточно.
+- Используйте номера цитат [1], [2] и т.д., когда ссылаетесь на конкретную заметку.
+- Будьте кратки и точны.
+
+ВОПРОС ПОЛЬЗОВАТЕЛЯ:
+{req.message}"""
+
+    try:
+        if config.llm_provider in ["openai", "ollama", "openrouter"]:
+            from openai import AsyncOpenAI
+            base_url = config.base_url
+            if config.llm_provider == "openrouter" and not base_url:
+                base_url = "https://openrouter.ai/api/v1"
+            
+            client = AsyncOpenAI(
+                api_key=config.api_key or "dummy",
+                base_url=base_url
+            )
+            response = await client.chat.completions.create(
+                model=config.model_name or "gpt-4o-mini",
+                messages=[{"role": "user", "content": prompt}]
+            )
+            answer = response.choices[0].message.content
+        elif config.llm_provider == "gemini":
+            api_key = config.api_key
+            model = config.model_name or "gemini-1.5-flash"
+            url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={api_key}"
+            
+            async with httpx.AsyncClient() as client:
+                payload = {
+                    "contents": [{"parts": [{"text": prompt}]}]
+                }
+                response = await client.post(url, json=payload, timeout=30)
+                if response.status_code == 200:
+                    data = response.json()
+                    answer = data['candidates'][0]['content']['parts'][0]['text']
+                else:
+                    answer = f"Ошибка Gemini API: {response.text}"
+        else:
+            answer = "Неподдерживаемый провайдер ИИ."
+    except Exception as e:
+        answer = f"Произошла ошибка при обращении к ИИ: {str(e)}"
+    
+    return {
+        "answer": answer,
+        "citations": citations
+    }
+
 @app.get("/api/notes")
 async def get_notes(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     notes = db.query(Note).filter(Note.user_id == current_user.id).all()

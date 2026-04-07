@@ -201,6 +201,22 @@ export const api = {
       return { success: true, ...updates };
     }
   },
+
+  async chat(message: string) {
+    try {
+      const res = await fetch(`${BASE_URL}/api/chat`, {
+        method: 'POST',
+        headers: { 
+          'Content-Type': 'application/json',
+          ...getAuthHeaders()
+        },
+        body: JSON.stringify({ message })
+      });
+      return await handleResponse(res, { answer: 'Error connecting to AI', citations: [] });
+    } catch (e) {
+      return { answer: 'Network error', citations: [] };
+    }
+  },
   
   async uploadFile(formData: FormData) {
     try {

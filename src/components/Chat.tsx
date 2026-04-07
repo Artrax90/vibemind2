@@ -1,7 +1,9 @@
 import React, { useState, useMemo } from 'react';
-import { Send, Bot, Link as LinkIcon, FileText } from 'lucide-react';
+import { Send, Bot, Link as LinkIcon, FileText, Loader2 } from 'lucide-react';
+import { motion } from 'framer-motion';
 import { Note } from '../App';
 import { useLanguage } from '../contexts/LanguageContext';
+import { api } from '../api/client';
 
 type ChatProps = {
   notes: Note[];
@@ -19,23 +21,32 @@ export default function Chat({ notes, activeNoteId, onNoteClick }: ChatProps) {
     }
   ]);
   const [input, setInput] = useState('');
+  const [isTyping, setIsTyping] = useState(false);
 
-  const handleSend = () => {
-    if (!input.trim()) return;
-    setMessages([...messages, { role: 'user', content: input, citations: [] }]);
-    setInput('');
+  const handleSend = async () => {
+    if (!input.trim() || isTyping) return;
     
-    // Mock AI response with citations
-    setTimeout(() => {
+    const userMessage = input;
+    setMessages(prev => [...prev, { role: 'user', content: userMessage, citations: [] }]);
+    setInput('');
+    setIsTyping(true);
+    
+    try {
+      const response = await api.chat(userMessage);
       setMessages(prev => [...prev, { 
         role: 'assistant', 
-        content: 'Based on your notes, you are building a cyberpunk note-taking app. [1] It also includes ideas for the project. [2]',
-        citations: [
-          { id: '1', title: 'Welcome to VibeMind', snippet: 'Your cyberpunk AI note-taking ecosystem.' },
-          { id: '2', title: 'Ideas', snippet: 'Some ideas for the project.' }
-        ]
+        content: response.answer,
+        citations: response.citations || []
       }]);
-    }, 1000);
+    } catch (error) {
+      setMessages(prev => [...prev, { 
+        role: 'assistant', 
+        content: 'Sorry, I encountered an error while processing your request.',
+        citations: []
+      }]);
+    } finally {
+      setIsTyping(false);
+    }
   };
 
   // Calculate backlinks dynamically
@@ -76,7 +87,11 @@ export default function Chat({ notes, activeNoteId, onNoteClick }: ChatProps) {
       
       <div className="flex-1 overflow-y-auto p-4 space-y-4 scrollbar-thin">
         {messages.map((msg, i) => (
-          <div key={i} className={`flex flex-col ${msg.role === 'user' ? 'items-end' : 'items-start'}`}>
+            <motion.div 
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              className={`flex flex-col ${msg.role === 'user' ? 'items-end' : 'items-start'}`}
+            >
             <div className={`max-w-[85%] rounded-lg p-3 text-sm ${
               msg.role === 'user' 
                 ? 'bg-primary text-primary-foreground' 
@@ -98,9 +113,15 @@ export default function Chat({ notes, activeNoteId, onNoteClick }: ChatProps) {
                 ))}
               </div>
             )}
-          </div>
-        ))}
-      </div>
+            </motion.div>
+          ))}
+          {isTyping && (
+            <div className="flex items-center text-muted-foreground text-xs animate-pulse">
+              <Loader2 size={14} className="mr-2 animate-spin" />
+              VibeMind is thinking...
+            </div>
+          )}
+        </div>
 
       <div className="p-4 border-t border-border/50 bg-secondary/30 shrink-0 max-h-[40%] overflow-y-auto">
         <div className="mb-6">
@@ -168,13 +189,15 @@ export default function Chat({ notes, activeNoteId, onNoteClick }: ChatProps) {
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && handleSend()}
             placeholder={t('chat.placeholder')}
-            className="w-full bg-background border border-border rounded-full py-2 pl-4 pr-10 text-sm text-foreground focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary transition-all"
+            disabled={isTyping}
+            className="w-full bg-background border border-border rounded-full py-2 pl-4 pr-10 text-sm text-foreground focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary transition-all disabled:opacity-50"
           />
           <button 
             onClick={handleSend}
-            className="absolute right-2 top-1/2 -translate-y-1/2 p-1.5 text-muted-foreground hover:text-primary transition-colors"
+            disabled={isTyping}
+            className="absolute right-2 top-1/2 -translate-y-1/2 p-1.5 text-muted-foreground hover:text-primary transition-colors disabled:opacity-50"
           >
-            <Send size={16} />
+            {isTyping ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />}
           </button>
         </div>
       </div>
