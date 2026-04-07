@@ -182,7 +182,7 @@ export default function Settings({ onClose, theme, setTheme }: SettingsProps) {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('token')}`
+          'Authorization': `Bearer ${localStorage.getItem('access_token')}`
         },
         body: JSON.stringify({
           provider: provider.provider,
@@ -351,25 +351,44 @@ export default function Settings({ onClose, theme, setTheme }: SettingsProps) {
                       </div>
 
                       <div className="space-y-4 mt-2">
-                        <div className="grid grid-cols-2 gap-4">
+                        <div className="grid grid-cols-3 gap-4">
+                          <div>
+                            <label className="block text-sm text-muted-foreground mb-1">Provider Type</label>
+                            <select 
+                              value={provider.provider} 
+                              onChange={(e) => updateProvider(provider.id, 'provider', e.target.value)} 
+                              className="w-full bg-background border border-border rounded-lg p-2 text-foreground focus:border-primary focus:ring-1 focus:ring-primary outline-none transition-all"
+                            >
+                              <option value="openai">OpenAI / Compatible</option>
+                              <option value="gemini">Google Gemini</option>
+                              <option value="ollama">Ollama (Local)</option>
+                            </select>
+                          </div>
                           <div>
                             <label className="block text-sm text-muted-foreground mb-1">Label</label>
                             <input type="text" value={provider.label} onChange={(e) => updateProvider(provider.id, 'label', e.target.value)} placeholder="e.g., DeepSeek, Groq, Local" className="w-full bg-background border border-border rounded-lg p-2 text-foreground focus:border-primary focus:ring-1 focus:ring-primary outline-none transition-all" />
                           </div>
                           <div>
-                            <label className="block text-sm text-muted-foreground mb-1">Base URL</label>
-                            <input type="text" value={provider.baseUrl} onChange={(e) => updateProvider(provider.id, 'baseUrl', e.target.value)} placeholder="https://api.deepseek.com/v1" className="w-full bg-background border border-border rounded-lg p-2 text-foreground focus:border-primary focus:ring-1 focus:ring-primary outline-none transition-all" />
+                            <label className="block text-sm text-muted-foreground mb-1">Model Name</label>
+                            <input type="text" value={provider.modelName} onChange={(e) => updateProvider(provider.id, 'modelName', e.target.value)} placeholder="e.g., gpt-4o-mini" className="w-full bg-background border border-border rounded-lg p-2 text-foreground focus:border-primary focus:ring-1 focus:ring-primary outline-none transition-all" />
                           </div>
                         </div>
 
                         <div className="grid grid-cols-2 gap-4">
                           <div>
-                            <label className="block text-sm text-muted-foreground mb-1">API Key (Encrypted in DB)</label>
-                            <input type="password" value={provider.apiKey} onChange={(e) => updateProvider(provider.id, 'apiKey', e.target.value)} placeholder="sk-..." className="w-full bg-background border border-border rounded-lg p-2 text-foreground focus:border-primary focus:ring-1 focus:ring-primary outline-none transition-all" />
+                            <label className="block text-sm text-muted-foreground mb-1">Base URL (OpenAI/Ollama only)</label>
+                            <input 
+                              type="text" 
+                              value={provider.baseUrl} 
+                              onChange={(e) => updateProvider(provider.id, 'baseUrl', e.target.value)} 
+                              placeholder="https://api.openai.com/v1" 
+                              disabled={provider.provider === 'gemini'}
+                              className="w-full bg-background border border-border rounded-lg p-2 text-foreground focus:border-primary focus:ring-1 focus:ring-primary outline-none transition-all disabled:opacity-50" 
+                            />
                           </div>
                           <div>
-                            <label className="block text-sm text-muted-foreground mb-1">Model Name</label>
-                            <input type="text" value={provider.modelName} onChange={(e) => updateProvider(provider.id, 'modelName', e.target.value)} placeholder="e.g., deepseek-chat" className="w-full bg-background border border-border rounded-lg p-2 text-foreground focus:border-primary focus:ring-1 focus:ring-primary outline-none transition-all" />
+                            <label className="block text-sm text-muted-foreground mb-1">API Key (Encrypted in DB)</label>
+                            <input type="password" value={provider.apiKey} onChange={(e) => updateProvider(provider.id, 'apiKey', e.target.value)} placeholder="sk-..." className="w-full bg-background border border-border rounded-lg p-2 text-foreground focus:border-primary focus:ring-1 focus:ring-primary outline-none transition-all" />
                           </div>
                         </div>
                         <div className="flex justify-end mt-2">
