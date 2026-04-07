@@ -7,6 +7,7 @@ import uuid
 import re
 import json
 import difflib
+import html
 from typing import Dict, Any
 from datetime import datetime, timedelta
 from jose import jwt
@@ -599,8 +600,12 @@ async def handle_open_note(callback: types.CallbackQuery):
         title = note.get("title", "Без названия")
         content = note.get("content", "Пусто")
         
-        response_text = f"📝 *{title}*\n\n{content}"
-        await callback.message.answer(response_text, parse_mode="Markdown")
+        # Экранируем для HTML
+        title_esc = html.escape(title)
+        content_esc = html.escape(content)
+        
+        response_text = f"📝 <b>{title_esc}</b>\n\n{content_esc}"
+        await callback.message.answer(response_text, parse_mode="HTML")
     else:
         await callback.message.answer("❌ Не удалось загрузить содержимое заметки.")
 
@@ -880,7 +885,7 @@ async def handle_text(message: types.Message):
                     continue
                     
                 from aiogram.utils.keyboard import InlineKeyboardBuilder
-                response_text = f"Вот что я нашел по запросу «{search_query}»:\n\n"
+                response_text = f"Вот что я нашел по запросу «{html.escape(search_query)}»:\n\n"
                 builder = InlineKeyboardBuilder()
                 
                 for i, note in enumerate(results, 1):
@@ -888,11 +893,16 @@ async def handle_text(message: types.Message):
                     content = note.get('content', '')
                     preview = content[:100] + "..." if len(content) > 100 else content
                     preview = preview.replace('\n', ' ')
-                    response_text += f"{i}. *{title}*\n_{preview}_\n\n"
+                    
+                    # Экранируем для HTML
+                    title_esc = html.escape(title)
+                    preview_esc = html.escape(preview)
+                    
+                    response_text += f"{i}. <b>{title_esc}</b>\n<i>{preview_esc}</i>\n\n"
                     builder.button(text=f"Открыть {i}", callback_data=f"open_note_{note['id']}")
                     
                 builder.adjust(1)
-                await message.answer(response_text, parse_mode="Markdown", reply_markup=builder.as_markup())
+                await message.answer(response_text, parse_mode="HTML", reply_markup=builder.as_markup())
             else:
                 error_msg = result.get("message", "Неизвестная ошибка") if isinstance(result, dict) else str(result)
                 await message.answer(f"❌ Ошибка при поиске: {error_msg}")
