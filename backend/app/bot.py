@@ -242,33 +242,66 @@ async def start_bot(user_id: int, username: str, token: str, proxy_url: str = No
     
     try:
         final_proxy_url = None
+        
+        # Check proxy_url (string or dict)
         if isinstance(proxy_url, str) and proxy_url.strip().startswith("{"):
             try: proxy_url = ast.literal_eval(proxy_url)
             except: pass
 
-        if isinstance(proxy_url, str) and (proxy_url.startswith("http") or proxy_url.startswith("socks")):
-            final_proxy_url = proxy_url
+        if isinstance(proxy_url, str) and proxy_url.strip() and (proxy_url.startswith("http") or proxy_url.startswith("socks")):
+            final_proxy_url = proxy_url.strip()
         elif isinstance(proxy_url, dict) and proxy_url.get("host"):
             p = proxy_url
             protocol = str(p.get("protocol", "http")).lower()
-            host = str(p.get("host"))
+            host = str(p.get("host")).strip()
             port = p.get("port")
             user = p.get("username")
             password = p.get("password")
-            if user and password:
-                final_proxy_url = f"{protocol}://{user}:{password}@{host}:{port}"
-            else:
-                final_proxy_url = f"{protocol}://{host}:{port}"
-
-        logger.info(f"Запуск бота для {username} (ID: {user_id}). Прокси: {final_proxy_url or 'Direct'}")
+            if host:
+                if user and password:
+                    final_proxy_url = f"{protocol}://{user}:{password}@{host}:{port}"
+                else:
+                    final_proxy_url = f"{protocol}://{host}:{port}"
         
-        timeout = aiohttp.ClientTimeout(total=30, connect=10)
-        session = AiohttpSession(proxy=final_proxy_url, timeout=timeout) if final_proxy_url else AiohttpSession(timeout=timeout)
-        async with Bot(token=token, session=session) as bot:
-            current_bots[user_id] = bot
-            await dp.start_polling(bot, user_id=user_id, admin_id=admin_id)
+        # Check proxy_config if final_proxy_url is still None
+        if not final_proxy_url and isinstance(proxy_config, dict) and proxy_config.get("host"):
+            p = proxy_config
+            protocol = str(p.get("protocol", "http")).lower()
+            host = str(p.get("host")).strip()
+            port = p.get("port")
+            user = p.get("username")
+            password = p.get("password")
+            if host:
+                if user and password:
+                    final_proxy_url = f"{protocol}://{user}:{password}@{host}:{port}"
+                else:
+                    final_proxy_url = f"{protocol}://{host}:{port}"
+
+        if final_proxy_url:
+            # Mask password in logs
+            masked_proxy = re.sub(r':([^@/]+)@', ':****@', final_proxy_url)
+            logger.info(f"Запуск бота для {username} (ID: {user_id}). Прокси: {masked_proxy}")
+        else:
+            logger.info(f"Запуск бота для {username} (ID: {user_id}). Прокси: Direct (No proxy configured)")
+        
+        while True:
+            try:
+                timeout = aiohttp.ClientTimeout(total=60, connect=20)
+                session = AiohttpSession(proxy=final_proxy_url, timeout=timeout) if final_proxy_url else AiohttpSession(timeout=timeout)
+                async with Bot(token=token, session=session) as bot:
+                    current_bots[user_id] = bot
+                    logger.info(f"Бот @{username} начал опрос (polling)...")
+                    await dp.start_polling(bot, user_id=user_id, admin_id=admin_id, handle_signals=False, polling_timeout=40)
+            except asyncio.CancelledError:
+                logger.info(f"Бот {user_id} остановлен (CancelledError)")
+                break
+            except Exception as e:
+                logger.error(f"Ошибка бота {user_id}: {e}. Повторная попытка через 15 секунд...")
+                if user_id in current_bots: del current_bots[user_id]
+                await asyncio.sleep(15)
     except Exception as e:
-        logger.error(f"Ошибка бота {user_id}: {e}")
+        logger.error(f"Критическая ошибка в start_bot {user_id}: {e}")
+    finally:
         if user_id in current_bots: del current_bots[user_id]
 
 async def stop_bot(user_id: int):
@@ -324,10 +357,10 @@ async def test_bot_connection(token: str, admin_id: str = None, proxy_url: str =
             else:
                 final_proxy_url = f"{protocol}://{host}:{port}"
         
-        timeout = aiohttp.ClientTimeout(total=30, connect=10)
+        timeout = aiohttp.ClientTimeout(total=60, connect=20)
         session = AiohttpSession(proxy=final_proxy_url, timeout=timeout) if final_proxy_url else AiohttpSession(timeout=timeout)
         async with Bot(token=token, session=session) as test_bot:
-            me = await asyncio.wait_for(test_bot.get_me(), timeout=15.0)
+            me = await asyncio.wait_for(test_bot.get_me(), timeout=30.0)
             if admin_id:
                 try:
                     await test_bot.send_message(chat_id=admin_id, text="✅ Проверка связи VibeMind успешна!")
