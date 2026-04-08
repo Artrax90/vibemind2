@@ -26,6 +26,7 @@ from openai import AsyncOpenAI
 from sqlalchemy.orm import Session
 from ..database import SessionLocal
 from .models import Config, User
+from .utils.numbers import words_to_digits
 
 # Настройка логирования
 logging.basicConfig(level=logging.INFO)
@@ -217,38 +218,60 @@ async def parse_commands_llm(user_id: int, text: str, notes: list[dict] = None) 
         provider = config.llm_provider if config else "openai"
         model = config.model_name or ("gemini-1.5-flash" if provider == "gemini" else "gpt-4o-mini")
         
-        if not api_key:
+        # If provider is openai but no key, or if we want to force gemini in this environment
+        if provider == "openai" and not api_key:
+            gemini_key = os.getenv("GEMINI_API_KEY")
+            if gemini_key:
+                provider = "gemini"
+                api_key = gemini_key
+                model = "gemini-1.5-flash"
+        
+        if not api_key and provider != "gemini": # Gemini might use env key
             logger.warning("API key not found, falling back to regex parser")
             return parse_commands(text)
             
         user_content = f"notes:\n{json.dumps(notes, ensure_ascii=False)}\n\n\"{text}\""
         content = ""
 
-        if provider == "gemini":
-            url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={api_key}"
-            async with aiohttp.ClientSession() as session:
-                payload = {
-                    "contents": [{"parts": [{"text": f"{SYSTEM_PROMPT}\n\n{user_content}"}]}],
-                    "generationConfig": {"temperature": 0.0}
-                }
-                async with session.post(url, json=payload, timeout=30) as resp:
-                    if resp.status == 200:
-                        data = await resp.json()
-                        content = data['candidates'][0]['content']['parts'][0]['text']
-                    else:
-                        resp_text = await resp.text()
-                        raise Exception(f"Gemini error: {resp_text}")
-        else:
-            client = AsyncOpenAI(api_key=api_key)
-            response = await client.chat.completions.create(
-                model=model,
-                messages=[
-                    {"role": "system", "content": SYSTEM_PROMPT},
-                    {"role": "user", "content": user_content}
-                ],
-                temperature=0.0
-            )
-            content = response.choices[0].message.content.strip()
+        async def try_parse(p, k, m):
+            if p == "gemini":
+                url = f"https://generativelanguage.googleapis.com/v1beta/models/{m}:generateContent?key={k}"
+                async with aiohttp.ClientSession() as session:
+                    payload = {
+                        "contents": [{"parts": [{"text": f"{SYSTEM_PROMPT}\n\n{user_content}"}]}],
+                        "generationConfig": {"temperature": 0.0}
+                    }
+                    async with session.post(url, json=payload, timeout=30) as resp:
+                        if resp.status == 200:
+                            data = await resp.json()
+                            return data['candidates'][0]['content']['parts'][0]['text']
+                        else:
+                            resp_text = await resp.text()
+                            raise Exception(f"Gemini error: {resp_text}")
+            else:
+                client = AsyncOpenAI(api_key=k)
+                response = await client.chat.completions.create(
+                    model=m,
+                    messages=[
+                        {"role": "system", "content": SYSTEM_PROMPT},
+                        {"role": "user", "content": user_content}
+                    ],
+                    temperature=0.0
+                )
+                return response.choices[0].message.content.strip()
+
+        try:
+            content = await try_parse(provider, api_key, model)
+        except Exception as e:
+            if provider == "openai" and ("403" in str(e) or "unsupported_country" in str(e)):
+                gemini_key = os.getenv("GEMINI_API_KEY")
+                if gemini_key:
+                    logger.info("OpenAI failed with 403, trying Gemini fallback")
+                    content = await try_parse("gemini", gemini_key, "gemini-1.5-flash")
+                else:
+                    raise e
+            else:
+                raise e
         
         if content.startswith("```json"):
             content = content[7:-3].strip()
@@ -552,6 +575,10 @@ async def handle_voice(message: types.Message, user_id: int, admin_id: str = Non
         if not text:
             await message.answer("❌ Не удалось распознать речь.")
             return
+            
+        # Convert words to digits for better processing
+        text = words_to_digits(text)
+        
         await message.answer(f"📝 Распознанный текст: «{text}»\nЗапускаю обработку...")
         fake_msg = message.model_copy(update={"text": text})
         await handle_text(fake_msg, user_id, admin_id)
@@ -619,7 +646,13 @@ async def handle_text(message: types.Message, user_id: int, admin_id: str = None
     if message.text.startswith('/'): return
     
     logger.info(f"Обработка текста от пользователя {user_id}: «{message.text}»")
-    normalized_text = normalize_intent(message.text)
+    
+    # Convert words to digits
+    processed_text = words_to_digits(message.text)
+    if processed_text != message.text:
+        logger.info(f"Текст после преобразования чисел: «{processed_text}»")
+        
+    normalized_text = normalize_intent(processed_text)
     notes = await get_all_notes_api(user_id)
     notes_context = [{"id": n.get("id"), "title": n.get("title"), "content": n.get("content")} for n in notes]
     commands = await parse_commands_llm(user_id, normalized_text, notes_context)
