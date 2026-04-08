@@ -19,16 +19,29 @@ from . import bot as bot_module
 from .bot import restart_bot, test_bot_connection
 
 # Настройка логирования
-LOG_FILE = "/app/storage/logs/vibemind.log"
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.FileHandler(LOG_FILE),
-        logging.StreamHandler()
-    ]
-)
+BASE_DIR = os.getcwd()
+STORAGE_DIR = os.path.join(BASE_DIR, "storage")
+LOG_DIR = os.path.join(STORAGE_DIR, "logs")
+LOG_FILE = os.path.join(LOG_DIR, "vibemind.log")
+
+os.makedirs(LOG_DIR, exist_ok=True)
+
+# Настройка корневого логгера для захвата всех логов (включая библиотеки)
+root_logger = logging.getLogger()
+root_logger.setLevel(logging.INFO)
+
+formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+
+file_handler = logging.FileHandler(LOG_FILE)
+file_handler.setFormatter(formatter)
+root_logger.addHandler(file_handler)
+
+stream_handler = logging.StreamHandler()
+stream_handler.setFormatter(formatter)
+root_logger.addHandler(stream_handler)
+
 logger = logging.getLogger(__name__)
+logger.info("Система логирования инициализирована. Файл: " + LOG_FILE)
 
 # JWT Settings
 SECRET_KEY = os.getenv("ENCRYPTION_KEY", "fallback-zero-config-secret-key-change-in-production")
@@ -41,7 +54,12 @@ pwd_context = CryptContext(schemes=["pbkdf2_sha256"], deprecated="auto")
 import uuid
 
 # 4. DIRECTORY AUTO-PROVISIONING
-directories = ['/app/storage/notes', '/app/storage/logs', '/app/storage/backups', '/app/storage/uploads']
+directories = [
+    os.path.join(STORAGE_DIR, 'notes'),
+    LOG_DIR,
+    os.path.join(STORAGE_DIR, 'backups'),
+    os.path.join(STORAGE_DIR, 'uploads')
+]
 for d in directories:
     os.makedirs(d, exist_ok=True)
 
@@ -146,6 +164,7 @@ class UserCreate(BaseModel):
     username: str
     email: EmailStr
     password: str
+    role: Optional[str] = "user"
 
 class UserUpdate(BaseModel):
     username: Optional[str] = None
@@ -178,7 +197,7 @@ async def create_user(user: UserCreate, db: Session = Depends(get_db), current_u
         username=user.username, 
         email=user.email, 
         hashed_password=hashed_password,
-        role="user",
+        role=user.role.lower() if user.role else "user",
         is_active=1
     )
     db.add(new_user)

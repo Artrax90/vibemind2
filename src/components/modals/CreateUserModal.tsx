@@ -13,19 +13,19 @@ export default function CreateUserModal({ isOpen, onClose, onCreate, initialData
   const [username, setUsername] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [role, setRole] = useState('User');
+  const [role, setRole] = useState('user');
 
   useEffect(() => {
     if (initialData) {
       setUsername(initialData.username || '');
       setEmail(initialData.email || '');
       setPassword(''); // Don't show existing password
-      setRole(initialData.role || 'User');
+      setRole(initialData.role?.toLowerCase() || 'user');
     } else {
       setUsername('');
       setEmail('');
       setPassword('');
-      setRole('User');
+      setRole('user');
     }
   }, [initialData, isOpen]);
 
@@ -70,8 +70,8 @@ export default function CreateUserModal({ isOpen, onClose, onCreate, initialData
               <div>
                 <label className="block text-sm text-muted-foreground mb-1">Role</label>
                 <select value={role} onChange={e => setRole(e.target.value)} className="w-full bg-background border border-border rounded-lg p-2 text-foreground focus:border-primary focus:ring-1 focus:ring-primary outline-none transition-all">
-                  <option value="User">User</option>
-                  <option value="Admin">Admin</option>
+                  <option value="user">User</option>
+                  <option value="admin">Admin</option>
                 </select>
               </div>
               <div className="flex justify-end space-x-3 pt-4">

@@ -262,7 +262,8 @@ async def start_bot(user_id: int, username: str, token: str, proxy_url: str = No
 
         logger.info(f"Запуск бота для {username} (ID: {user_id}). Прокси: {final_proxy_url or 'Direct'}")
         
-        session = AiohttpSession(proxy=final_proxy_url) if final_proxy_url else AiohttpSession()
+        timeout = aiohttp.ClientTimeout(total=30, connect=10)
+        session = AiohttpSession(proxy=final_proxy_url, timeout=timeout) if final_proxy_url else AiohttpSession(timeout=timeout)
         async with Bot(token=token, session=session) as bot:
             current_bots[user_id] = bot
             await dp.start_polling(bot, user_id=user_id, admin_id=admin_id)
@@ -323,9 +324,10 @@ async def test_bot_connection(token: str, admin_id: str = None, proxy_url: str =
             else:
                 final_proxy_url = f"{protocol}://{host}:{port}"
         
-        session = AiohttpSession(proxy=final_proxy_url) if final_proxy_url else AiohttpSession()
+        timeout = aiohttp.ClientTimeout(total=30, connect=10)
+        session = AiohttpSession(proxy=final_proxy_url, timeout=timeout) if final_proxy_url else AiohttpSession(timeout=timeout)
         async with Bot(token=token, session=session) as test_bot:
-            me = await asyncio.wait_for(test_bot.get_me(), timeout=10.0)
+            me = await asyncio.wait_for(test_bot.get_me(), timeout=15.0)
             if admin_id:
                 try:
                     await test_bot.send_message(chat_id=admin_id, text="✅ Проверка связи VibeMind успешна!")

@@ -897,6 +897,7 @@ export default function Settings({ onClose, theme, setTheme }: SettingsProps) {
                       <tr>
                         <th className="px-6 py-3">{t('settings.username')}</th>
                         <th className="px-6 py-3">{t('settings.email')}</th>
+                        <th className="px-6 py-3">Роль</th>
                         <th className="px-6 py-3">{t('settings.status')}</th>
                         <th className="px-6 py-3">{t('settings.action')}</th>
                       </tr>
@@ -904,13 +905,18 @@ export default function Settings({ onClose, theme, setTheme }: SettingsProps) {
                     <tbody>
                       {users.length === 0 ? (
                         <tr className="border-t border-border/50">
-                          <td colSpan={4} className="px-6 py-4 text-center text-muted-foreground">{t('settings.noUsers')}</td>
+                          <td colSpan={5} className="px-6 py-4 text-center text-muted-foreground">{t('settings.noUsers')}</td>
                         </tr>
                       ) : (
                         users.map((u, i) => (
                           <tr key={i} className="border-t border-border/50 hover:bg-secondary/50 transition-colors">
                             <td className="px-6 py-4 font-medium text-foreground">{u.username}</td>
                             <td className="px-6 py-4">{u.email}</td>
+                            <td className="px-6 py-4">
+                              <span className={`px-2 py-1 rounded text-xs ${u.role === 'admin' ? 'bg-primary/20 text-primary' : 'bg-secondary text-muted-foreground'}`}>
+                                {u.role === 'admin' ? 'Admin' : 'User'}
+                              </span>
+                            </td>
                             <td className="px-6 py-4"><span className="px-2 py-1 bg-accent/10 text-accent rounded text-xs">{t('settings.active')}</span></td>
                             <td className="px-6 py-4 flex space-x-3">
                               <button 
