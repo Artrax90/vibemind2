@@ -49,7 +49,14 @@ function SortableNoteItem({ note, activeNoteId, onSelectNote, onContextMenu }: a
     >
       <div className="flex items-center overflow-hidden flex-1">
         <FileText size={14} className={`mr-2 ml-[18px] flex-shrink-0 opacity-70 ${activeNoteId === note.id ? 'text-primary' : 'text-muted-foreground'}`} />
-        <span className="text-sm truncate">{note.title}</span>
+        <div className="flex flex-col min-w-0">
+          <span className="text-sm truncate">{note.title}</span>
+          {note.isShared && (
+            <span className="text-[10px] text-muted-foreground/60 truncate flex items-center">
+              <Share2 size={8} className="mr-1" /> {note.ownerUsername}
+            </span>
+          )}
+        </div>
       </div>
       <button 
         onClick={(e) => { e.stopPropagation(); onContextMenu(e, 'note', note.id); }}
@@ -89,7 +96,14 @@ function DroppableFolder({ folder, isExpanded, isSelected, isRenaming, renameVal
               />
             </form>
           ) : (
-            <span className="text-sm truncate">{folder.name}</span>
+            <div className="flex flex-col min-w-0">
+              <span className="text-sm truncate">{folder.name}</span>
+              {folder.isShared && (
+                <span className="text-[10px] text-muted-foreground/60 truncate flex items-center">
+                  <Share2 size={8} className="mr-1" /> {folder.ownerUsername}
+                </span>
+              )}
+            </div>
           )}
         </div>
         {!isRenaming && (

@@ -406,6 +406,10 @@ class NoteCreate(BaseModel):
     content: str | None = None
     folderId: str | None = None
 
+class NoteUpdate(BaseModel):
+    title: str | None = None
+    content: str | None = None
+
 class FolderCreate(BaseModel):
     id: str
     name: str
@@ -798,6 +802,7 @@ async def update_public_share(share_id: str, note_update: NoteUpdate, db: Sessio
         raise HTTPException(status_code=403, detail="This share is read-only")
         
     if share.resource_type == "note":
+        from .utils.embeddings import embedding_manager
         resource = db.query(Note).filter(Note.id == share.resource_id).first()
         if not resource:
             raise HTTPException(status_code=404, detail="Note not found")
@@ -806,6 +811,10 @@ async def update_public_share(share_id: str, note_update: NoteUpdate, db: Sessio
             resource.title = note_update.title
         if note_update.content is not None:
             resource.content = note_update.content
+            
+        if note_update.title is not None or note_update.content is not None:
+            text_to_embed = f"{resource.title}\n{resource.content or ''}"
+            resource.embedding = embedding_manager.get_vector(text_to_embed)
             
         db.commit()
         return {"status": "success"}
@@ -825,7 +834,23 @@ async def get_notes(db: Session = Depends(get_db), current_user: User = Depends(
             if note not in notes:
                 notes.append(note)
                 
-    return [{"id": n.id, "title": n.title, "content": n.content, "folderId": n.folderId} for n in notes]
+    result = []
+    for n in notes:
+        is_shared = n.user_id != current_user.id
+        owner_username = None
+        if is_shared:
+            owner = db.query(User).filter(User.id == n.user_id).first()
+            owner_username = owner.username if owner else "Unknown"
+            
+        result.append({
+            "id": n.id, 
+            "title": n.title, 
+            "content": n.content, 
+            "folderId": n.folderId,
+            "isShared": is_shared,
+            "ownerUsername": owner_username
+        })
+    return result
 
 @app.post("/api/notes")
 async def create_or_update_note(note: NoteCreate, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
@@ -920,41 +945,60 @@ async def export_notes(db: Session = Depends(get_db), current_user: User = Depen
 
 @app.post("/api/notes/import")
 async def import_notes(file: UploadFile = File(...), db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
-    """Импорт заметок из ZIP архива (Markdown)"""
+    """Импорт заметок из ZIP архива (Markdown) или TXT файла"""
     import io
     import zipfile
     
-    if not file.filename.endswith('.zip'):
-        raise HTTPException(status_code=400, detail="Only ZIP files are supported")
-        
-    content = await file.read()
-    zip_buffer = io.BytesIO(content)
-    
     imported_count = 0
+    content = await file.read()
+    
     try:
-        with zipfile.ZipFile(zip_buffer, "r") as zip_file:
-            for filename in zip_file.namelist():
-                if not filename.endswith('.md'):
-                    continue
+        if file.filename.endswith('.zip'):
+            zip_buffer = io.BytesIO(content)
+            with zipfile.ZipFile(zip_buffer, "r") as zip_file:
+                for filename in zip_file.namelist():
+                    if not (filename.endswith('.md') or filename.endswith('.txt')):
+                        continue
+                        
+                    file_content = zip_file.read(filename).decode('utf-8')
                     
-                file_content = zip_file.read(filename).decode('utf-8')
+                    # Parse title and content
+                    lines = file_content.split('\n')
+                    title = filename.rsplit('.', 1)[0]
+                    note_content = file_content
+                    
+                    if lines and lines[0].startswith('# '):
+                        title = lines[0][2:].strip()
+                        note_content = '\n'.join(lines[1:]).strip()
+                    
+                    new_note = Note(
+                        id=str(uuid.uuid4()),
+                        title=title,
+                        content=note_content,
+                        user_id=current_user.id
+                    )
+                    db.add(new_note)
+                    imported_count += 1
+        elif file.filename.endswith('.txt') or file.filename.endswith('.md'):
+            file_content = content.decode('utf-8')
+            lines = file_content.split('\n')
+            title = file.filename.rsplit('.', 1)[0]
+            note_content = file_content
+            
+            if lines and lines[0].startswith('# '):
+                title = lines[0][2:].strip()
+                note_content = '\n'.join(lines[1:]).strip()
                 
-                # Parse title and content
-                lines = file_content.split('\n')
-                title = filename.replace('.md', '')
-                content = file_content
-                
-                if lines and lines[0].startswith('# '):
-                    title = lines[0][2:].strip()
-                    content = '\n'.join(lines[1:]).strip()
-                
-                new_note = Note(
-                    title=title,
-                    content=content,
-                    user_id=current_user.id
-                )
-                db.add(new_note)
-                imported_count += 1
+            new_note = Note(
+                id=str(uuid.uuid4()),
+                title=title,
+                content=note_content,
+                user_id=current_user.id
+            )
+            db.add(new_note)
+            imported_count = 1
+        else:
+            raise HTTPException(status_code=400, detail="Only ZIP, MD, or TXT files are supported")
                 
         db.commit()
         return {"message": f"Successfully imported {imported_count} notes", "count": imported_count}
@@ -1003,19 +1047,54 @@ async def semantic_search_notes(query: str, db: Session = Depends(get_db), curre
 
 @app.get("/api/notes/{note_id}")
 async def get_note(note_id: str, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
-    note = db.query(Note).filter(Note.id == note_id, Note.user_id == current_user.id).first()
+    note = db.query(Note).filter(Note.id == note_id).first()
     if not note:
         raise HTTPException(status_code=404, detail="Note not found")
-    return {"id": note.id, "title": note.title, "content": note.content, "folderId": note.folderId}
+    
+    if note.user_id != current_user.id:
+        # Check if shared
+        share = db.query(Share).filter(
+            Share.resource_id == note_id,
+            Share.resource_type == "note",
+            Share.target_user_id == current_user.id
+        ).first()
+        if not share:
+            raise HTTPException(status_code=403, detail="Not authorized to view this note")
+            
+    is_shared = note.user_id != current_user.id
+    owner_username = None
+    if is_shared:
+        owner = db.query(User).filter(User.id == note.user_id).first()
+        owner_username = owner.username if owner else "Unknown"
+        
+    return {
+        "id": note.id, 
+        "title": note.title, 
+        "content": note.content, 
+        "folderId": note.folderId,
+        "isShared": is_shared,
+        "ownerUsername": owner_username
+    }
 
 @app.patch("/api/notes/{note_id}")
 async def patch_note(note_id: str, note_update: NoteUpdate, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     from .utils.embeddings import embedding_manager
     
-    db_note = db.query(Note).filter(Note.id == note_id, Note.user_id == current_user.id).first()
+    db_note = db.query(Note).filter(Note.id == note_id).first()
     if not db_note:
         raise HTTPException(status_code=404, detail="Note not found")
         
+    if db_note.user_id != current_user.id:
+        # Check if shared with write permission
+        share = db.query(Share).filter(
+            Share.resource_id == note_id,
+            Share.resource_type == "note",
+            Share.target_user_id == current_user.id,
+            Share.permission == "write"
+        ).first()
+        if not share:
+            raise HTTPException(status_code=403, detail="Not authorized to edit this note")
+            
     # Update fields if provided
     if note_update.title is not None:
         db_note.title = note_update.title
@@ -1031,23 +1110,80 @@ async def patch_note(note_id: str, note_update: NoteUpdate, db: Session = Depend
         db_note.embedding = embedding_manager.get_vector(text_to_embed)
     
     db.commit()
-    return {"id": db_note.id, "title": db_note.title, "content": db_note.content, "folderId": db_note.folderId}
+    
+    is_shared = db_note.user_id != current_user.id
+    owner_username = None
+    if is_shared:
+        owner = db.query(User).filter(User.id == db_note.user_id).first()
+        owner_username = owner.username if owner else "Unknown"
+        
+    return {
+        "id": db_note.id, 
+        "title": db_note.title, 
+        "content": db_note.content, 
+        "folderId": db_note.folderId,
+        "isShared": is_shared,
+        "ownerUsername": owner_username
+    }
 
 @app.delete("/api/notes/{note_id}")
 async def delete_note(note_id: str, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
-    db.query(Note).filter(Note.id == note_id, Note.user_id == current_user.id).delete()
+    db_note = db.query(Note).filter(Note.id == note_id).first()
+    if not db_note:
+        return {"status": "success"} # Already gone
+        
+    if db_note.user_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Only the owner can delete a note")
+        
+    db.delete(db_note)
     db.commit()
     return {"status": "success"}
 
 @app.get("/api/folders")
 async def get_folders(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     folders = db.query(Folder).filter(Folder.user_id == current_user.id).all()
-    return [{"id": f.id, "name": f.name, "parentId": f.parentId} for f in folders]
+    
+    shared_folders_records = db.query(Share).filter(Share.target_user_id == current_user.id, Share.resource_type == "folder").all()
+    shared_folder_ids = [share.resource_id for share in shared_folders_records]
+    
+    if shared_folder_ids:
+        shared_folders = db.query(Folder).filter(Folder.id.in_(shared_folder_ids)).all()
+        for folder in shared_folders:
+            if folder not in folders:
+                folders.append(folder)
+                
+    result = []
+    for f in folders:
+        is_shared = f.user_id != current_user.id
+        owner_username = None
+        if is_shared:
+            owner = db.query(User).filter(User.id == f.user_id).first()
+            owner_username = owner.username if owner else "Unknown"
+            
+        result.append({
+            "id": f.id, 
+            "name": f.name, 
+            "parentId": f.parentId,
+            "isShared": is_shared,
+            "ownerUsername": owner_username
+        })
+    return result
 
 @app.post("/api/folders")
 async def create_or_update_folder(folder: FolderCreate, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
-    db_folder = db.query(Folder).filter(Folder.id == folder.id, Folder.user_id == current_user.id).first()
+    db_folder = db.query(Folder).filter(Folder.id == folder.id).first()
     if db_folder:
+        if db_folder.user_id != current_user.id:
+            # Check if shared with write permission
+            share = db.query(Share).filter(
+                Share.resource_id == folder.id,
+                Share.resource_type == "folder",
+                Share.target_user_id == current_user.id,
+                Share.permission == "write"
+            ).first()
+            if not share:
+                raise HTTPException(status_code=403, detail="Not authorized to edit this folder")
+        
         db_folder.name = folder.name
         db_folder.parentId = folder.parentId
     else:
@@ -1063,7 +1199,15 @@ async def create_or_update_folder(folder: FolderCreate, db: Session = Depends(ge
 
 @app.delete("/api/folders/{folder_id}")
 async def delete_folder(folder_id: str, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
-    db.query(Folder).filter(Folder.id == folder_id, Folder.user_id == current_user.id).delete()
+    db_folder = db.query(Folder).filter(Folder.id == folder_id).first()
+    if not db_folder:
+        return {"status": "success"}
+        
+    if db_folder.user_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Only the owner can delete a folder")
+        
+    db.delete(db_folder)
+    # Also delete notes in this folder that belong to the user
     db.query(Note).filter(Note.folderId == folder_id, Note.user_id == current_user.id).delete()
     db.commit()
     return {"status": "success"}

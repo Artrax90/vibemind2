@@ -18,12 +18,16 @@ export type Note = {
   title: string;
   content: string;
   folderId?: string;
+  isShared?: boolean;
+  ownerUsername?: string;
 };
 
 export type Folder = {
   id: string;
   name: string;
   parentId?: string;
+  isShared?: boolean;
+  ownerUsername?: string;
 };
 
 export default function App() {
@@ -228,7 +232,7 @@ export default function App() {
           onOpenSearch={() => { setShowSearch(true); setIsMobileMenuOpen(false); }}
           onLogout={() => {
             localStorage.removeItem('access_token');
-            setIsAuthenticated(false);
+            setToken(null);
           }}
           onNotesChange={setNotes}
           onFoldersChange={setFolders}
