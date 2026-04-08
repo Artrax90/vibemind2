@@ -214,26 +214,41 @@ async def parse_commands_llm(user_id: int, text: str, notes: list[dict] = None) 
     try:
         config = db.query(Config).filter(Config.user_id == user_id).first()
         api_key = config.api_key if config else os.getenv("OPENAI_API_KEY")
+        provider = config.llm_provider if config else "openai"
+        model = config.model_name or ("gemini-1.5-flash" if provider == "gemini" else "gpt-4o-mini")
         
         if not api_key:
             logger.warning("API key not found, falling back to regex parser")
             return parse_commands(text)
             
-        # Use OpenAI for parsing as per user's yesterday logic
-        client = AsyncOpenAI(api_key=api_key)
-        
         user_content = f"notes:\n{json.dumps(notes, ensure_ascii=False)}\n\n\"{text}\""
-        
-        response = await client.chat.completions.create(
-            model="gpt-4o-mini",
-            messages=[
-                {"role": "system", "content": SYSTEM_PROMPT},
-                {"role": "user", "content": user_content}
-            ],
-            temperature=0.0
-        )
-        
-        content = response.choices[0].message.content.strip()
+        content = ""
+
+        if provider == "gemini":
+            url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={api_key}"
+            async with aiohttp.ClientSession() as session:
+                payload = {
+                    "contents": [{"parts": [{"text": f"{SYSTEM_PROMPT}\n\n{user_content}"}]}],
+                    "generationConfig": {"temperature": 0.0}
+                }
+                async with session.post(url, json=payload, timeout=30) as resp:
+                    if resp.status == 200:
+                        data = await resp.json()
+                        content = data['candidates'][0]['content']['parts'][0]['text']
+                    else:
+                        resp_text = await resp.text()
+                        raise Exception(f"Gemini error: {resp_text}")
+        else:
+            client = AsyncOpenAI(api_key=api_key)
+            response = await client.chat.completions.create(
+                model=model,
+                messages=[
+                    {"role": "system", "content": SYSTEM_PROMPT},
+                    {"role": "user", "content": user_content}
+                ],
+                temperature=0.0
+            )
+            content = response.choices[0].message.content.strip()
         
         if content.startswith("```json"):
             content = content[7:-3].strip()
@@ -348,9 +363,18 @@ def parse_commands(text: str) -> list[dict]:
         elif part.startswith("найди") or part.startswith("покажи") or part.startswith("что есть про"):
             query = re.sub(r'^(найди|покажи|что есть про)\s*', '', part).strip()
             query = clean_garbage(query)
+            # Basic transliteration for common tech terms
+            mapping = {"докер": "docker", "кубер": "kubernetes", "гит": "git", "питон": "python", "джава": "java", "нода": "node"}
+            if query.lower() in mapping:
+                query = mapping[query.lower()]
             commands.append({"type": "SEARCH", "query": query})
         else:
-            commands.append({"type": "SEARCH", "query": clean_garbage(part)})
+            query = clean_garbage(part)
+            # Basic transliteration for common tech terms
+            mapping = {"докер": "docker", "кубер": "kubernetes", "гит": "git", "питон": "python", "джава": "java", "нода": "node"}
+            if query.lower() in mapping:
+                query = mapping[query.lower()]
+            commands.append({"type": "SEARCH", "query": query})
     return commands
 
 STT_HOST = "192.168.1.196"
