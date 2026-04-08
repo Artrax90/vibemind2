@@ -265,7 +265,27 @@ export default function Editor({ note, onUpdate, onWikilinkClick, onTagClick, is
   };
 
   const insertOrderedList = () => {
-    insertMarkdown('1. ');
+    if (!textareaRef.current) return;
+    const start = textareaRef.current.selectionStart;
+    const end = textareaRef.current.selectionEnd;
+    const selection = content.substring(start, end);
+    
+    if (selection.includes('\n')) {
+      const lines = selection.split('\n');
+      const numberedLines = lines.map((line, i) => `${i + 1}. ${line}`).join('\n');
+      const newContent = content.substring(0, start) + numberedLines + content.substring(end);
+      setContent(newContent);
+      
+      setTimeout(() => {
+        if (textareaRef.current) {
+          const newPos = start + numberedLines.length;
+          textareaRef.current.setSelectionRange(newPos, newPos);
+          textareaRef.current.focus();
+        }
+      }, 0);
+    } else {
+      insertMarkdown('1. ');
+    }
   };
 
   const insertBold = () => {
@@ -429,6 +449,11 @@ export default function Editor({ note, onUpdate, onWikilinkClick, onTagClick, is
                     )
                   },
                   p({children}) {
+                    // Check if children is a single string that looks like an ordered list item
+                    // ReactMarkdown with remarkGfm usually handles lists, but our custom 'p' renderer
+                    // might be interfering if it's not a proper list structure in the AST.
+                    // However, the best way is to let ReactMarkdown handle 'ol' and 'li'.
+                    
                     if (typeof children === 'string') {
                       return <p dangerouslySetInnerHTML={{ __html: renderContent(children) }} />;
                     }
@@ -441,6 +466,25 @@ export default function Editor({ note, onUpdate, onWikilinkClick, onTagClick, is
                       })}</p>;
                     }
                     return <p>{children}</p>;
+                  },
+                  ol({children}) {
+                    return <ol className="list-decimal list-inside my-4 space-y-1">{children}</ol>;
+                  },
+                  ul({children}) {
+                    return <ul className="list-disc list-inside my-4 space-y-1">{children}</ul>;
+                  },
+                  li({children}) {
+                    // We need to apply renderContent to text inside li as well
+                    return (
+                      <li className="text-foreground/80">
+                        {React.Children.map(children, child => {
+                          if (typeof child === 'string') {
+                            return <span dangerouslySetInnerHTML={{ __html: renderContent(child) }} />;
+                          }
+                          return child;
+                        })}
+                      </li>
+                    );
                   },
                   table({children}) {
                     return (
