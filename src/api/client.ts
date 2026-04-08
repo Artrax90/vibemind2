@@ -128,10 +128,21 @@ export const api = {
         headers: getAuthHeaders()
       });
       return await handleResponse(res, [
-        { id: '1', username: 'admin', email: 'admin@vibemind.local', role: 'Admin' }
+        { id: '1', username: 'admin', email: 'admin@vibemind.local', role: 'admin' }
       ]);
     } catch (e) {
-      return [{ id: '1', username: 'admin', email: 'admin@vibemind.local', role: 'Admin' }];
+      return [{ id: '1', username: 'admin', email: 'admin@vibemind.local', role: 'admin' }];
+    }
+  },
+
+  async getLogs(lines: number = 100) {
+    try {
+      const res = await fetch(`${BASE_URL}/api/admin/logs?lines=${lines}`, {
+        headers: getAuthHeaders()
+      });
+      return await handleResponse(res, { logs: 'Failed to fetch logs' });
+    } catch (e) {
+      return { logs: 'Network error' };
     }
   },
   

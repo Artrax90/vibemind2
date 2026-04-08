@@ -292,16 +292,46 @@ async def restart_bot(user_id: int, username: str, token: str, proxy_url: str = 
 
 async def test_bot_connection(token: str, admin_id: str = None, proxy_url: str = None, proxy_config: dict = None):
     try:
-        # Аналогичная логика прокси как в start_bot
         final_proxy_url = None
+        # Handle proxy_url if it's a string representation of a dict
+        if isinstance(proxy_url, str) and proxy_url.strip().startswith("{"):
+            try: proxy_url = ast.literal_eval(proxy_url)
+            except: pass
+
         if isinstance(proxy_url, str) and (proxy_url.startswith("http") or proxy_url.startswith("socks")):
             final_proxy_url = proxy_url
+        elif isinstance(proxy_url, dict) and proxy_url.get("host"):
+            p = proxy_url
+            protocol = str(p.get("protocol", "http")).lower()
+            host = str(p.get("host"))
+            port = p.get("port")
+            user = p.get("username")
+            password = p.get("password")
+            if user and password:
+                final_proxy_url = f"{protocol}://{user}:{password}@{host}:{port}"
+            else:
+                final_proxy_url = f"{protocol}://{host}:{port}"
+        elif isinstance(proxy_config, dict) and proxy_config.get("host"):
+            p = proxy_config
+            protocol = str(p.get("protocol", "http")).lower()
+            host = str(p.get("host"))
+            port = p.get("port")
+            user = p.get("username")
+            password = p.get("password")
+            if user and password:
+                final_proxy_url = f"{protocol}://{user}:{password}@{host}:{port}"
+            else:
+                final_proxy_url = f"{protocol}://{host}:{port}"
         
         session = AiohttpSession(proxy=final_proxy_url) if final_proxy_url else AiohttpSession()
         async with Bot(token=token, session=session) as test_bot:
             me = await asyncio.wait_for(test_bot.get_me(), timeout=10.0)
             if admin_id:
-                await test_bot.send_message(chat_id=admin_id, text="✅ Проверка связи VibeMind успешна!")
+                try:
+                    await test_bot.send_message(chat_id=admin_id, text="✅ Проверка связи VibeMind успешна!")
+                except Exception as send_err:
+                    logger.warning(f"Could not send test message to admin_id {admin_id}: {send_err}")
             return True, f"✅ Успешно: @{me.username}"
     except Exception as e:
+        logger.error(f"Ошибка проверки бота: {e}")
         return False, f"❌ Ошибка: {str(e)}"

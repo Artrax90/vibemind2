@@ -26,6 +26,7 @@ class User(Base):
     username = Column(String, unique=True, index=True)
     email = Column(String, unique=True, index=True, nullable=True)
     hashed_password = Column(String, nullable=False)
+    role = Column(String, default="user") # 'admin' or 'user'
     is_active = Column(Integer, default=1)
 
 class Folder(Base):

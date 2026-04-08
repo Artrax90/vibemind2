@@ -18,7 +18,16 @@ from .models import Base, Config, User, Note, Folder, Share
 from . import bot as bot_module
 from .bot import restart_bot, test_bot_connection
 
-logging.basicConfig(level=logging.INFO)
+# Настройка логирования
+LOG_FILE = "/app/storage/logs/vibemind.log"
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.FileHandler(LOG_FILE),
+        logging.StreamHandler()
+    ]
+)
 logger = logging.getLogger(__name__)
 
 # JWT Settings
@@ -87,6 +96,14 @@ try:
                 # Assign existing config to admin (id=1)
                 conn.execute(text("UPDATE configs SET user_id = 1 WHERE user_id IS NULL;"))
                 logger.info("Added user_id column to configs table")
+            
+            # Migrate User table
+            user_columns = [c['name'] for c in inspector.get_columns('users')]
+            if 'role' not in user_columns:
+                conn.execute(text("ALTER TABLE users ADD COLUMN role VARCHAR DEFAULT 'user';"))
+                # Set admin user role
+                conn.execute(text("UPDATE users SET role = 'admin' WHERE username = 'admin';"))
+                logger.info("Added role column to users table")
                 
             conn.commit()
 except Exception as e:
@@ -139,6 +156,7 @@ class UserResponse(BaseModel):
     id: int
     username: str
     email: EmailStr | None = None
+    role: str
     is_active: bool
 
     class Config:
@@ -149,7 +167,7 @@ def get_password_hash(password: str) -> str:
 
 @app.post("/api/users", response_model=UserResponse, status_code=201)
 async def create_user(user: UserCreate, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
-    if current_user.username != "admin":
+    if current_user.role != "admin":
         raise HTTPException(status_code=403, detail="Only admin can create users")
     existing_user = db.query(User).filter(User.email == user.email).first()
     if existing_user:
@@ -160,6 +178,7 @@ async def create_user(user: UserCreate, db: Session = Depends(get_db), current_u
         username=user.username, 
         email=user.email, 
         hashed_password=hashed_password,
+        role="user",
         is_active=1
     )
     db.add(new_user)
@@ -167,20 +186,36 @@ async def create_user(user: UserCreate, db: Session = Depends(get_db), current_u
     db.refresh(new_user)
     return new_user
 
+@app.get("/api/admin/logs")
+async def get_logs(lines: int = 100, current_user: User = Depends(get_current_user)):
+    if current_user.role != "admin":
+        raise HTTPException(status_code=403, detail="Only admin can view logs")
+    
+    try:
+        if not os.path.exists(LOG_FILE):
+            return {"logs": "Log file not found"}
+            
+        with open(LOG_FILE, "r") as f:
+            all_lines = f.readlines()
+            last_lines = all_lines[-lines:]
+            return {"logs": "".join(last_lines)}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 @app.get("/api/users/me", response_model=UserResponse)
 async def get_users_me(current_user: User = Depends(get_current_user)):
     return current_user
 
 @app.get("/api/users", response_model=List[UserResponse])
 async def get_users(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
-    if current_user.username != "admin":
+    if current_user.role != "admin":
         raise HTTPException(status_code=403, detail="Only admin can view users")
     users = db.query(User).all()
     return users
 
 @app.patch("/api/users/{user_id}", response_model=UserResponse)
 async def update_user(user_id: int, user_update: UserUpdate, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
-    if current_user.username != "admin" and current_user.id != user_id:
+    if current_user.role != "admin" and current_user.id != user_id:
         raise HTTPException(status_code=403, detail="Not enough permissions")
     user = db.query(User).filter(User.id == user_id).first()
     if not user:
@@ -199,7 +234,7 @@ async def update_user(user_id: int, user_update: UserUpdate, db: Session = Depen
 
 @app.delete("/api/users/{user_id}", status_code=204)
 async def delete_user(user_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
-    if current_user.username != "admin":
+    if current_user.role != "admin":
         raise HTTPException(status_code=403, detail="Only admin can delete users")
     user = db.query(User).filter(User.id == user_id).first()
     if not user:
@@ -1259,14 +1294,19 @@ async def startup_event():
     try:
         # 1. Создание дефолтного админа, если таблица пуста
         try:
-            user_count = db.query(User).count()
-            if user_count == 0:
-                logger.info("Таблица пользователей пуста. Создаем дефолтного администратора...")
+            admin_user = db.query(User).filter(User.username == "admin").first()
+            if not admin_user:
+                logger.info("Администратор не найден. Создаем дефолтного администратора...")
                 hashed_admin = pwd_context.hash("admin")
-                default_admin = User(username="admin", hashed_password=hashed_admin)
+                default_admin = User(username="admin", hashed_password=hashed_admin, role="admin")
                 db.add(default_admin)
                 db.commit()
                 logger.info("Дефолтный администратор создан (admin / admin).")
+            elif admin_user.role != "admin":
+                logger.info("Обновляем роль администратора...")
+                admin_user.role = "admin"
+                db.commit()
+                logger.info("Роль администратора обновлена.")
         except Exception as e:
             logger.error(f"Ошибка при проверке/создании пользователей: {e}")
             db.rollback()

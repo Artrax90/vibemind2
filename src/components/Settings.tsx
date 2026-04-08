@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { X, Globe, Shield, User, Download, Upload, Cpu, Webhook, MessageSquare, Plus, Save, Trash2, CheckCircle, AlertCircle, Database, Edit2, Server, Lock, Key, Sun, Moon } from 'lucide-react';
+import { X, Globe, Shield, User, Download, Upload, Cpu, Webhook, MessageSquare, Plus, Save, Trash2, CheckCircle, AlertCircle, Database, Edit2, Server, Lock, Key, Sun, Moon, Terminal, RefreshCw } from 'lucide-react';
 import CreateUserModal from './modals/CreateUserModal';
 import AddDBModal from './modals/AddDBModal';
 import { api } from '../api/client';
@@ -14,9 +14,11 @@ type SettingsProps = {
 
 export default function Settings({ onClose, theme, setTheme }: SettingsProps) {
   const { language, setLanguage, t } = useLanguage();
-  const [activeTab, setActiveTab] = useState<'general' | 'integrations' | 'bots' | 'users' | 'profile'>('general');
+  const [activeTab, setActiveTab] = useState<'general' | 'integrations' | 'bots' | 'users' | 'profile' | 'logs'>('general');
   const [currentUser, setCurrentUser] = useState<any>(null);
   const [newPassword, setNewPassword] = useState('');
+  const [logs, setLogs] = useState('');
+  const [isLoadingLogs, setIsLoadingLogs] = useState(false);
   
   // Proxy State
   const [proxyConfig, setProxyConfig] = useState({
@@ -92,8 +94,11 @@ export default function Settings({ onClose, theme, setTheme }: SettingsProps) {
   }, []);
 
   useEffect(() => {
-    if (activeTab === 'users') {
+    if (activeTab === 'users' && currentUser?.role === 'admin') {
       api.getUsers().then(setUsers).catch(console.error);
+    }
+    if (activeTab === 'logs' && currentUser?.role === 'admin') {
+      fetchLogs();
     }
     if (activeTab === 'integrations') {
       fetch('/api/external-db')
@@ -101,7 +106,19 @@ export default function Settings({ onClose, theme, setTheme }: SettingsProps) {
         .then(data => setExternalDbs(data.dbs))
         .catch(console.error);
     }
-  }, [activeTab]);
+  }, [activeTab, currentUser]);
+
+  const fetchLogs = async () => {
+    setIsLoadingLogs(true);
+    try {
+      const response = await api.getLogs();
+      setLogs(response.logs);
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setIsLoadingLogs(false);
+    }
+  };
 
   // Poll bot status
   useEffect(() => {
@@ -340,9 +357,14 @@ export default function Settings({ onClose, theme, setTheme }: SettingsProps) {
             <User size={18} className="mr-3" /> {t('settings.profile') || 'Profile'}
           </button>
           {currentUser?.role === 'admin' && (
-            <button onClick={() => setActiveTab('users')} className={`w-full flex items-center px-4 py-3 rounded-lg transition-colors ${activeTab === 'users' ? 'bg-primary/20 text-primary' : 'text-muted-foreground hover:bg-secondary hover:text-foreground'}`}>
-              <Shield size={18} className="mr-3" /> {t('settings.users')}
-            </button>
+            <>
+              <button onClick={() => setActiveTab('users')} className={`w-full flex items-center px-4 py-3 rounded-lg transition-colors ${activeTab === 'users' ? 'bg-primary/20 text-primary' : 'text-muted-foreground hover:bg-secondary hover:text-foreground'}`}>
+                <Shield size={18} className="mr-3" /> {t('settings.users')}
+              </button>
+              <button onClick={() => setActiveTab('logs')} className={`w-full flex items-center px-4 py-3 rounded-lg transition-colors ${activeTab === 'logs' ? 'bg-primary/20 text-primary' : 'text-muted-foreground hover:bg-secondary hover:text-foreground'}`}>
+                <Terminal size={18} className="mr-3" /> {t('settings.logs') || 'Logs'}
+              </button>
+            </>
           )}
         </div>
 
@@ -834,6 +856,28 @@ export default function Settings({ onClose, theme, setTheme }: SettingsProps) {
                       {t('settings.updatePassword') || 'Update Password'}
                     </button>
                   </div>
+                </div>
+              </div>
+            )}
+
+            {activeTab === 'logs' && currentUser?.role === 'admin' && (
+              <div className="space-y-6 flex flex-col h-full">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-lg font-semibold text-foreground">{t('settings.logs') || 'Logs'}</h3>
+                  <button 
+                    onClick={fetchLogs}
+                    disabled={isLoadingLogs}
+                    className="p-2 text-muted-foreground hover:text-foreground rounded-lg hover:bg-secondary transition-colors"
+                  >
+                    <RefreshCw size={18} className={isLoadingLogs ? 'animate-spin' : ''} />
+                  </button>
+                </div>
+                <div className="flex-1 bg-black/50 rounded-lg border border-border/50 p-4 font-mono text-xs overflow-auto scrollbar-thin max-h-[500px]">
+                  {logs ? (
+                    <pre className="text-green-500/80 whitespace-pre-wrap">{logs}</pre>
+                  ) : (
+                    <div className="text-muted-foreground italic">{t('settings.noLogs') || 'No logs available'}</div>
+                  )}
                 </div>
               </div>
             )}
