@@ -1,23 +1,28 @@
-import os
-import logging
 import asyncio
-import uuid
-import json
-import re
-import html
+import logging
 import traceback
-import aiohttp
-from datetime import datetime, timedelta
-from typing import Dict, Any, List, Optional
-from aiogram import Bot, Dispatcher, types, F
-from aiogram.filters import Command
-from aiogram.client.session.aiohttp import AiohttpSession
-from aiogram.types import FSInputFile
-from jose import jwt
 import ast
-import httpx
+import os
+import uuid
+import re
+import json
+import difflib
+import html
 import io
 import base64
+from typing import Dict, Any, List, Optional
+from datetime import datetime, timedelta
+from jose import jwt
+from aiogram import Bot, Dispatcher, types, F
+from aiogram.filters import Command
+from aiogram.types import FSInputFile
+from aiogram.client.session.aiohttp import AiohttpSession
+import aiohttp
+import subprocess
+from wyoming.asr import Transcribe, Transcript
+from wyoming.audio import AudioChunk, AudioStart, AudioStop
+from wyoming.event import async_read_event, async_write_event
+from openai import AsyncOpenAI
 from sqlalchemy.orm import Session
 from ..database import SessionLocal
 from .models import Config, User
@@ -26,18 +31,173 @@ from .models import Config, User
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Конфигурация JWT (должна совпадать с FastAPI)
+# JWT Settings (must match main.py)
 SECRET_KEY = os.getenv("ENCRYPTION_KEY", "fallback-zero-config-secret-key-change-in-production")
 ALGORITHM = "HS256"
 
-# Инициализация aiogram
-# В aiogram 3.x Dispatcher может обслуживать несколько ботов
-dp = Dispatcher()
+SYSTEM_PROMPT = """Ты — интеллектуальный парсер голосовых команд для заметок.
+Возвращаешь только JSON.
+
+---
+# 📌 ТИПЫ
+* CREATE
+* UPDATE
+* SEARCH
+
+---
+# 🧠 ВХОД
+* text (команда пользователя)
+* notes (массив заметок)
+
+---
+# ❗ КРИТИЧЕСКИЕ ПРАВИЛА
+## 1. 🚫 ЗАПРЕЩЕНО ДУБЛИРОВАТЬ TITLE В CONTENT
+При CREATE:
+❌ НЕЛЬЗЯ:
+"content": "фильмы"
+✅ ВСЕГДА:
+"content": ""
+
+## 2. 🔥 SEARCH — ТОЛЬКО ЛУЧШИЕ РЕЗУЛЬТАТЫ
+Ты НЕ возвращаешь всё подряд.
+Правила:
+* максимум 3 результата
+* только реально релевантные
+* если найден 1 идеальный → вернуть только 1
+* если слабое совпадение → НЕ возвращать
+
+---
+# 🧠 ШАГ 1. НОРМАЛИЗАЦИЯ
+## УДАЛИ МУСОР:
+* заметку, заметка
+* в неё, неё, нее, не неё, не нее
+* добавь в, добавь туда
+* что-то, что то, про, пожалуйста
+
+## ОЧИСТИ append:
+"неё форсаж" → "форсаж"
+"в шашлык маринад мясо" → "маринад мясо"
+
+## ИСПРАВЬ ПАДЕЖИ:
+* покупке → покупки
+* машиной → машины
+
+## УДАЛИ ДУБЛИ:
+"покупки молоко" → "молоко"
+
+---
+# 🧠 ШАГ 2. ТИП
+* создай → CREATE
+* добавь → UPDATE
+* найди → SEARCH
+
+---
+# 🧠 ШАГ 3. CREATE
+Название = очищенная сущность
+{
+  "type": "CREATE",
+  "title": "<title>",
+  "content": ""
+}
+
+---
+# 🧠 ШАГ 4. UPDATE
+1. Найди заметку по:
+* точному совпадению
+* затем по смыслу
+
+## ЕСЛИ НАШЁЛ:
+{
+  "type": "UPDATE",
+  "note_id": "<id>",
+  "append": "<чистый текст>"
+}
+
+## ЕСЛИ НЕ НАШЁЛ:
+👉 ОБЯЗАТЕЛЬНО СОЗДАЙ
+[
+  {
+    "type": "CREATE",
+    "title": "<title>",
+    "content": ""
+  },
+  {
+    "type": "UPDATE",
+    "append": "<текст>"
+  }
+]
+
+---
+# 🧠 ШАГ 5. SEARCH
+1. Очисти запрос:
+"найди что-то про шашлык" → "шашлык"
+
+2. Отфильтруй заметки:
+* оставь только релевантные
+* максимум 3
+* сортируй по релевантности
+
+## ФОРМАТ:
+{
+  "type": "SEARCH",
+  "query": "<запрос>"
+}
+
+---
+# 🧪 ПРИМЕРЫ
+## CREATE
+"создай заметку фильмы"
+→
+{
+  "type": "CREATE",
+  "title": "фильмы",
+  "content": ""
+}
+
+## UPDATE
+"добавь фильмы форсаж"
+→
+{
+  "type": "UPDATE",
+  "note_id": "1",
+  "append": "форсаж"
+}
+
+## CREATE + UPDATE
+"добавь музыка рок"
+→
+[
+  {
+    "type": "CREATE",
+    "title": "музыка",
+    "content": ""
+  },
+  {
+    "type": "UPDATE",
+    "append": "рок"
+  }
+]
+
+## SEARCH (важно)
+notes:
+* кисель рецепт
+* фильмы
+* покупки
+"найди что-то про кисель"
+→
+{
+  "type": "SEARCH",
+  "query": "кисель"
+}
+(вернётся только релевантное, не всё подряд)
+
+Всегда возвращай только JSON."""
 
 # Глобальные переменные для управления ботами
 current_bots: Dict[int, Bot] = {}
 bot_tasks: Dict[int, asyncio.Task] = {}
 user_usernames: Dict[int, str] = {}
+dp = Dispatcher()
 
 async def get_user_token(user_id: int) -> str:
     """Генерация JWT токена для пользователя"""
@@ -46,119 +206,271 @@ async def get_user_token(user_id: int) -> str:
     to_encode = {"sub": username, "exp": expire}
     return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
 
+async def parse_commands_llm(user_id: int, text: str, notes: list[dict] = None) -> list[dict]:
+    if notes is None:
+        notes = []
+        
+    db = SessionLocal()
+    try:
+        config = db.query(Config).filter(Config.user_id == user_id).first()
+        api_key = config.api_key if config else os.getenv("OPENAI_API_KEY")
+        
+        if not api_key:
+            logger.warning("API key not found, falling back to regex parser")
+            return parse_commands(text)
+            
+        # Use OpenAI for parsing as per user's yesterday logic
+        client = AsyncOpenAI(api_key=api_key)
+        
+        user_content = f"notes:\n{json.dumps(notes, ensure_ascii=False)}\n\n\"{text}\""
+        
+        response = await client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[
+                {"role": "system", "content": SYSTEM_PROMPT},
+                {"role": "user", "content": user_content}
+            ],
+            temperature=0.0
+        )
+        
+        content = response.choices[0].message.content.strip()
+        
+        if content.startswith("```json"):
+            content = content[7:-3].strip()
+        elif content.startswith("```"):
+            content = content[3:-3].strip()
+            
+        parsed = json.loads(content)
+        if isinstance(parsed, dict):
+            return [parsed]
+        elif isinstance(parsed, list):
+            return parsed
+        return []
+    except Exception as e:
+        logger.error(f"LLM Parsing error: {e}")
+        return parse_commands(text)
+    finally:
+        db.close()
+
+def normalize_intent(text: str) -> str:
+    if not text:
+        return text
+    words = text.split()
+    if not words:
+        return text
+        
+    first_word = words[0].lower()
+    intents = {
+        "создай": "создай", "создать": "создай", 
+        "добавь": "добавь", "добавить": "добавь", 
+        "удали": "удали", "удалить": "удали", 
+        "найди": "найди", "найти": "найди", "поиск": "найди"
+    }
+    
+    best_match = None
+    best_ratio = 0
+    
+    for intent in intents.keys():
+        ratio = difflib.SequenceMatcher(None, first_word, intent).ratio()
+        if ratio > best_ratio:
+            best_ratio = ratio
+            best_match = intents[intent]
+            
+    if best_ratio > 0.8:
+        words[0] = best_match
+        return " ".join(words)
+    return text
+
+def parse_commands(text: str) -> list[dict]:
+    text = text.lower()
+    text = normalize_intent(text)
+    
+    commands = []
+    action_verbs = ["добавь", "создай", "найди", "удали", "сделай", "напиши", "купи", "скажи", "покажи"]
+    
+    def is_valid_title(title: str) -> bool:
+        if not title: return False
+        if len(title) > 40: return False
+        if title in action_verbs: return False
+        return True
+
+    def clean_garbage(t: str) -> str:
+        garbage = ["пожалуйста", "мне", "сделай", "хочу", "можешь", "заметку", "заметка", "с названием", "в неё", "в нее", "туда", "по названию", "что-то", "про", "о", "об", "расскажи", "покажи"]
+        for word in garbage:
+            t = re.sub(rf'\b{word}\b', '', t)
+        return re.sub(r'\s+', ' ', t).strip()
+
+    create_update_match = re.search(r'^(создай.*?|создать.*?|новая.*?)\s+(?:и\s+)?(добавь\s+.*)$', text)
+    if create_update_match:
+        parts = [create_update_match.group(1), create_update_match.group(2)]
+    else:
+        parts = [text]
+        
+    for i, part in enumerate(parts):
+        part = part.strip()
+        if not part: continue
+            
+        if part.startswith("создай") or part.startswith("создать") or part.startswith("новая"):
+            title = re.sub(r'^(создай|создать|новую|новая)\s*', '', part).strip()
+            title = clean_garbage(title)
+            if not is_valid_title(title):
+                commands.append({"type": "SEARCH", "query": clean_garbage(part)})
+            else:
+                commands.append({"type": "CREATE", "title": title, "content": ""})
+        elif part.startswith("добавь"):
+            if i > 0 and commands and commands[-1]["type"] == "CREATE":
+                append_text = re.sub(r'^добавь\s+(в\s+)?', '', part).strip()
+                append_text = clean_garbage(append_text)
+                commands.append({"type": "UPDATE", "append": append_text})
+            else:
+                cleaned = re.sub(r'^добавь\s+(в\s+)?', '', part).strip()
+                cleaned = clean_garbage(cleaned)
+                subparts = cleaned.split(maxsplit=1)
+                if len(subparts) == 2:
+                    search_query = subparts[0]
+                    append_text = subparts[1]
+                    if not is_valid_title(search_query):
+                        commands.append({"type": "SEARCH", "query": clean_garbage(part)})
+                    else:
+                        commands.append({"type": "UPDATE", "search_query": search_query, "append": append_text})
+                else:
+                    commands.append({"type": "UPDATE", "search_query": cleaned, "append": cleaned})
+        elif part.startswith("найди") or part.startswith("покажи") or part.startswith("что есть про"):
+            query = re.sub(r'^(найди|покажи|что есть про)\s*', '', part).strip()
+            query = clean_garbage(query)
+            commands.append({"type": "SEARCH", "query": query})
+        else:
+            commands.append({"type": "SEARCH", "query": clean_garbage(part)})
+    return commands
+
+STT_HOST = "192.168.1.196"
+STT_PORT = 10300
+
+async def speech_to_text(audio_path: str) -> str:
+    """Транскрибация аудио через Wyoming (Vosk)"""
+    raw_path = audio_path.replace(".ogg", ".raw")
+    logger.info(f"STT: Начинаю обработку. OGG: {audio_path}, RAW: {raw_path}")
+    try:
+        cmd = ["ffmpeg", "-y", "-i", audio_path, "-ar", "16000", "-ac", "1", "-f", "s16le", raw_path]
+        subprocess.run(cmd, check=True, capture_output=True)
+        
+        reader, writer = await asyncio.wait_for(asyncio.open_connection(STT_HOST, STT_PORT), timeout=10.0)
+        await async_write_event(Transcribe(language="ru").event(), writer)
+        await async_write_event(AudioStart(rate=16000, width=2, channels=1).event(), writer)
+        
+        with open(raw_path, "rb") as f:
+            while chunk := f.read(4096):
+                await async_write_event(AudioChunk(audio=chunk, rate=16000, width=2, channels=1).event(), writer)
+        
+        await async_write_event(AudioStop().event(), writer)
+        await writer.drain()
+        
+        transcript_text = ""
+        while True:
+            event = await asyncio.wait_for(async_read_event(reader), timeout=20.0)
+            if event is None: break
+            if Transcript.is_type(event.type):
+                transcript_text = Transcript.from_event(event).text
+                break
+        writer.close()
+        await writer.wait_closed()
+        return transcript_text
+    except Exception as e:
+        logger.error(f"STT Error: {e}")
+        return ""
+    finally:
+        for p in [audio_path, raw_path]:
+            if os.path.exists(p): os.remove(p)
+
 # --- API Functions ---
 
 async def save_note_to_api(user_id: int, title: str, content: str, note_id: str = None) -> Dict[str, Any]:
-    """Отправка заметки в API FastAPI (создание или обновление)"""
     url = "http://localhost:3344/api/notes"
     token = await get_user_token(user_id)
-    
-    headers = {
-        "Authorization": f"Bearer {token}",
-        "Content-Type": "application/json"
-    }
-    
-    payload = {
-        "id": note_id or str(uuid.uuid4()),
-        "title": title,
-        "content": content
-    }
-    
+    headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
+    payload = {"id": note_id or str(uuid.uuid4()), "title": title, "content": content}
     try:
         async with aiohttp.ClientSession() as session:
             async with session.post(url, json=payload, headers=headers) as response:
                 if response.status in [200, 201]:
                     data = await response.json()
                     return {"status": "success", "note_id": data.get("id"), "data": data}
-                return {"status": "error", "message": f"Ошибка API: {response.status}"}
-    except Exception as e:
-        return {"status": "error", "message": str(e)}
-
-async def search_api(user_id: int, query: str) -> Dict[str, Any]:
-    """Поиск через API (по заголовку и содержимому)"""
-    import urllib.parse
-    encoded_query = urllib.parse.quote(query)
-    url = f"http://localhost:3344/api/notes/search?query={encoded_query}"
-    token = await get_user_token(user_id)
-    headers = {"Authorization": f"Bearer {token}"}
-    
-    try:
-        async with aiohttp.ClientSession() as session:
-            async with session.get(url, headers=headers) as response:
-                if response.status == 200:
-                    data = await response.json()
-                    if isinstance(data, list):
-                        return {"status": "success", "data": data}
-                    return {"status": "success", "data": [data] if data else []}
-                return {"status": "error", "message": f"Ошибка API: {response.status}"}
-    except Exception as e:
-        return {"status": "error", "message": str(e)}
-
-async def semantic_search_api(user_id: int, query: str) -> Dict[str, Any]:
-    """Семантический поиск через API"""
-    import urllib.parse
-    encoded_query = urllib.parse.quote(query)
-    url = f"http://localhost:3344/api/notes/semantic-search?query={encoded_query}"
-    token = await get_user_token(user_id)
-    headers = {"Authorization": f"Bearer {token}"}
-    
-    try:
-        async with aiohttp.ClientSession() as session:
-            async with session.get(url, headers=headers) as response:
-                if response.status == 200:
-                    data = await response.json()
-                    return {"status": "success", "data": data}
-                return {"status": "error", "message": f"Ошибка API: {response.status}"}
+                return {"status": "error", "message": f"Ошибка: {response.status}"}
     except Exception as e:
         return {"status": "error", "message": str(e)}
 
 async def get_note_api(user_id: int, note_id: str) -> Dict[str, Any]:
-    """Получение заметки по ID через API"""
     url = f"http://localhost:3344/api/notes/{note_id}"
     token = await get_user_token(user_id)
     headers = {"Authorization": f"Bearer {token}"}
-    
     try:
         async with aiohttp.ClientSession() as session:
             async with session.get(url, headers=headers) as response:
                 if response.status == 200:
                     data = await response.json()
                     return {"status": "success", "data": data}
-                return {"status": "error", "message": f"Ошибка API: {response.status}"}
+                return {"status": "error", "message": f"Ошибка: {response.status}"}
     except Exception as e:
         return {"status": "error", "message": str(e)}
 
 async def patch_note_api(user_id: int, note_id: str, content: str) -> Dict[str, Any]:
-    """Обновление контента заметки через API"""
     url = f"http://localhost:3344/api/notes/{note_id}"
     token = await get_user_token(user_id)
     headers = {"Authorization": f"Bearer {token}"}
     payload = {"content": content}
-    
     try:
         async with aiohttp.ClientSession() as session:
             async with session.patch(url, json=payload, headers=headers) as response:
                 if response.status == 200:
                     data = await response.json()
                     return {"status": "success", "note_id": data.get("id"), "data": data}
-                return {"status": "error", "message": f"Ошибка API: {response.status}"}
+                return {"status": "error", "message": f"Ошибка: {response.status}"}
     except Exception as e:
         return {"status": "error", "message": str(e)}
 
 async def get_all_notes_api(user_id: int) -> list[dict]:
-    """Получение всех заметок пользователя через API"""
     url = "http://localhost:3344/api/notes"
     token = await get_user_token(user_id)
     headers = {"Authorization": f"Bearer {token}"}
-    
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.get(url, headers=headers) as response:
+                if response.status == 200: return await response.json()
+                return []
+    except Exception as e:
+        return []
+
+async def search_api(user_id: int, query: str) -> Dict[str, Any]:
+    import urllib.parse
+    encoded_query = urllib.parse.quote(query)
+    url = f"http://localhost:3344/api/notes/search?query={encoded_query}"
+    token = await get_user_token(user_id)
+    headers = {"Authorization": f"Bearer {token}"}
     try:
         async with aiohttp.ClientSession() as session:
             async with session.get(url, headers=headers) as response:
                 if response.status == 200:
-                    return await response.json()
-                return []
+                    data = await response.json()
+                    return {"status": "success", "data": data if isinstance(data, list) else [data] if data else []}
+                return {"status": "error", "message": f"Ошибка: {response.status}"}
     except Exception as e:
-        return []
+        return {"status": "error", "message": str(e)}
+
+async def semantic_search_api(user_id: int, query: str) -> Dict[str, Any]:
+    import urllib.parse
+    encoded_query = urllib.parse.quote(query)
+    url = f"http://localhost:3344/api/notes/semantic-search?query={encoded_query}"
+    token = await get_user_token(user_id)
+    headers = {"Authorization": f"Bearer {token}"}
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.get(url, headers=headers) as response:
+                if response.status == 200:
+                    data = await response.json()
+                    return {"status": "success", "data": data}
+                return {"status": "error", "message": f"Ошибка: {response.status}"}
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
 
 # --- Bot Handlers ---
 
@@ -166,18 +478,18 @@ async def get_all_notes_api(user_id: int) -> list[dict]:
 async def handle_open_note(callback: types.CallbackQuery, user_id: int):
     note_id = callback.data.replace("open_note_", "")
     await callback.answer()
-    
     result = await get_note_api(user_id, note_id)
     if result.get("status") == "success":
         note = result.get("data", {})
-        title = note.get("title", "Без названия")
-        content = note.get("content", "Пусто")
-        
-        title_esc = html.escape(title)
-        content_esc = html.escape(content)
-        
-        response_text = f"📝 <b>{title_esc}</b>\n\n{content_esc}"
-        await callback.message.answer(response_text, parse_mode="HTML")
+        title_esc = html.escape(note.get("title", "Без названия"))
+        content_esc = html.escape(note.get("content", "Пусто"))
+        await callback.message.answer(f"📝 <b>{title_esc}</b>\n\n{content_esc}", parse_mode="HTML")
+        image_matches = re.findall(r'!\[.*?\]\((/api/uploads/.*?)\)', note.get("content", ""))
+        for img_path in image_matches:
+            local_path = os.path.join('/app/storage/uploads', os.path.basename(img_path))
+            if os.path.exists(local_path):
+                try: await callback.message.answer_photo(FSInputFile(local_path))
+                except Exception as e: logger.error(f"Error sending photo: {e}")
     else:
         await callback.message.answer("❌ Не удалось загрузить содержимое заметки.")
 
@@ -187,316 +499,129 @@ async def handle_start(message: types.Message):
 
 @dp.message(F.voice)
 async def handle_voice(message: types.Message, user_id: int, admin_id: str = None):
-    if admin_id and str(message.from_user.id) != str(admin_id):
-        return
-
-    status_msg = await message.answer("🎙 Голосовое сообщение получено. Запускаю транскрибацию...")
-    
+    if admin_id and str(message.from_user.id) != str(admin_id): return
+    await message.answer("🎙 Голосовое сообщение получено. Запускаю транскрибацию...")
     try:
-        voice = message.voice
-        file_id = voice.file_id
-        file = await message.bot.get_file(file_id)
-        
-        # Download to memory
-        file_url = f"https://api.telegram.org/file/bot{message.bot.token}/{file.file_path}"
-        
-        db = SessionLocal()
-        config = db.query(Config).filter(Config.user_id == user_id).first()
-        db.close()
-        
-        if not config or not config.tg_token:
-            await status_msg.edit_text("❌ Бот не настроен.")
+        file = await message.bot.get_file(message.voice.file_id)
+        ogg_path = os.path.join('/app/storage/temp', f"{uuid.uuid4()}.ogg")
+        os.makedirs('/app/storage/temp', exist_ok=True)
+        await message.bot.download_file(file.file_path, ogg_path)
+        text = await speech_to_text(ogg_path)
+        if not text:
+            await message.answer("❌ Не удалось распознать речь.")
             return
-
-        # Transcription logic
-        transcription = ""
-        
-        if config.llm_provider == "openai":
-            from openai import AsyncOpenAI
-            client = AsyncOpenAI(api_key=config.api_key)
-            
-            # Download file
-            async with httpx.AsyncClient() as client_http:
-                resp = await client_http.get(file_url)
-                if resp.status_code == 200:
-                    audio_data = io.BytesIO(resp.content)
-                    audio_data.name = "voice.ogg"
-                    
-                    transcript = await client.audio.transcriptions.create(
-                        model="whisper-1", 
-                        file=audio_data
-                    )
-                    transcription = transcript.text
-        
-        elif config.llm_provider == "gemini":
-            # Gemini 1.5 Flash supports audio
-            api_key = config.api_key
-            model = config.model_name or "gemini-1.5-flash"
-            
-            async with httpx.AsyncClient() as client_http:
-                resp = await client_http.get(file_url)
-                if resp.status_code == 200:
-                    import base64
-                    audio_b64 = base64.b64encode(resp.content).decode('utf-8')
-                    
-                    url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={api_key}"
-                    payload = {
-                        "contents": [{
-                            "parts": [
-                                {"text": "Transcribe this audio to text. Output ONLY the transcription, nothing else."},
-                                {"inline_data": {"mime_type": "audio/ogg", "data": audio_b64}}
-                            ]
-                        }]
-                    }
-                    resp_ai = await client_http.post(url, json=payload, timeout=60)
-                    if resp_ai.status_code == 200:
-                        transcription = resp_ai.json()['candidates'][0]['content']['parts'][0]['text']
-
-        if transcription:
-            await status_msg.edit_text(f"📝 <b>Транскрипция:</b>\n\n{transcription}", parse_mode="HTML")
-            # Process the transcribed text as a normal message
-            message.text = transcription
-            await handle_text(message, user_id, admin_id)
-        else:
-            await status_msg.edit_text("❌ Не удалось выполнить транскрибацию. Попробуйте позже или проверьте настройки ИИ.")
-            
+        await message.answer(f"📝 Распознанный текст: «{text}»\nЗапускаю обработку...")
+        fake_msg = message.model_copy(update={"text": text})
+        await handle_text(fake_msg, user_id, admin_id)
     except Exception as e:
-        logger.error(f"Voice Error: {e}")
-        await status_msg.edit_text(f"❌ Ошибка при обработке голоса: {str(e)}")
+        await message.answer(f"❌ Ошибка при обработке голоса: {str(e)}")
 
 @dp.message(F.photo)
 async def handle_photo(message: types.Message, user_id: int, admin_id: str = None):
-    if admin_id and str(message.from_user.id) != str(admin_id):
-        return
-
+    if admin_id and str(message.from_user.id) != str(admin_id): return
     try:
-        photo = message.photo[-1]
-        file_id = photo.file_id
         filename = f"{uuid.uuid4()}.jpg"
-        upload_dir = '/app/storage/uploads'
-        os.makedirs(upload_dir, exist_ok=True)
-        filepath = os.path.join(upload_dir, filename)
-        
-        file = await message.bot.get_file(file_id)
+        filepath = os.path.join('/app/storage/uploads', filename)
+        os.makedirs('/app/storage/uploads', exist_ok=True)
+        file = await message.bot.get_file(message.photo[-1].file_id)
         await message.bot.download_file(file.file_path, filepath)
-        
-        img_url = f"/api/uploads/{filename}"
-        title = f"Photo from Telegram {datetime.now().strftime('%Y-%m-%d %H:%M')}"
-        content = f"![image]({img_url})"
-        
-        result = await save_note_to_api(user_id, title, content)
-        if result.get("status") == "success":
-            await message.answer(f"📸 Изображение сохранено!")
-        else:
-            await message.answer(f"❌ Ошибка: {result.get('message')}")
-    except Exception as e:
-        await message.answer(f"❌ Ошибка: {str(e)}")
-
-async def call_llm(user_id: int, prompt: str, system_prompt: str = "You are a helpful assistant.") -> str:
-    """Универсальный вызов LLM на основе настроек пользователя"""
-    db = SessionLocal()
-    try:
-        config = db.query(Config).filter(Config.user_id == user_id).first()
-        if not config or not config.llm_provider:
-            return "AI provider not configured."
-
-        if config.llm_provider in ["openai", "ollama", "openrouter"]:
-            from openai import AsyncOpenAI
-            base_url = config.base_url
-            if config.llm_provider == "openrouter" and not base_url:
-                base_url = "https://openrouter.ai/api/v1"
-            client = AsyncOpenAI(api_key=config.api_key or "dummy", base_url=base_url)
-            resp = await client.chat.completions.create(
-                model=config.model_name or "gpt-4o-mini",
-                messages=[
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": prompt}
-                ],
-                max_tokens=500
-            )
-            return resp.choices[0].message.content
-        elif config.llm_provider == "gemini":
-            api_key = config.api_key
-            model = config.model_name or "gemini-1.5-flash"
-            url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={api_key}"
-            async with httpx.AsyncClient() as client:
-                payload = {
-                    "contents": [
-                        {"role": "user", "parts": [{"text": f"System: {system_prompt}\n\nUser: {prompt}"}]}
-                    ]
-                }
-                resp = await client.post(url, json=payload, timeout=30)
-                if resp.status_code == 200:
-                    return resp.json()['candidates'][0]['content']['parts'][0]['text']
-                return f"Gemini Error: {resp.status_code}"
-        return "Unsupported LLM provider."
-    except Exception as e:
-        logger.error(f"LLM Error: {e}")
-        return f"Error: {str(e)}"
-    finally:
-        db.close()
-
-async def search_notes_api(user_id: int, query: str) -> Dict[str, Any]:
-    """Поиск по заметкам через API чата"""
-    url = "http://localhost:3344/api/chat"
-    token = await get_user_token(user_id)
-    headers = {"Authorization": f"Bearer {token}"}
-    payload = {"message": query}
-    
-    try:
-        async with aiohttp.ClientSession() as session:
-            async with session.post(url, json=payload, headers=headers) as response:
-                if response.status == 200:
-                    return await response.json()
-                return {"answer": "Ошибка при поиске.", "citations": []}
-    except Exception as e:
-        return {"answer": f"Ошибка сети: {str(e)}", "citations": []}
+        result = await save_note_to_api(user_id, f"Photo from Telegram {datetime.now().strftime('%Y-%m-%d %H:%M')}", f"![image](/api/uploads/{filename})")
+        if result.get("status") == "success": await message.answer("📸 Изображение сохранено!")
+        else: await message.answer(f"❌ Ошибка: {result.get('message')}")
+    except Exception as e: await message.answer(f"❌ Ошибка: {str(e)}")
 
 @dp.message(F.text)
 async def handle_text(message: types.Message, user_id: int, admin_id: str = None):
-    if admin_id and str(message.from_user.id) != str(admin_id):
-        return
-
-    if message.text.startswith('/'):
-        return
-
-    # 1. Определяем намерение пользователя через LLM
-    intent_prompt = f"""Проанализируй сообщение пользователя и определи его намерение.
-Сообщение: "{message.text}"
-
-Возможные намерения:
-- SAVE: Пользователь хочет сохранить информацию, создать заметку, записать что-то. (Пример: "Запиши что я купил хлеб", "Новая заметка: рецепт блинов")
-- SEARCH: Пользователь задает вопрос по своим знаниям или просит найти что-то в заметках. (Пример: "Найди заметку про компьютер", "Что я писал про проект?", "Когда у меня встреча?")
-- CHAT: Просто общение или вопрос, не требующий поиска в базе.
-
-Верни ответ СТРОГО в формате JSON:
-{{"intent": "SAVE" | "SEARCH" | "CHAT", "title": "краткий заголовок если SAVE", "query": "очищенный запрос если SEARCH"}}
-"""
+    if admin_id and str(message.from_user.id) != str(admin_id): return
+    if message.text.startswith('/'): return
     
-    intent_json_raw = await call_llm(user_id, intent_prompt, "You are an intent classifier. Output only valid JSON.")
-    try:
-        # Очистка от markdown если есть
-        clean_json = re.search(r'\{.*\}', intent_json_raw, re.DOTALL).group(0)
-        intent_data = json.loads(clean_json)
-    except:
-        # Fallback если LLM ошиблась с форматом
-        if any(word in message.text.lower() for word in ["найди", "что", "когда", "где", "вспомни"]):
-            intent_data = {"intent": "SEARCH", "query": message.text}
-        else:
-            intent_data = {"intent": "SAVE", "title": message.text[:50], "query": message.text}
-
-    intent = intent_data.get("intent", "SAVE")
-
-    if intent == "SEARCH":
-        status_msg = await message.answer("🔍 Ищу в ваших заметках...")
-        search_result = await search_notes_api(user_id, intent_data.get("query", message.text))
-        answer = search_result.get("answer", "Ничего не найдено.")
-        citations = search_result.get("citations", [])
-        
-        response = answer
-        if citations:
-            response += "\n\n<b>Источники:</b>"
-            for c in citations:
-                response += f"\n• {c.get('title')}"
-        
-        await status_msg.edit_text(response, parse_mode="HTML")
-        
-    elif intent == "SAVE":
-        title = intent_data.get("title") or message.text.split('\n')[0][:50]
-        content = message.text
-        
-        result = await save_note_to_api(user_id, title, content)
-        if result.get("status") == "success":
-            await message.answer(f"✅ Заметка «{title}» сохранена!")
-        else:
-            await message.answer(f"❌ Ошибка сохранения: {result.get('message')}")
-    else:
-        # Просто чат
-        response = await call_llm(user_id, message.text)
-        await message.answer(response)
+    normalized_text = normalize_intent(message.text)
+    notes = await get_all_notes_api(user_id)
+    notes_context = [{"id": n.get("id"), "title": n.get("title"), "content": n.get("content")} for n in notes]
+    commands = await parse_commands_llm(user_id, normalized_text, notes_context)
+    
+    chain_note_id = None
+    for cmd in commands:
+        intent = cmd.get("type")
+        if intent == "CREATE":
+            title = cmd.get("title", "Без названия")
+            result = await save_note_to_api(user_id, title, cmd.get("content", ""))
+            if result.get("status") == "success":
+                chain_note_id = result.get("note_id")
+                await message.answer(f"Создал новую заметку «{title}»! 📝")
+            else: await message.answer(f"❌ Ошибка: {result.get('message')}")
+        elif intent == "UPDATE":
+            target_id = cmd.get("note_id") or chain_note_id
+            if not target_id and cmd.get("search_query"):
+                res = await search_api(user_id, cmd.get("search_query"))
+                if res.get("status") == "success" and res.get("data"): target_id = res["data"][0].get('id')
+            if target_id:
+                append = cmd.get("append", "")
+                if isinstance(append, list): append = "\n- " + "\n- ".join(append)
+                res = await patch_note_api(user_id, target_id, append)
+                if res.get("status") == "success":
+                    await message.answer(f"✅ Добавил текст в заметку «{res['data'].get('title')}»!")
+                    chain_note_id = target_id
+                else: await message.answer(f"❌ Ошибка: {res.get('message')}")
+            else: await message.answer("Не нашёл подходящую заметку.")
+        elif intent == "SEARCH":
+            query = cmd.get("query", "")
+            if not query: continue
+            await message.answer(f"🔍 Ищу заметки по запросу: «{query}»...")
+            res = await search_api(user_id, query)
+            results = res.get("data", []) if res.get("status") == "success" else []
+            if not results:
+                res = await semantic_search_api(user_id, query)
+                results = res.get("data", []) if res.get("status") == "success" else []
+            if not results:
+                await message.answer("Ничего не найдено. 😔")
+                continue
+            from aiogram.utils.keyboard import InlineKeyboardBuilder
+            builder = InlineKeyboardBuilder()
+            resp = f"Вот что я нашел по запросу «{html.escape(query)}»:\n\n"
+            for i, note in enumerate(results[:5], 1):
+                t_esc = html.escape(note.get('title', 'Без названия'))
+                p_esc = html.escape(note.get('content', '')[:100].replace('\n', ' '))
+                resp += f"{i}. <b>{t_esc}</b>\n<i>{p_esc}</i>\n\n"
+                builder.button(text=f"Открыть {i}", callback_data=f"open_note_{note['id']}")
+            builder.adjust(1)
+            await message.answer(resp, parse_mode="HTML", reply_markup=builder.as_markup())
 
 # --- Bot Management ---
 
 async def start_bot(user_id: int, username: str, token: str, proxy_url: str = None, proxy_config: dict = None, admin_id: str = None):
     global current_bots, user_usernames
     user_usernames[user_id] = username
-    
+    if isinstance(proxy_url, str) and proxy_url.strip().startswith("{"):
+        try: proxy_url = ast.literal_eval(proxy_url)
+        except: pass
     try:
         final_proxy_url = None
-        
-        # Check proxy_url (string or dict)
-        if isinstance(proxy_url, str) and proxy_url.strip().startswith("{"):
-            try: proxy_url = ast.literal_eval(proxy_url)
-            except: pass
-
-        if isinstance(proxy_url, str) and proxy_url.strip() and (proxy_url.startswith("http") or proxy_url.startswith("socks")):
-            final_proxy_url = proxy_url.strip()
+        if isinstance(proxy_url, str) and (proxy_url.startswith("http") or proxy_url.startswith("socks")):
+            final_proxy_url = proxy_url
         elif isinstance(proxy_url, dict) and proxy_url.get("host"):
             p = proxy_url
-            protocol = str(p.get("protocol", "http")).lower()
-            host = str(p.get("host")).strip()
-            port = p.get("port")
-            user = p.get("username")
-            password = p.get("password")
-            if host:
-                if user and password:
-                    final_proxy_url = f"{protocol}://{user}:{password}@{host}:{port}"
-                else:
-                    final_proxy_url = f"{protocol}://{host}:{port}"
-        
-        # Check proxy_config if final_proxy_url is still None
-        if not final_proxy_url and isinstance(proxy_config, dict) and proxy_config.get("host"):
+            final_proxy_url = f"{p.get('protocol', 'http')}://{p.get('username')}:{p.get('password')}@{p['host']}:{p['port']}" if p.get('username') else f"{p.get('protocol', 'http')}://{p['host']}:{p['port']}"
+        elif isinstance(proxy_config, dict) and proxy_config.get("host"):
             p = proxy_config
-            protocol = str(p.get("protocol", "http")).lower()
-            host = str(p.get("host")).strip()
-            port = p.get("port")
-            user = p.get("username")
-            password = p.get("password")
-            if host:
-                if user and password:
-                    final_proxy_url = f"{protocol}://{user}:{password}@{host}:{port}"
-                else:
-                    final_proxy_url = f"{protocol}://{host}:{port}"
-
-        if final_proxy_url:
-            # Mask password in logs
-            masked_proxy = re.sub(r':([^@/]+)@', ':****@', final_proxy_url)
-            logger.info(f"Запуск бота для {username} (ID: {user_id}). Прокси: {masked_proxy}")
-        else:
-            logger.info(f"Запуск бота для {username} (ID: {user_id}). Прокси: Direct (No proxy configured)")
+            final_proxy_url = f"{p.get('protocol', 'http')}://{p.get('username')}:{p.get('password')}@{p['host']}:{p['port']}" if p.get('username') else f"{p.get('protocol', 'http')}://{p['host']}:{p['port']}"
         
-        while True:
-            try:
-                # Use float for timeout to avoid math errors in aiogram (+ buffer)
-                timeout = 60.0
-                session = AiohttpSession(proxy=final_proxy_url, timeout=timeout) if final_proxy_url else AiohttpSession(timeout=timeout)
-                async with Bot(token=token, session=session) as bot:
-                    current_bots[user_id] = bot
-                    logger.info(f"Бот @{username} начал опрос (polling)...")
-                    # polling_timeout is passed to getUpdates, aiogram adds a buffer to it
-                    await dp.start_polling(bot, user_id=user_id, admin_id=admin_id, handle_signals=False)
-            except asyncio.CancelledError:
-                logger.info(f"Бот {user_id} остановлен (CancelledError)")
-                break
-            except Exception as e:
-                logger.error(f"Ошибка бота {user_id}: {e}. Повторная попытка через 15 секунд...")
-                if user_id in current_bots: del current_bots[user_id]
-                await asyncio.sleep(15)
+        # Use float for timeout to avoid math errors in aiogram (+ buffer)
+        session = AiohttpSession(proxy=final_proxy_url, timeout=60.0) if final_proxy_url else AiohttpSession(timeout=60.0)
+        async with Bot(token=token, session=session) as bot:
+            current_bots[user_id] = bot
+            logger.info(f"Запуск бота для {username}. Прокси: {final_proxy_url or 'Direct'}")
+            await dp.start_polling(bot, user_id=user_id, admin_id=admin_id, handle_signals=False)
     except Exception as e:
-        logger.error(f"Критическая ошибка в start_bot {user_id}: {e}")
-    finally:
-        if user_id in current_bots: del current_bots[user_id]
+        logger.error(f"Ошибка бота {user_id}: {e}")
 
 async def stop_bot(user_id: int):
     global current_bots, bot_tasks
-    bot = current_bots.get(user_id)
-    if bot:
+    if bot := current_bots.get(user_id):
         try: await bot.session.close()
         except: pass
         del current_bots[user_id]
-    
-    task = bot_tasks.get(user_id)
-    if task:
+    if task := bot_tasks.get(user_id):
         task.cancel()
         try: await task
         except asyncio.CancelledError: pass
@@ -508,49 +633,24 @@ async def restart_bot(user_id: int, username: str, token: str, proxy_url: str = 
         bot_tasks[user_id] = asyncio.create_task(start_bot(user_id, username, token, proxy_url, proxy_config, admin_id))
 
 async def test_bot_connection(token: str, admin_id: str = None, proxy_url: str = None, proxy_config: dict = None):
+    if isinstance(proxy_url, str) and proxy_url.strip().startswith("{"):
+        try: proxy_url = ast.literal_eval(proxy_url)
+        except: pass
     try:
         final_proxy_url = None
-        # Handle proxy_url if it's a string representation of a dict
-        if isinstance(proxy_url, str) and proxy_url.strip().startswith("{"):
-            try: proxy_url = ast.literal_eval(proxy_url)
-            except: pass
-
         if isinstance(proxy_url, str) and (proxy_url.startswith("http") or proxy_url.startswith("socks")):
             final_proxy_url = proxy_url
         elif isinstance(proxy_url, dict) and proxy_url.get("host"):
             p = proxy_url
-            protocol = str(p.get("protocol", "http")).lower()
-            host = str(p.get("host"))
-            port = p.get("port")
-            user = p.get("username")
-            password = p.get("password")
-            if user and password:
-                final_proxy_url = f"{protocol}://{user}:{password}@{host}:{port}"
-            else:
-                final_proxy_url = f"{protocol}://{host}:{port}"
+            final_proxy_url = f"{p.get('protocol', 'http')}://{p.get('username')}:{p.get('password')}@{p['host']}:{p['port']}" if p.get('username') else f"{p.get('protocol', 'http')}://{p['host']}:{p['port']}"
         elif isinstance(proxy_config, dict) and proxy_config.get("host"):
             p = proxy_config
-            protocol = str(p.get("protocol", "http")).lower()
-            host = str(p.get("host"))
-            port = p.get("port")
-            user = p.get("username")
-            password = p.get("password")
-            if user and password:
-                final_proxy_url = f"{protocol}://{user}:{password}@{host}:{port}"
-            else:
-                final_proxy_url = f"{protocol}://{host}:{port}"
+            final_proxy_url = f"{p.get('protocol', 'http')}://{p.get('username')}:{p.get('password')}@{p['host']}:{p['port']}" if p.get('username') else f"{p.get('protocol', 'http')}://{p['host']}:{p['port']}"
         
-        # Use float for timeout to avoid math errors in aiogram (+ buffer)
-        timeout = 60.0
-        session = AiohttpSession(proxy=final_proxy_url, timeout=timeout) if final_proxy_url else AiohttpSession(timeout=timeout)
+        session = AiohttpSession(proxy=final_proxy_url, timeout=60.0) if final_proxy_url else AiohttpSession(timeout=60.0)
         async with Bot(token=token, session=session) as test_bot:
             me = await asyncio.wait_for(test_bot.get_me(), timeout=30.0)
-            if admin_id:
-                try:
-                    await test_bot.send_message(chat_id=admin_id, text="✅ Проверка связи VibeMind успешна!")
-                except Exception as send_err:
-                    logger.warning(f"Could not send test message to admin_id {admin_id}: {send_err}")
+            if admin_id: await test_bot.send_message(chat_id=admin_id, text="✅ VibeMind: Connection Successful!")
             return True, f"✅ Успешно: @{me.username}"
     except Exception as e:
-        logger.error(f"Ошибка проверки бота: {e}")
         return False, f"❌ Ошибка: {str(e)}"
