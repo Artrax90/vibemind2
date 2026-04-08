@@ -371,6 +371,7 @@ async def speech_to_text(audio_path: str) -> str:
             if event is None: break
             if Transcript.is_type(event.type):
                 transcript_text = Transcript.from_event(event).text
+                logger.info(f"STT: Результат транскрибации: «{transcript_text}»")
                 break
         writer.close()
         await writer.wait_closed()
@@ -535,19 +536,23 @@ async def handle_text(message: types.Message, user_id: int, admin_id: str = None
     if admin_id and str(message.from_user.id) != str(admin_id): return
     if message.text.startswith('/'): return
     
+    logger.info(f"Обработка текста от пользователя {user_id}: «{message.text}»")
     normalized_text = normalize_intent(message.text)
     notes = await get_all_notes_api(user_id)
     notes_context = [{"id": n.get("id"), "title": n.get("title"), "content": n.get("content")} for n in notes]
     commands = await parse_commands_llm(user_id, normalized_text, notes_context)
+    logger.info(f"Распознанные команды: {commands}")
     
     chain_note_id = None
     for cmd in commands:
         intent = cmd.get("type")
+        logger.info(f"Исполнение команды: {intent}, параметры: {cmd}")
         if intent == "CREATE":
             title = cmd.get("title", "Без названия")
             result = await save_note_to_api(user_id, title, cmd.get("content", ""))
             if result.get("status") == "success":
                 chain_note_id = result.get("note_id")
+                logger.info(f"Успешно создана заметка: {title} (ID: {chain_note_id})")
                 await message.answer(f"Создал новую заметку «{title}»! 📝")
             else: await message.answer(f"❌ Ошибка: {result.get('message')}")
         elif intent == "UPDATE":
@@ -560,6 +565,7 @@ async def handle_text(message: types.Message, user_id: int, admin_id: str = None
                 if isinstance(append, list): append = "\n- " + "\n- ".join(append)
                 res = await patch_note_api(user_id, target_id, append)
                 if res.get("status") == "success":
+                    logger.info(f"Успешно обновлена заметка ID: {target_id}")
                     await message.answer(f"✅ Добавил текст в заметку «{res['data'].get('title')}»!")
                     chain_note_id = target_id
                 else: await message.answer(f"❌ Ошибка: {res.get('message')}")
@@ -567,6 +573,7 @@ async def handle_text(message: types.Message, user_id: int, admin_id: str = None
         elif intent == "SEARCH":
             query = cmd.get("query", "")
             if not query: continue
+            logger.info(f"Поиск заметок по запросу: «{query}»")
             await message.answer(f"🔍 Ищу заметки по запросу: «{query}»...")
             res = await search_api(user_id, query)
             results = res.get("data", []) if res.get("status") == "success" else []
