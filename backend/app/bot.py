@@ -13,7 +13,7 @@ from aiogram import Bot, Dispatcher, types, F
 from aiogram.filters import Command
 from aiogram.client.session.aiohttp import AiohttpSession
 from aiogram.types import FSInputFile
-import jwt
+from jose import jwt
 import ast
 
 # Настройка логирования
@@ -21,7 +21,7 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # Конфигурация JWT (должна совпадать с FastAPI)
-SECRET_KEY = os.getenv("ENCRYPTION_KEY", "your-secret-key-here")
+SECRET_KEY = os.getenv("ENCRYPTION_KEY", "fallback-zero-config-secret-key-change-in-production")
 ALGORITHM = "HS256"
 
 # Инициализация aiogram
