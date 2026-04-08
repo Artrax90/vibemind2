@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
-import { Folder, FileText, Settings as SettingsIcon, Plus, MoreVertical, Search, ChevronRight, ChevronDown, FilePlus, FolderPlus, Edit2, Trash2, Share2, FolderInput, Sparkles, X, LogOut } from 'lucide-react';
+import { Folder, FileText, Settings as SettingsIcon, Plus, MoreVertical, Search, ChevronRight, ChevronDown, FilePlus, FolderPlus, Edit2, Trash2, Share2, FolderInput, Sparkles, X, LogOut, Pin, PinOff } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Note, Folder as FolderType } from '../App';
 import CreateFolderModal from './modals/CreateFolderModal';
@@ -48,7 +48,10 @@ function SortableNoteItem({ note, activeNoteId, onSelectNote, onContextMenu, t }
       className={`flex items-center justify-between px-2 py-1.5 rounded-md cursor-pointer group transition-colors duration-200 ${activeNoteId === note.id ? 'bg-primary/10 text-primary font-medium' : 'text-muted-foreground hover:bg-secondary/60 hover:text-foreground'}`}
     >
       <div className="flex items-center overflow-hidden flex-1">
-        <FileText size={14} className={`mr-2 ml-[18px] flex-shrink-0 opacity-70 ${activeNoteId === note.id ? 'text-primary' : 'text-muted-foreground'}`} />
+        <div className="flex items-center flex-shrink-0 mr-2 ml-[18px]">
+          <FileText size={14} className={`opacity-70 ${activeNoteId === note.id ? 'text-primary' : 'text-muted-foreground'}`} />
+          {note.isPinned && <Pin size={10} className="ml-1 text-primary fill-primary" />}
+        </div>
         <div className="flex flex-col min-w-0">
           <span className="text-sm truncate">{note.title}</span>
           {note.isShared && (
@@ -238,9 +241,30 @@ export default function Sidebar({ notes, folders, activeNoteId, isLoading = fals
     setContextMenu(null);
   };
 
+  const handleTogglePin = (noteId: string) => {
+    const note = notes.find(n => n.id === noteId);
+    if (note) {
+      const updatedNotes = notes.map(n => n.id === noteId ? { ...n, isPinned: !n.isPinned } : n);
+      onNotesChange(updatedNotes);
+      api.updateNote(noteId, { isPinned: !note.isPinned }).catch(console.error);
+    }
+    setContextMenu(null);
+  };
+
   const renderTree = (parentId?: string, depth = 0) => {
-    const childFolders = folders.filter(f => (f.parentId || undefined) === parentId);
-    const childNotes = notes.filter(n => (n.folderId || undefined) === parentId);
+    const childFolders = folders
+      .filter(f => (f.parentId || undefined) === parentId)
+      .sort((a, b) => a.name.localeCompare(b.name));
+      
+    const childNotes = notes
+      .filter(n => (n.folderId || undefined) === parentId)
+      .sort((a, b) => {
+        // Pinned first
+        if (a.isPinned && !b.isPinned) return -1;
+        if (!a.isPinned && b.isPinned) return 1;
+        // Then by title
+        return a.title.localeCompare(b.title);
+      });
 
     return (
       <div className="space-y-0.5" style={{ paddingLeft: depth > 0 ? '16px' : '0px' }}>
@@ -379,6 +403,16 @@ export default function Sidebar({ notes, folders, activeNoteId, isLoading = fals
           >
             {contextMenu.type === 'note' && (
               <>
+                  <button 
+                    onClick={() => handleTogglePin(contextMenu.id)}
+                    className="w-full flex items-center px-4 py-2 text-sm text-popover-foreground hover:bg-secondary hover:text-foreground transition-colors"
+                  >
+                    {notes.find(n => n.id === contextMenu.id)?.isPinned ? (
+                      <><PinOff size={14} className="mr-2" /> {t('sidebar.unpin')}</>
+                    ) : (
+                      <><Pin size={14} className="mr-2" /> {t('sidebar.pin')}</>
+                    )}
+                  </button>
                   {(notes.find(n => n.id === contextMenu.id)?.permission !== 'read') && (
                     <button 
                       onClick={() => {
