@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
-import { Folder, FileText, Settings as SettingsIcon, Plus, MoreVertical, Search, ChevronRight, ChevronDown, FilePlus, FolderPlus, Edit2, Trash2, Share2, FolderInput, Sparkles, X } from 'lucide-react';
+import { Folder, FileText, Settings as SettingsIcon, Plus, MoreVertical, Search, ChevronRight, ChevronDown, FilePlus, FolderPlus, Edit2, Trash2, Share2, FolderInput, Sparkles, X, LogOut } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Note, Folder as FolderType } from '../App';
 import CreateFolderModal from './modals/CreateFolderModal';
@@ -20,6 +20,7 @@ type SidebarProps = {
   onSelectNote: (id: string, mode?: 'edit' | 'preview') => void;
   onOpenSettings: () => void;
   onOpenSearch: () => void;
+  onLogout: () => void;
   onNotesChange: (notes: Note[]) => void;
   onFoldersChange: (folders: FolderType[]) => void;
   onAddNote: (note: Note) => void;
@@ -105,7 +106,7 @@ function DroppableFolder({ folder, isExpanded, isSelected, isRenaming, renameVal
   );
 }
 
-export default function Sidebar({ notes, folders, activeNoteId, isLoading = false, onSelectNote, onOpenSettings, onOpenSearch, onNotesChange, onFoldersChange, onAddNote, onAddFolder, onDeleteNote, onDeleteFolder, onRenameFolder, onShare, onClose }: SidebarProps) {
+export default function Sidebar({ notes, folders, activeNoteId, isLoading = false, onSelectNote, onOpenSettings, onOpenSearch, onLogout, onNotesChange, onFoldersChange, onAddNote, onAddFolder, onDeleteNote, onDeleteFolder, onRenameFolder, onShare, onClose }: SidebarProps) {
   const { t } = useLanguage();
   const [isCreateFolderOpen, setIsCreateFolderOpen] = useState(false);
   const [plusMenuOpen, setPlusMenuOpen] = useState(false);
@@ -336,13 +337,20 @@ export default function Sidebar({ notes, folders, activeNoteId, isLoading = fals
           )}
         </div>
 
-        <div className="p-4 border-t border-border/50">
+        <div className="p-4 border-t border-border/50 flex flex-col space-y-1">
           <button 
             onClick={onOpenSettings}
             className="flex items-center w-full px-2 py-2 text-muted-foreground hover:text-foreground hover:bg-secondary rounded-lg transition-colors"
           >
             <SettingsIcon size={18} className="mr-2" />
             <span className="text-sm">{t('sidebar.settings')}</span>
+          </button>
+          <button 
+            onClick={onLogout}
+            className="flex items-center w-full px-2 py-2 text-muted-foreground hover:text-destructive hover:bg-destructive/10 rounded-lg transition-colors"
+          >
+            <LogOut size={18} className="mr-2" />
+            <span className="text-sm">{t('sidebar.logout') || 'Logout'}</span>
           </button>
         </div>
         

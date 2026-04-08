@@ -5,6 +5,7 @@ import Chat from './components/Chat';
 import Settings from './components/Settings';
 import GraphView from './components/GraphView';
 import ShareModal from './components/ShareModal';
+import SharedNoteView from './components/SharedNoteView';
 import Login from './pages/Login';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Network, Edit3, Eye, Search, X, Menu, Maximize2, Minimize2, Sun, Moon } from 'lucide-react';
@@ -51,6 +52,16 @@ export default function App() {
     const saved = localStorage.getItem('app_theme');
     return (saved as 'dark' | 'light') || 'dark';
   });
+
+  const [sharedNoteId, setSharedNoteId] = useState<string | null>(null);
+
+  useEffect(() => {
+    const path = window.location.pathname;
+    if (path.startsWith('/shared/')) {
+      const id = path.split('/')[2];
+      if (id) setSharedNoteId(id);
+    }
+  }, []);
 
   const handleSetTheme = (newTheme: 'dark' | 'light') => {
     setTheme(newTheme);
@@ -184,6 +195,10 @@ export default function App() {
     setActiveNoteId(null);
   };
 
+  if (sharedNoteId) {
+    return <SharedNoteView shareId={sharedNoteId} />;
+  }
+
   if (!token) {
     return <Login onLogin={(newToken) => setToken(newToken)} />;
   }
@@ -211,6 +226,10 @@ export default function App() {
           onSelectNote={handleNoteSelect}
           onOpenSettings={() => { setShowSettings(true); setIsMobileMenuOpen(false); }}
           onOpenSearch={() => { setShowSearch(true); setIsMobileMenuOpen(false); }}
+          onLogout={() => {
+            localStorage.removeItem('access_token');
+            setIsAuthenticated(false);
+          }}
           onNotesChange={setNotes}
           onFoldersChange={setFolders}
           onAddNote={addNote}

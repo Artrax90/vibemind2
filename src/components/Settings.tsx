@@ -15,6 +15,7 @@ type SettingsProps = {
 export default function Settings({ onClose, theme, setTheme }: SettingsProps) {
   const { language, setLanguage, t } = useLanguage();
   const [activeTab, setActiveTab] = useState<'general' | 'integrations' | 'bots' | 'users'>('general');
+  const [currentUser, setCurrentUser] = useState<any>(null);
   
   // Proxy State
   const [proxyConfig, setProxyConfig] = useState({
@@ -56,6 +57,9 @@ export default function Settings({ onClose, theme, setTheme }: SettingsProps) {
   useEffect(() => {
     const loadSettings = async () => {
       try {
+        const me = await api.getMe();
+        setCurrentUser(me);
+        
         const config = await getSettings();
         if (config) {
           if (config.tg_token) setBotToken(config.tg_token);
@@ -331,9 +335,11 @@ export default function Settings({ onClose, theme, setTheme }: SettingsProps) {
           <button onClick={() => setActiveTab('bots')} className={`w-full flex items-center px-4 py-3 rounded-lg transition-colors ${activeTab === 'bots' ? 'bg-primary/20 text-primary' : 'text-muted-foreground hover:bg-secondary hover:text-foreground'}`}>
             <MessageSquare size={18} className="mr-3" /> {t('settings.bots')}
           </button>
-          <button onClick={() => setActiveTab('users')} className={`w-full flex items-center px-4 py-3 rounded-lg transition-colors ${activeTab === 'users' ? 'bg-primary/20 text-primary' : 'text-muted-foreground hover:bg-secondary hover:text-foreground'}`}>
-            <User size={18} className="mr-3" /> {t('settings.users')}
-          </button>
+          {currentUser?.username === 'admin' && (
+            <button onClick={() => setActiveTab('users')} className={`w-full flex items-center px-4 py-3 rounded-lg transition-colors ${activeTab === 'users' ? 'bg-primary/20 text-primary' : 'text-muted-foreground hover:bg-secondary hover:text-foreground'}`}>
+              <User size={18} className="mr-3" /> {t('settings.users')}
+            </button>
+          )}
         </div>
 
         {/* Tab Content */}
@@ -823,7 +829,14 @@ export default function Settings({ onClose, theme, setTheme }: SettingsProps) {
                                 <Edit2 size={16} />
                               </button>
                               <button 
-                                onClick={() => setUsers(users.filter(user => user.username !== u.username))}
+                                onClick={async () => {
+                                  try {
+                                    await api.deleteUser(u.id);
+                                    setUsers(users.filter(user => user.id !== u.id));
+                                  } catch (e) {
+                                    console.error('Failed to delete user', e);
+                                  }
+                                }}
                                 className="text-destructive hover:text-destructive/80 transition-colors"
                               >
                                 <Trash2 size={16} />

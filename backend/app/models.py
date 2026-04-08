@@ -42,3 +42,14 @@ class Note(Base):
     folderId = Column(String, nullable=True)
     user_id = Column(Integer, index=True)
     embedding = Column(Vector(384), nullable=True)
+
+class Share(Base):
+    __tablename__ = "shares"
+    id = Column(String, primary_key=True, index=True)
+    resource_id = Column(String, index=True)
+    resource_type = Column(String) # 'note' or 'folder'
+    owner_id = Column(Integer, index=True)
+    target_user_id = Column(Integer, index=True, nullable=True)
+    permission = Column(String) # 'read' or 'write'
+    is_public = Column(Integer, default=0)
+

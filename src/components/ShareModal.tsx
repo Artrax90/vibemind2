@@ -1,12 +1,14 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, UserPlus, Loader2, Trash2 } from 'lucide-react';
+import { X, UserPlus, Loader2, Trash2, Globe, Link as LinkIcon, Copy, Check } from 'lucide-react';
 import { useLanguage } from '../contexts/LanguageContext';
+import { api } from '../api/client';
 
 type ShareEntry = {
   id: string;
-  target_username: string;
+  target_username: string | null;
   permission: 'read' | 'write';
+  is_public: number;
 };
 
 type ShareModalProps = {
@@ -21,35 +23,66 @@ export default function ShareModal({ isOpen, onClose, resourceId, resourceType, 
   const { t } = useLanguage();
   const [username, setUsername] = useState('');
   const [permission, setPermission] = useState<'read' | 'write'>('read');
+  const [isPublic, setIsPublic] = useState(false);
   const [shares, setShares] = useState<ShareEntry[]>([]);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+  const [copiedId, setCopiedId] = useState<string | null>(null);
 
   useEffect(() => {
-    if (isOpen && resourceId) {
-      setLoading(true);
-      // Mock loading shares
-      setTimeout(() => {
-        setShares([
-          { id: '1', target_username: 'alex_cyber', permission: 'read' }
-        ]);
-        setLoading(false);
-      }, 500);
+    if (isOpen && resourceId && resourceType) {
+      loadShares();
     }
-  }, [isOpen, resourceId]);
+  }, [isOpen, resourceId, resourceType]);
 
-  const handleShare = () => {
-    if (!username.trim()) return;
-    const newShare: ShareEntry = {
-      id: Date.now().toString(),
-      target_username: username,
-      permission
-    };
-    setShares([...shares, newShare]);
-    setUsername('');
+  const loadShares = async () => {
+    if (!resourceId || !resourceType) return;
+    setLoading(true);
+    setError('');
+    try {
+      const data = await api.getShares(resourceType, resourceId);
+      setShares(data);
+    } catch (e) {
+      console.error('Failed to load shares', e);
+      setError('Failed to load shares');
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const handleDeleteShare = (id: string) => {
-    setShares(shares.filter(s => s.id !== id));
+  const handleShare = async () => {
+    if (!isPublic && !username.trim()) return;
+    if (!resourceId || !resourceType) return;
+    
+    setError('');
+    try {
+      const newShare = await api.createShare(resourceType, resourceId, {
+        target_username: isPublic ? null : username,
+        permission,
+        is_public: isPublic ? 1 : 0
+      });
+      setShares([...shares, newShare]);
+      setUsername('');
+    } catch (e: any) {
+      console.error('Failed to create share', e);
+      setError(e.message || 'Failed to create share');
+    }
+  };
+
+  const handleDeleteShare = async (id: string) => {
+    try {
+      await api.deleteShare(id);
+      setShares(shares.filter(s => s.id !== id));
+    } catch (e) {
+      console.error('Failed to delete share', e);
+    }
+  };
+
+  const copyLink = (shareId: string) => {
+    const url = `${window.location.origin}/shared/${shareId}`;
+    navigator.clipboard.writeText(url);
+    setCopiedId(shareId);
+    setTimeout(() => setCopiedId(null), 2000);
   };
 
   if (!isOpen) return null;
@@ -68,7 +101,7 @@ export default function ShareModal({ isOpen, onClose, resourceId, resourceType, 
               {resourceType === 'folder' ? 'Share folder' : 'Share note'}
             </h2>
             <p className="text-sm text-muted-foreground mt-1">
-              Add a user by username and grant the required access.
+              Share with specific users or create a public link.
             </p>
           </div>
           <button onClick={onClose} className="p-1 text-muted-foreground hover:text-foreground rounded transition-colors">
@@ -81,17 +114,40 @@ export default function ShareModal({ isOpen, onClose, resourceId, resourceType, 
             {resourceName || resourceId}
           </div>
 
-          <div className="flex flex-col sm:flex-row gap-3 items-end">
-            <div className="space-y-2 flex-1 w-full">
-              <label className="text-sm font-medium text-foreground">Target username</label>
-              <input
-                type="text"
-                value={username}
-                onChange={(e) => setUsername(e.target.value)}
-                placeholder="username"
-                className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm text-foreground focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary transition-all"
+          <div className="flex items-center gap-4 mb-4">
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input 
+                type="radio" 
+                checked={!isPublic} 
+                onChange={() => setIsPublic(false)}
+                className="accent-primary"
               />
-            </div>
+              <span className="text-sm text-foreground">Specific User</span>
+            </label>
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input 
+                type="radio" 
+                checked={isPublic} 
+                onChange={() => setIsPublic(true)}
+                className="accent-primary"
+              />
+              <span className="text-sm text-foreground">Public Link</span>
+            </label>
+          </div>
+
+          <div className="flex flex-col sm:flex-row gap-3 items-end">
+            {!isPublic && (
+              <div className="space-y-2 flex-1 w-full">
+                <label className="text-sm font-medium text-foreground">Target username</label>
+                <input
+                  type="text"
+                  value={username}
+                  onChange={(e) => setUsername(e.target.value)}
+                  placeholder="username"
+                  className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm text-foreground focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary transition-all"
+                />
+              </div>
+            )}
             <div className="space-y-2 w-full sm:w-32">
               <label className="text-sm font-medium text-foreground">Access</label>
               <select
@@ -105,17 +161,19 @@ export default function ShareModal({ isOpen, onClose, resourceId, resourceType, 
             </div>
             <button
               onClick={handleShare}
-              disabled={!username.trim()}
+              disabled={!isPublic && !username.trim()}
               className="w-full sm:w-auto flex items-center justify-center px-4 py-2 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed h-[38px]"
             >
-              <UserPlus size={16} className="mr-2" />
-              Grant
+              {isPublic ? <Globe size={16} className="mr-2" /> : <UserPlus size={16} className="mr-2" />}
+              {isPublic ? 'Create Link' : 'Grant'}
             </button>
           </div>
 
+          {error && <div className="text-sm text-destructive">{error}</div>}
+
           <div className="h-px bg-border/50 w-full" />
 
-          <div className="space-y-2">
+          <div className="space-y-2 max-h-60 overflow-y-auto pr-2">
             {loading ? (
               <div className="flex items-center gap-2 text-sm text-muted-foreground">
                 <Loader2 className="h-4 w-4 animate-spin" />
@@ -126,11 +184,27 @@ export default function ShareModal({ isOpen, onClose, resourceId, resourceType, 
             ) : (
               shares.map((share) => (
                 <div key={share.id} className="flex items-center justify-between rounded-lg border border-border/50 bg-secondary/30 p-3">
-                  <div>
-                    <div className="text-sm font-medium text-foreground">{share.target_username}</div>
+                  <div className="flex items-center gap-2">
+                    {share.is_public ? (
+                      <Globe size={16} className="text-primary" />
+                    ) : (
+                      <UserPlus size={16} className="text-muted-foreground" />
+                    )}
+                    <div className="text-sm font-medium text-foreground">
+                      {share.is_public ? 'Public Link' : share.target_username}
+                    </div>
                   </div>
                   <div className="flex items-center gap-3">
                     <span className="text-xs text-muted-foreground capitalize">{share.permission}</span>
+                    {share.is_public === 1 && (
+                      <button
+                        onClick={() => copyLink(share.id)}
+                        className="p-1.5 text-muted-foreground hover:text-foreground hover:bg-secondary rounded transition-colors"
+                        title="Copy link"
+                      >
+                        {copiedId === share.id ? <Check size={14} className="text-green-500" /> : <Copy size={14} />}
+                      </button>
+                    )}
                     <button
                       onClick={() => handleDeleteShare(share.id)}
                       className="p-1.5 text-destructive hover:bg-destructive/10 rounded transition-colors"

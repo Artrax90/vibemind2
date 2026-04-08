@@ -96,7 +96,32 @@ export const api = {
       return { id, ...user };
     }
   },
-  
+
+  async deleteUser(id: string) {
+    try {
+      const res = await fetch(`${BASE_URL}/api/users/${id}`, {
+        method: 'DELETE',
+        headers: getAuthHeaders()
+      });
+      if (!res.ok) throw new Error('Failed to delete user');
+      return true;
+    } catch (e) {
+      throw e;
+    }
+  },
+
+  async getMe() {
+    try {
+      const res = await fetch(`${BASE_URL}/api/users/me`, {
+        headers: getAuthHeaders()
+      });
+      if (!res.ok) throw new Error('Failed to fetch me');
+      return await res.json();
+    } catch (e) {
+      return null;
+    }
+  },
+
   async getUsers() {
     try {
       const res = await fetch(`${BASE_URL}/api/users`, {
@@ -126,6 +151,72 @@ export const api = {
     }
   },
   
+  async getShares(resourceType: string, resourceId: string) {
+    try {
+      const res = await fetch(`${BASE_URL}/api/shares/${resourceType}/${resourceId}`, {
+        headers: getAuthHeaders()
+      });
+      return await handleResponse(res, []);
+    } catch (e) {
+      return [];
+    }
+  },
+
+  async createShare(resourceType: string, resourceId: string, shareData: any) {
+    try {
+      const res = await fetch(`${BASE_URL}/api/shares/${resourceType}/${resourceId}`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...getAuthHeaders()
+        },
+        body: JSON.stringify(shareData)
+      });
+      return await handleResponse(res, null);
+    } catch (e) {
+      throw e;
+    }
+  },
+
+  async deleteShare(shareId: string) {
+    try {
+      const res = await fetch(`${BASE_URL}/api/shares/${shareId}`, {
+        method: 'DELETE',
+        headers: getAuthHeaders()
+      });
+      if (!res.ok) throw new Error('Failed to delete share');
+      return true;
+    } catch (e) {
+      throw e;
+    }
+  },
+
+  async getPublicShare(shareId: string) {
+    try {
+      const res = await fetch(`${BASE_URL}/api/public/shares/${shareId}`);
+      if (!res.ok) throw new Error('Failed to load public share');
+      return await res.json();
+    } catch (e) {
+      throw e;
+    }
+  },
+
+  async updatePublicShare(shareId: string, noteData: any) {
+    try {
+      const res = await fetch(`${BASE_URL}/api/public/shares/${shareId}`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(noteData)
+      });
+      if (!res.ok) throw new Error('Failed to update public share');
+      return await res.json();
+    } catch (e) {
+      throw e;
+    }
+  },
+
   async getNotes() {
     try {
       const res = await fetch(`${BASE_URL}/api/notes`, {

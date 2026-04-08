@@ -14,7 +14,7 @@ from passlib.context import CryptContext
 from jose import jwt
 from datetime import datetime, timedelta
 
-from .models import Base, Config, User, Note, Folder
+from .models import Base, Config, User, Note, Folder, Share
 from . import bot as bot_module
 from .bot import restart_bot, test_bot_connection
 
@@ -142,7 +142,9 @@ def get_password_hash(password: str) -> str:
     return pwd_context.hash(password)
 
 @app.post("/api/users", response_model=UserResponse, status_code=201)
-async def create_user(user: UserCreate, db: Session = Depends(get_db)):
+async def create_user(user: UserCreate, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    if current_user.username != "admin":
+        raise HTTPException(status_code=403, detail="Only admin can create users")
     existing_user = db.query(User).filter(User.email == user.email).first()
     if existing_user:
         raise HTTPException(status_code=400, detail="Email already registered")
@@ -159,13 +161,21 @@ async def create_user(user: UserCreate, db: Session = Depends(get_db)):
     db.refresh(new_user)
     return new_user
 
+@app.get("/api/users/me", response_model=UserResponse)
+async def get_users_me(current_user: User = Depends(get_current_user)):
+    return current_user
+
 @app.get("/api/users", response_model=List[UserResponse])
-async def get_users(db: Session = Depends(get_db)):
+async def get_users(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    if current_user.username != "admin":
+        raise HTTPException(status_code=403, detail="Only admin can view users")
     users = db.query(User).all()
     return users
 
 @app.patch("/api/users/{user_id}", response_model=UserResponse)
-async def update_user(user_id: int, user_update: UserUpdate, db: Session = Depends(get_db)):
+async def update_user(user_id: int, user_update: UserUpdate, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    if current_user.username != "admin" and current_user.id != user_id:
+        raise HTTPException(status_code=403, detail="Not enough permissions")
     user = db.query(User).filter(User.id == user_id).first()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
@@ -180,6 +190,19 @@ async def update_user(user_id: int, user_update: UserUpdate, db: Session = Depen
     db.commit()
     db.refresh(user)
     return user
+
+@app.delete("/api/users/{user_id}", status_code=204)
+async def delete_user(user_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    if current_user.username != "admin":
+        raise HTTPException(status_code=403, detail="Only admin can delete users")
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    if user.username == "admin":
+        raise HTTPException(status_code=400, detail="Cannot delete admin user")
+    db.delete(user)
+    db.commit()
+    return None
 
 class SettingsUpdate(BaseModel):
     tg_token: str | None = None
@@ -387,6 +410,20 @@ class FolderCreate(BaseModel):
     id: str
     name: str
     parentId: str | None = None
+
+class ShareCreate(BaseModel):
+    target_username: str | None = None
+    permission: str
+    is_public: int = 0
+
+class ShareResponse(BaseModel):
+    id: str
+    resource_id: str
+    resource_type: str
+    owner_id: int
+    target_username: str | None = None
+    permission: str
+    is_public: int
 
 class TestIntegrationRequest(BaseModel):
     provider: str
@@ -634,9 +671,160 @@ async def chat_with_notes(req: ChatRequest, db: Session = Depends(get_db), curre
     except Exception as e:
         return {"answer": f"Ошибка: {str(e)}", "citations": []}
 
+@app.get("/api/shares/{resource_type}/{resource_id}", response_model=List[ShareResponse])
+async def get_shares(resource_type: str, resource_id: str, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    if resource_type == "note":
+        resource = db.query(Note).filter(Note.id == resource_id, Note.user_id == current_user.id).first()
+    elif resource_type == "folder":
+        resource = db.query(Folder).filter(Folder.id == resource_id, Folder.user_id == current_user.id).first()
+    else:
+        raise HTTPException(status_code=400, detail="Invalid resource type")
+        
+    if not resource:
+        raise HTTPException(status_code=404, detail="Resource not found or access denied")
+        
+    shares = db.query(Share).filter(Share.resource_id == resource_id, Share.resource_type == resource_type).all()
+    
+    response = []
+    for share in shares:
+        target_username = None
+        if share.target_user_id:
+            target_user = db.query(User).filter(User.id == share.target_user_id).first()
+            if target_user:
+                target_username = target_user.username
+        response.append(ShareResponse(
+            id=share.id,
+            resource_id=share.resource_id,
+            resource_type=share.resource_type,
+            owner_id=share.owner_id,
+            target_username=target_username,
+            permission=share.permission,
+            is_public=share.is_public
+        ))
+    return response
+
+@app.post("/api/shares/{resource_type}/{resource_id}", response_model=ShareResponse)
+async def create_share(resource_type: str, resource_id: str, share_data: ShareCreate, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    if resource_type == "note":
+        resource = db.query(Note).filter(Note.id == resource_id, Note.user_id == current_user.id).first()
+    elif resource_type == "folder":
+        resource = db.query(Folder).filter(Folder.id == resource_id, Folder.user_id == current_user.id).first()
+    else:
+        raise HTTPException(status_code=400, detail="Invalid resource type")
+        
+    if not resource:
+        raise HTTPException(status_code=404, detail="Resource not found or access denied")
+        
+    target_user_id = None
+    if not share_data.is_public and share_data.target_username:
+        target_user = db.query(User).filter(User.username == share_data.target_username).first()
+        if not target_user:
+            raise HTTPException(status_code=404, detail="Target user not found")
+        target_user_id = target_user.id
+        
+    new_share = Share(
+        id=str(uuid.uuid4()),
+        resource_id=resource_id,
+        resource_type=resource_type,
+        owner_id=current_user.id,
+        target_user_id=target_user_id,
+        permission=share_data.permission,
+        is_public=share_data.is_public
+    )
+    db.add(new_share)
+    db.commit()
+    db.refresh(new_share)
+    
+    return ShareResponse(
+        id=new_share.id,
+        resource_id=new_share.resource_id,
+        resource_type=new_share.resource_type,
+        owner_id=new_share.owner_id,
+        target_username=share_data.target_username,
+        permission=new_share.permission,
+        is_public=new_share.is_public
+    )
+
+@app.delete("/api/shares/{share_id}")
+async def delete_share(share_id: str, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    share = db.query(Share).filter(Share.id == share_id).first()
+    if not share:
+        raise HTTPException(status_code=404, detail="Share not found")
+    if share.owner_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Not authorized to delete this share")
+        
+    db.delete(share)
+    db.commit()
+    return {"status": "success"}
+
+@app.get("/api/public/shares/{share_id}")
+async def get_public_share(share_id: str, db: Session = Depends(get_db)):
+    share = db.query(Share).filter(Share.id == share_id).first()
+    if not share:
+        raise HTTPException(status_code=404, detail="Share not found")
+    
+    if not share.is_public:
+        raise HTTPException(status_code=403, detail="This share is not public")
+        
+    if share.resource_type == "note":
+        resource = db.query(Note).filter(Note.id == share.resource_id).first()
+        if not resource:
+            raise HTTPException(status_code=404, detail="Note not found")
+        return {
+            "share": {
+                "id": share.id,
+                "permission": share.permission,
+                "resource_type": share.resource_type
+            },
+            "note": {
+                "id": resource.id,
+                "title": resource.title,
+                "content": resource.content
+            }
+        }
+    else:
+        raise HTTPException(status_code=400, detail="Only notes can be viewed publicly for now")
+
+@app.patch("/api/public/shares/{share_id}")
+async def update_public_share(share_id: str, note_update: NoteUpdate, db: Session = Depends(get_db)):
+    share = db.query(Share).filter(Share.id == share_id).first()
+    if not share:
+        raise HTTPException(status_code=404, detail="Share not found")
+    
+    if not share.is_public:
+        raise HTTPException(status_code=403, detail="This share is not public")
+        
+    if share.permission != "write":
+        raise HTTPException(status_code=403, detail="This share is read-only")
+        
+    if share.resource_type == "note":
+        resource = db.query(Note).filter(Note.id == share.resource_id).first()
+        if not resource:
+            raise HTTPException(status_code=404, detail="Note not found")
+            
+        if note_update.title is not None:
+            resource.title = note_update.title
+        if note_update.content is not None:
+            resource.content = note_update.content
+            
+        db.commit()
+        return {"status": "success"}
+    else:
+        raise HTTPException(status_code=400, detail="Only notes can be updated publicly for now")
+
 @app.get("/api/notes")
 async def get_notes(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     notes = db.query(Note).filter(Note.user_id == current_user.id).all()
+    
+    shared_notes_records = db.query(Share).filter(Share.target_user_id == current_user.id, Share.resource_type == "note").all()
+    shared_note_ids = [share.resource_id for share in shared_notes_records]
+    
+    if shared_note_ids:
+        shared_notes = db.query(Note).filter(Note.id.in_(shared_note_ids)).all()
+        for note in shared_notes:
+            if note not in notes:
+                notes.append(note)
+                
     return [{"id": n.id, "title": n.title, "content": n.content, "folderId": n.folderId} for n in notes]
 
 @app.post("/api/notes")
@@ -647,8 +835,20 @@ async def create_or_update_note(note: NoteCreate, db: Session = Depends(get_db),
     text_to_embed = f"{note.title}\n{note.content or ''}"
     vector = embedding_manager.get_vector(text_to_embed)
     
-    db_note = db.query(Note).filter(Note.id == note.id, Note.user_id == current_user.id).first()
+    db_note = db.query(Note).filter(Note.id == note.id).first()
+    
     if db_note:
+        if db_note.user_id != current_user.id:
+            # Check if user has write access via share
+            share = db.query(Share).filter(
+                Share.resource_id == note.id,
+                Share.resource_type == "note",
+                Share.target_user_id == current_user.id,
+                Share.permission == "write"
+            ).first()
+            if not share:
+                raise HTTPException(status_code=403, detail="Not authorized to edit this note")
+                
         db_note.title = note.title
         db_note.content = note.content
         db_note.folderId = note.folderId
