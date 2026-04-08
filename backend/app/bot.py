@@ -295,9 +295,19 @@ def parse_commands(text: str) -> list[dict]:
         return True
 
     def clean_garbage(t: str) -> str:
-        garbage = ["пожалуйста", "мне", "сделай", "хочу", "можешь", "заметку", "заметка", "с названием", "в неё", "в нее", "туда", "по названию", "что-то", "про", "о", "об", "расскажи", "покажи"]
+        garbage = [
+            "пожалуйста", "мне", "сделай", "хочу", "можешь", 
+            "заметку", "заметка", "заметки", "с названием", 
+            "в неё", "в нее", "туда", "по названию", 
+            "что-то", "что то", "что-нибудь", "что нибудь",
+            "какую-то", "какую то", "какую-нибудь", "какую нибудь",
+            "про", "о", "об", "расскажи", "покажи"
+        ]
+        # Sort by length descending to match longer phrases first
+        garbage.sort(key=len, reverse=True)
         for word in garbage:
-            t = re.sub(rf'\b{word}\b', '', t)
+            pattern = rf'\b{re.escape(word)}\b'
+            t = re.sub(pattern, '', t, flags=re.IGNORECASE)
         return re.sub(r'\s+', ' ', t).strip()
 
     create_update_match = re.search(r'^(создай.*?|создать.*?|новая.*?)\s+(?:и\s+)?(добавь\s+.*)$', text)
