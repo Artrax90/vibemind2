@@ -127,10 +127,10 @@ export default function Settings({ onClose, theme, setTheme }: SettingsProps) {
         base_url: providers.find(p => p.isActive)?.baseUrl,
         model_name: providers.find(p => p.isActive)?.modelName
       });
-      alert('Settings saved! The backend bot is restarting with the new configuration.');
+      alert(t('settings.saved'));
     } catch (e) {
       console.error(e);
-      alert('Failed to save settings to the backend.');
+      alert(t('settings.saveFailed'));
     } finally {
       setIsSaving(false);
     }
@@ -146,22 +146,25 @@ export default function Settings({ onClose, theme, setTheme }: SettingsProps) {
     try {
       const response = await fetch('/api/bot/test', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('access_token')}`
+        },
         body: JSON.stringify({ tg_token: botToken, proxy_config: proxyConfig })
       });
 
       const data = await response.json();
       if (response.ok) {
         setBotStatus('connected');
-        alert(data.message || '✅ Connection Successful!');
+        alert(data.message || t('settings.connSuccess'));
       } else {
         setBotStatus('error');
-        alert(`❌ Failed: ${data.detail || 'Unknown error'}`);
+        alert(`${t('settings.connFailed')}${data.detail || 'Unknown error'}`);
       }
     } catch (error) {
       console.error('Network Error:', error);
       setBotStatus('error');
-      alert('Failed to connect to VibeMind API.');
+      alert(t('settings.apiFailed'));
     } finally {
       setIsTesting(false);
     }
@@ -169,23 +172,26 @@ export default function Settings({ onClose, theme, setTheme }: SettingsProps) {
 
   const handleTestProxy = async () => {
     if (!proxyConfig.host) {
-      alert('Please enter a proxy host first.');
+      alert(t('settings.proxyHostReq'));
       return;
     }
     try {
       const response = await fetch('/api/proxy/test', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('access_token')}`
+        },
         body: JSON.stringify({ proxy_config: proxyConfig })
       });
       const data = await response.json();
       if (response.ok && data.status === 'success') {
-        alert('✅ Proxy connection successful!');
+        alert(t('settings.proxySuccess'));
       } else {
-        alert(`❌ Proxy test failed: ${data.detail || 'Unknown error'}`);
+        alert(`${t('settings.proxyFailed')}${data.detail || 'Unknown error'}`);
       }
     } catch (e) {
-      alert('❌ Proxy test request failed.');
+      alert(t('settings.proxyReqFailed'));
     }
   };
 
@@ -200,13 +206,13 @@ export default function Settings({ onClose, theme, setTheme }: SettingsProps) {
       if (response.ok) {
         const data = await response.json();
         setExternalDbs(data.dbs);
-        alert('External Database connected successfully!');
+        alert(t('settings.dbSuccess'));
       } else {
-        alert('Failed to connect external database.');
+        alert(t('settings.dbFailed'));
       }
     } catch (e) {
       console.error(e);
-      alert('Error connecting to external database.');
+      alert(t('settings.dbError'));
     }
   };
 
@@ -229,15 +235,15 @@ export default function Settings({ onClose, theme, setTheme }: SettingsProps) {
       const data = await response.json();
       if (response.ok && data.status === 'success') {
         setProviders(providers.map(p => p.id === provider.id ? { ...p, status: 'connected' } : p));
-        alert('✅ Connection Successful!');
+        alert(t('settings.connSuccess'));
       } else {
         setProviders(providers.map(p => p.id === provider.id ? { ...p, status: 'error' } : p));
-        alert(`❌ Failed: ${data.detail || data.message || 'Unknown error'}`);
+        alert(`${t('settings.connFailed')}${data.detail || data.message || 'Unknown error'}`);
       }
     } catch (error) {
       console.error('Test Provider Error:', error);
       setProviders(providers.map(p => p.id === provider.id ? { ...p, status: 'error' } : p));
-      alert('❌ Failed to test connection.');
+      alert(t('settings.connFailed'));
     } finally {
       setTestingProviderId(null);
     }
@@ -305,7 +311,7 @@ export default function Settings({ onClose, theme, setTheme }: SettingsProps) {
         <h2 className="text-2xl font-bold text-foreground">{t('settings.title')}</h2>
         <div className="flex items-center space-x-4">
           <button onClick={handleSave} disabled={isSaving} className="flex items-center px-4 py-2 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors disabled:opacity-50">
-            <Save size={16} className={`mr-2 ${isSaving ? 'animate-spin' : ''}`} /> {isSaving ? 'Saving...' : t('settings.save')}
+            <Save size={16} className={`mr-2 ${isSaving ? 'animate-spin' : ''}`} /> {isSaving ? t('settings.saving') : t('settings.save')}
           </button>
           <button onClick={onClose} className="p-2 text-muted-foreground hover:text-foreground rounded-lg hover:bg-secondary transition-colors">
             <X size={20} />
@@ -337,15 +343,15 @@ export default function Settings({ onClose, theme, setTheme }: SettingsProps) {
             {activeTab === 'general' && (
               <>
                 <section className="space-y-4">
-                  <h3 className="text-lg font-semibold text-foreground">System Status</h3>
+                  <h3 className="text-lg font-semibold text-foreground">{t('settings.systemStatus')}</h3>
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                     <div className="bg-card p-4 rounded-lg border border-border/50 flex items-center justify-between">
                       <div className="flex items-center">
                         <Cpu size={18} className="mr-3 text-primary" />
                         <div>
-                          <div className="text-xs text-muted-foreground">AI Assistant</div>
+                          <div className="text-xs text-muted-foreground">{t('settings.aiAssistant')}</div>
                           <div className="text-sm font-medium text-foreground">
-                            {providers.find(p => p.isActive)?.status === 'connected' ? 'Connected' : 'Not Configured'}
+                            {providers.find(p => p.isActive)?.status === 'connected' ? t('settings.connected') : t('settings.notConfigured')}
                           </div>
                         </div>
                       </div>
@@ -360,9 +366,9 @@ export default function Settings({ onClose, theme, setTheme }: SettingsProps) {
                       <div className="flex items-center">
                         <MessageSquare size={18} className="mr-3 text-primary" />
                         <div>
-                          <div className="text-xs text-muted-foreground">Telegram Bot</div>
+                          <div className="text-xs text-muted-foreground">{t('settings.telegramBot')}</div>
                           <div className="text-sm font-medium text-foreground">
-                            {botStatus === 'connected' ? 'Live' : 'Offline'}
+                            {botStatus === 'connected' ? t('settings.live') : t('settings.offline')}
                           </div>
                         </div>
                       </div>
@@ -377,9 +383,9 @@ export default function Settings({ onClose, theme, setTheme }: SettingsProps) {
                       <div className="flex items-center">
                         <Server size={18} className="mr-3 text-primary" />
                         <div>
-                          <div className="text-xs text-muted-foreground">Proxy</div>
+                          <div className="text-xs text-muted-foreground">{t('settings.proxyStatus')}</div>
                           <div className="text-sm font-medium text-foreground">
-                            {proxyConfig.host ? 'Configured' : 'Direct'}
+                            {proxyConfig.host ? t('settings.configured') : t('settings.direct')}
                           </div>
                         </div>
                       </div>
@@ -401,19 +407,19 @@ export default function Settings({ onClose, theme, setTheme }: SettingsProps) {
                 </section>
 
                 <section className="space-y-4">
-                  <h3 className="text-lg font-semibold text-foreground">Theme</h3>
+                  <h3 className="text-lg font-semibold text-foreground">{t('settings.theme')}</h3>
                   <div className="flex items-center space-x-4 bg-card p-4 rounded-lg border border-border/50">
                     <button 
                       onClick={() => setTheme('light')} 
                       className={`flex items-center px-4 py-2 rounded-lg transition-colors ${theme === 'light' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-secondary hover:text-foreground'}`}
                     >
-                      <Sun size={16} className="mr-2" /> Light
+                      <Sun size={16} className="mr-2" /> {t('settings.light')}
                     </button>
                     <button 
                       onClick={() => setTheme('dark')} 
                       className={`flex items-center px-4 py-2 rounded-lg transition-colors ${theme === 'dark' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-secondary hover:text-foreground'}`}
                     >
-                      <Moon size={16} className="mr-2" /> Dark
+                      <Moon size={16} className="mr-2" /> {t('settings.dark')}
                     </button>
                   </div>
                 </section>
@@ -426,11 +432,11 @@ export default function Settings({ onClose, theme, setTheme }: SettingsProps) {
                 </section>
 
                 <section className="space-y-4">
-                  <h3 className="text-lg font-semibold text-foreground">Data Management</h3>
+                  <h3 className="text-lg font-semibold text-foreground">{t('settings.dataManagement')}</h3>
                   <div className="bg-card p-4 rounded-lg border border-border/50 flex justify-between items-center">
                     <div>
-                      <div className="text-foreground font-medium">Re-index AI Search</div>
-                      <div className="text-sm text-muted-foreground">Force regenerate all AI embeddings for your notes</div>
+                      <div className="text-foreground font-medium">{t('settings.reindexSearch')}</div>
+                      <div className="text-sm text-muted-foreground">{t('settings.reindexDesc')}</div>
                     </div>
                     <button 
                       onClick={async () => {
@@ -445,13 +451,13 @@ export default function Settings({ onClose, theme, setTheme }: SettingsProps) {
                           });
                           const data = await res.json();
                           if (res.ok) {
-                            alert(data.message || 'Re-indexing complete!');
+                            alert(data.message || t('settings.reindexSuccess'));
                           } else {
-                            alert(`Error: ${data.detail || 'Failed to re-index'}`);
+                            alert(`Error: ${data.detail || t('settings.reindexFailed')}`);
                           }
                         } catch (e) {
                           console.error(e);
-                          alert('Failed to re-index notes. Check console for details.');
+                          alert(t('settings.reindexFailed'));
                         } finally {
                           setIsReindexing(false);
                         }
@@ -459,7 +465,7 @@ export default function Settings({ onClose, theme, setTheme }: SettingsProps) {
                       disabled={isReindexing}
                       className="px-4 py-2 bg-primary/10 text-primary hover:bg-primary/20 rounded-lg transition-colors flex items-center disabled:opacity-50"
                     >
-                      <Database size={16} className={`mr-2 ${isReindexing ? 'animate-spin' : ''}`} /> {isReindexing ? 'Re-indexing...' : 'Re-index'}
+                      <Database size={16} className={`mr-2 ${isReindexing ? 'animate-spin' : ''}`} /> {isReindexing ? t('settings.reindexing') : t('settings.reindex')}
                     </button>
                   </div>
                 </section>
@@ -468,11 +474,39 @@ export default function Settings({ onClose, theme, setTheme }: SettingsProps) {
                   <h3 className="text-lg font-semibold text-foreground">{t('settings.export')}</h3>
                   <div className="bg-card p-4 rounded-lg border border-border/50 flex justify-between items-center">
                     <div>
-                      <div className="text-foreground font-medium">Markdown Export</div>
-                      <div className="text-sm text-muted-foreground">Download all notes as a ZIP archive</div>
+                      <div className="text-foreground font-medium">{t('settings.markdownExport')}</div>
+                      <div className="text-sm text-muted-foreground">{t('settings.exportDesc')}</div>
                     </div>
-                    <button className="px-4 py-2 bg-primary/10 text-primary hover:bg-primary/20 rounded-lg transition-colors flex items-center">
-                      <Download size={16} className="mr-2" /> Export ZIP
+                    <button 
+                      onClick={async () => {
+                        try {
+                          const res = await fetch('/api/notes/export', {
+                            headers: { 'Authorization': `Bearer ${localStorage.getItem('access_token')}` }
+                          });
+                          if (res.ok) {
+                            const blob = await res.blob();
+                            const url = window.URL.createObjectURL(blob);
+                            const a = document.createElement('a');
+                            a.href = url;
+                            a.download = `notes_export_${new Date().toISOString().slice(0,10)}.zip`;
+                            a.style.display = 'none';
+                            document.body.appendChild(a);
+                            a.click();
+                            setTimeout(() => {
+                              window.URL.revokeObjectURL(url);
+                              document.body.removeChild(a);
+                            }, 1000);
+                          } else {
+                            alert(t('settings.exportFailed'));
+                          }
+                        } catch (e) {
+                          console.error(e);
+                          alert(t('settings.exportError'));
+                        }
+                      }}
+                      className="px-4 py-2 bg-primary/10 text-primary hover:bg-primary/20 rounded-lg transition-colors flex items-center"
+                    >
+                      <Download size={16} className="mr-2" /> {t('settings.exportZip')}
                     </button>
                   </div>
                 </section>
@@ -483,9 +517,9 @@ export default function Settings({ onClose, theme, setTheme }: SettingsProps) {
               <div className="space-y-8">
                 <section className="space-y-6">
                   <div className="flex items-center justify-between">
-                    <h3 className="text-lg font-semibold text-foreground">LLM Providers</h3>
+                    <h3 className="text-lg font-semibold text-foreground">{t('settings.llmProviders')}</h3>
                     <button onClick={addProvider} className="flex items-center px-3 py-1.5 bg-secondary text-foreground hover:bg-secondary/80 rounded-lg border border-border/50 hover:border-primary transition-all">
-                      <Plus size={16} className="mr-2" /> Add Provider
+                      <Plus size={16} className="mr-2" /> {t('settings.addProvider')}
                     </button>
                   </div>
 
@@ -494,7 +528,7 @@ export default function Settings({ onClose, theme, setTheme }: SettingsProps) {
                       <div className="absolute top-4 right-4 flex items-center space-x-4">
                         <label className="flex items-center space-x-2 cursor-pointer text-sm text-muted-foreground">
                           <input type="radio" checked={provider.isActive} onChange={() => updateProvider(provider.id, 'isActive', true)} className="form-radio text-primary bg-background border-border" />
-                          <span>Active</span>
+                          <span>{t('settings.active')}</span>
                         </label>
                         <button onClick={() => removeProvider(provider.id)} className="text-muted-foreground hover:text-destructive transition-colors">
                           <Trash2 size={16} />
@@ -504,31 +538,31 @@ export default function Settings({ onClose, theme, setTheme }: SettingsProps) {
                       <div className="space-y-4 mt-2">
                         <div className="grid grid-cols-3 gap-4">
                           <div>
-                            <label className="block text-sm text-muted-foreground mb-1">Provider Type</label>
+                            <label className="block text-sm text-muted-foreground mb-1">{t('settings.providerType')}</label>
                             <select 
                               value={provider.provider} 
                               onChange={(e) => updateProvider(provider.id, 'provider', e.target.value)} 
                               className="w-full bg-background border border-border rounded-lg p-2 text-foreground focus:border-primary focus:ring-1 focus:ring-primary outline-none transition-all"
                             >
-                              <option value="openai">OpenAI / Compatible</option>
-                              <option value="gemini">Google Gemini</option>
-                              <option value="openrouter">OpenRouter</option>
-                              <option value="ollama">Ollama (Local)</option>
+                              <option value="openai">{t('settings.optOpenAI')}</option>
+                              <option value="gemini">{t('settings.optGemini')}</option>
+                              <option value="openrouter">{t('settings.optOpenRouter')}</option>
+                              <option value="ollama">{t('settings.optOllama')}</option>
                             </select>
                           </div>
                           <div>
-                            <label className="block text-sm text-muted-foreground mb-1">Label</label>
-                            <input type="text" value={provider.label} onChange={(e) => updateProvider(provider.id, 'label', e.target.value)} placeholder="e.g., DeepSeek, Groq, Local" className="w-full bg-background border border-border rounded-lg p-2 text-foreground focus:border-primary focus:ring-1 focus:ring-primary outline-none transition-all" />
+                            <label className="block text-sm text-muted-foreground mb-1">{t('settings.label')}</label>
+                            <input type="text" value={provider.label} onChange={(e) => updateProvider(provider.id, 'label', e.target.value)} placeholder={t('settings.phDeepSeek')} className="w-full bg-background border border-border rounded-lg p-2 text-foreground focus:border-primary focus:ring-1 focus:ring-primary outline-none transition-all" />
                           </div>
                           <div>
-                            <label className="block text-sm text-muted-foreground mb-1">Model Name</label>
-                            <input type="text" value={provider.modelName} onChange={(e) => updateProvider(provider.id, 'modelName', e.target.value)} placeholder="e.g., gpt-4o-mini" className="w-full bg-background border border-border rounded-lg p-2 text-foreground focus:border-primary focus:ring-1 focus:ring-primary outline-none transition-all" />
+                            <label className="block text-sm text-muted-foreground mb-1">{t('settings.modelName')}</label>
+                            <input type="text" value={provider.modelName} onChange={(e) => updateProvider(provider.id, 'modelName', e.target.value)} placeholder={t('settings.phModel')} className="w-full bg-background border border-border rounded-lg p-2 text-foreground focus:border-primary focus:ring-1 focus:ring-primary outline-none transition-all" />
                           </div>
                         </div>
 
                         <div className="grid grid-cols-2 gap-4">
                           <div>
-                            <label className="block text-sm text-muted-foreground mb-1">Base URL (OpenAI/Ollama only)</label>
+                            <label className="block text-sm text-muted-foreground mb-1">{t('settings.baseUrl')}</label>
                             <input 
                               type="text" 
                               value={provider.baseUrl} 
@@ -539,23 +573,23 @@ export default function Settings({ onClose, theme, setTheme }: SettingsProps) {
                             />
                           </div>
                           <div>
-                            <label className="block text-sm text-muted-foreground mb-1">API Key (Encrypted in DB)</label>
+                            <label className="block text-sm text-muted-foreground mb-1">{t('settings.apiKey')}</label>
                             <input type="password" value={provider.apiKey} onChange={(e) => updateProvider(provider.id, 'apiKey', e.target.value)} placeholder="sk-..." className="w-full bg-background border border-border rounded-lg p-2 text-foreground focus:border-primary focus:ring-1 focus:ring-primary outline-none transition-all" />
                           </div>
                         </div>
                         <div className="flex items-center justify-between mt-2">
                           <div className="flex items-center space-x-2">
-                            <span className="text-xs text-muted-foreground">Status:</span>
-                            {provider.status === 'connected' && <span className="flex items-center text-accent text-xs"><CheckCircle size={14} className="mr-1" /> Connected</span>}
-                            {provider.status === 'error' && <span className="flex items-center text-destructive text-xs"><AlertCircle size={14} className="mr-1" /> Error</span>}
-                            {provider.status === 'idle' && <span className="text-muted-foreground text-xs">Not Tested</span>}
+                            <span className="text-xs text-muted-foreground">{t('settings.status')}</span>
+                            {provider.status === 'connected' && <span className="flex items-center text-accent text-xs"><CheckCircle size={14} className="mr-1" /> {t('settings.connected')}</span>}
+                            {provider.status === 'error' && <span className="flex items-center text-destructive text-xs"><AlertCircle size={14} className="mr-1" /> {t('settings.error')}</span>}
+                            {provider.status === 'idle' && <span className="text-muted-foreground text-xs">{t('settings.notTested')}</span>}
                           </div>
                           <button 
                             onClick={() => handleTestProvider(provider)}
                             disabled={testingProviderId === provider.id}
                             className="px-4 py-2 bg-secondary text-foreground hover:bg-secondary/80 rounded-lg border border-border/50 hover:border-primary transition-all disabled:opacity-50"
                           >
-                            {testingProviderId === provider.id ? 'Testing...' : 'Test Connection'}
+                            {testingProviderId === provider.id ? t('settings.testing') : t('settings.testConnection')}
                           </button>
                         </div>
                       </div>
@@ -566,16 +600,16 @@ export default function Settings({ onClose, theme, setTheme }: SettingsProps) {
                 <section className="space-y-4">
                   <div className="flex items-center justify-between">
                     <div>
-                      <h3 className="text-lg font-semibold text-foreground">External Databases</h3>
+                      <h3 className="text-lg font-semibold text-foreground">{t('settings.externalDatabases')}</h3>
                       <p className="text-xs text-muted-foreground mt-1">
-                        Your system database is managed automatically. Add external DBs here to index them for AI RAG analysis.
+                        {t('settings.externalDbDesc')}
                       </p>
                     </div>
                     <button 
                       onClick={() => setIsAddDBOpen(true)}
                       className="flex items-center px-3 py-1.5 bg-secondary text-foreground hover:bg-secondary/80 rounded-lg border border-border/50 hover:border-primary transition-all"
                     >
-                      <Plus size={16} className="mr-2" /> Add DB
+                      <Plus size={16} className="mr-2" /> {t('settings.addDb')}
                     </button>
                   </div>
                   
@@ -603,7 +637,7 @@ export default function Settings({ onClose, theme, setTheme }: SettingsProps) {
                     ) : (
                       <div className="bg-card p-6 rounded-lg border border-border/50 text-center text-muted-foreground">
                         <Database size={32} className="mx-auto mb-2 opacity-50" />
-                        <p>No external databases connected.</p>
+                        <p>{t('settings.noExternalDbs')}</p>
                       </div>
                     )}
                   </div>
@@ -613,27 +647,27 @@ export default function Settings({ onClose, theme, setTheme }: SettingsProps) {
 
             {activeTab === 'bots' && (
               <div className="space-y-6">
-                <h3 className="text-lg font-semibold text-foreground">Telegram Bot Configuration</h3>
+                <h3 className="text-lg font-semibold text-foreground">{t('settings.botConfig')}</h3>
                 <div className="bg-card p-6 rounded-lg border border-border/50 space-y-6">
                   <div>
-                    <label className="block text-sm text-muted-foreground mb-1">Bot Token</label>
+                    <label className="block text-sm text-muted-foreground mb-1">{t('settings.botToken')}</label>
                     <input type="password" value={botToken} onChange={(e) => setBotToken(e.target.value)} placeholder="123456789:ABCdefGHIjklMNOpqrSTUvwxYZ" className="w-full bg-background border border-border rounded-lg p-2 text-foreground focus:border-primary focus:ring-1 focus:ring-primary outline-none transition-all" />
                   </div>
                   <div>
-                    <label className="block text-sm text-muted-foreground mb-1">Admin Telegram ID</label>
-                    <input type="text" value={adminId} onChange={(e) => setAdminId(e.target.value)} placeholder="e.g., 12345678" className="w-full bg-background border border-border rounded-lg p-2 text-foreground focus:border-primary focus:ring-1 focus:ring-primary outline-none transition-all" />
-                    <p className="text-xs text-muted-foreground mt-1">Only this user will be able to interact with the bot.</p>
+                    <label className="block text-sm text-muted-foreground mb-1">{t('settings.adminId')}</label>
+                    <input type="text" value={adminId} onChange={(e) => setAdminId(e.target.value)} placeholder={t('settings.phAdminId')} className="w-full bg-background border border-border rounded-lg p-2 text-foreground focus:border-primary focus:ring-1 focus:ring-primary outline-none transition-all" />
+                    <p className="text-xs text-muted-foreground mt-1">{t('settings.adminIdDesc')}</p>
                   </div>
                   
                   <div className="pt-4 border-t border-border/50 flex items-center justify-between">
                     <div className="flex items-center space-x-2">
-                      <span className="text-sm text-muted-foreground">Status:</span>
-                      {botStatus === 'connected' && <span className="flex items-center text-accent text-sm"><CheckCircle size={16} className="mr-1" /> Live</span>}
-                      {botStatus === 'error' && <span className="flex items-center text-destructive text-sm"><AlertCircle size={16} className="mr-1" /> Error</span>}
-                      {botStatus === 'disconnected' && <span className="text-muted-foreground text-sm">Disconnected</span>}
+                      <span className="text-sm text-muted-foreground">{t('settings.status')}</span>
+                      {botStatus === 'connected' && <span className="flex items-center text-accent text-sm"><CheckCircle size={16} className="mr-1" /> {t('settings.live')}</span>}
+                      {botStatus === 'error' && <span className="flex items-center text-destructive text-sm"><AlertCircle size={16} className="mr-1" /> {t('settings.error')}</span>}
+                      {botStatus === 'disconnected' && <span className="text-muted-foreground text-sm">{t('settings.disconnected')}</span>}
                     </div>
                     <button onClick={handleTestBot} disabled={isTesting} className="px-4 py-2 bg-secondary text-foreground hover:bg-secondary/80 rounded-lg border border-border/50 hover:border-primary transition-all disabled:opacity-50">
-                      {isTesting ? 'Testing...' : 'Test Connection'}
+                      {isTesting ? t('settings.testing') : t('settings.testConnection')}
                     </button>
                   </div>
                 </div>
@@ -643,7 +677,7 @@ export default function Settings({ onClose, theme, setTheme }: SettingsProps) {
                   <div className="bg-card p-6 rounded-lg border border-border/50 space-y-6">
                     <div className="grid grid-cols-2 gap-4">
                       <div>
-                        <label className="block text-xs font-mono uppercase tracking-wider text-muted-foreground mb-2">Protocol</label>
+                        <label className="block text-xs font-mono uppercase tracking-wider text-muted-foreground mb-2">{t('settings.protocol')}</label>
                         <select 
                           value={proxyConfig.protocol} 
                           onChange={(e) => setProxyConfig({...proxyConfig, protocol: e.target.value})} 
@@ -656,7 +690,7 @@ export default function Settings({ onClose, theme, setTheme }: SettingsProps) {
                       </div>
                       <div className="grid grid-cols-3 gap-2">
                         <div className="col-span-2">
-                          <label className="block text-xs font-mono uppercase tracking-wider text-muted-foreground mb-2">Host</label>
+                          <label className="block text-xs font-mono uppercase tracking-wider text-muted-foreground mb-2">{t('settings.host')}</label>
                           <input 
                             type="text" 
                             placeholder="127.0.0.1" 
@@ -666,7 +700,7 @@ export default function Settings({ onClose, theme, setTheme }: SettingsProps) {
                           />
                         </div>
                         <div>
-                          <label className="block text-xs font-mono uppercase tracking-wider text-muted-foreground mb-2">Port</label>
+                          <label className="block text-xs font-mono uppercase tracking-wider text-muted-foreground mb-2">{t('settings.port')}</label>
                           <input 
                             type="text" 
                             placeholder="8080" 
@@ -679,7 +713,7 @@ export default function Settings({ onClose, theme, setTheme }: SettingsProps) {
                     </div>
                     <div className="grid grid-cols-2 gap-4">
                       <div>
-                        <label className="block text-xs font-mono uppercase tracking-wider text-muted-foreground mb-2">Username (Optional)</label>
+                        <label className="block text-xs font-mono uppercase tracking-wider text-muted-foreground mb-2">{t('settings.usernameOptional')}</label>
                         <div className="relative">
                           <User className="absolute left-3 top-2.5 w-4 h-4 text-muted-foreground" />
                           <input 
@@ -692,7 +726,7 @@ export default function Settings({ onClose, theme, setTheme }: SettingsProps) {
                         </div>
                       </div>
                       <div>
-                        <label className="block text-xs font-mono uppercase tracking-wider text-muted-foreground mb-2">Password (Optional)</label>
+                        <label className="block text-xs font-mono uppercase tracking-wider text-muted-foreground mb-2">{t('settings.passwordOptional')}</label>
                         <div className="relative">
                           <Lock className="absolute left-3 top-2.5 w-4 h-4 text-muted-foreground" />
                           <input 
@@ -710,7 +744,7 @@ export default function Settings({ onClose, theme, setTheme }: SettingsProps) {
                         onClick={handleTestProxy}
                         className="px-4 py-2 bg-secondary text-secondary-foreground rounded-lg hover:bg-secondary/80 transition-colors"
                       >
-                        Test Proxy Connection
+                        {t('settings.testProxy')}
                       </button>
                     </div>
                   </div>
@@ -721,9 +755,9 @@ export default function Settings({ onClose, theme, setTheme }: SettingsProps) {
             {activeTab === 'users' && (
               <div className="space-y-6">
                 <div className="flex items-center justify-between">
-                  <h3 className="text-lg font-semibold text-foreground">User Management</h3>
+                  <h3 className="text-lg font-semibold text-foreground">{t('settings.userManagement')}</h3>
                   <button onClick={() => { setEditingUser(null); setIsCreateUserOpen(true); }} className="flex items-center px-3 py-1.5 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors">
-                    <Plus size={16} className="mr-2" /> Add User
+                    <Plus size={16} className="mr-2" /> {t('settings.addUser')}
                   </button>
                 </div>
 
@@ -731,23 +765,23 @@ export default function Settings({ onClose, theme, setTheme }: SettingsProps) {
                   <table className="w-full text-left text-sm text-muted-foreground">
                     <thead className="bg-secondary/50 text-foreground uppercase text-xs">
                       <tr>
-                        <th className="px-6 py-3">Username</th>
-                        <th className="px-6 py-3">Email</th>
-                        <th className="px-6 py-3">Status</th>
-                        <th className="px-6 py-3">Action</th>
+                        <th className="px-6 py-3">{t('settings.username')}</th>
+                        <th className="px-6 py-3">{t('settings.email')}</th>
+                        <th className="px-6 py-3">{t('settings.status')}</th>
+                        <th className="px-6 py-3">{t('settings.action')}</th>
                       </tr>
                     </thead>
                     <tbody>
                       {users.length === 0 ? (
                         <tr className="border-t border-border/50">
-                          <td colSpan={4} className="px-6 py-4 text-center text-muted-foreground">No users found. (Mock mode active)</td>
+                          <td colSpan={4} className="px-6 py-4 text-center text-muted-foreground">{t('settings.noUsers')}</td>
                         </tr>
                       ) : (
                         users.map((u, i) => (
                           <tr key={i} className="border-t border-border/50 hover:bg-secondary/50 transition-colors">
                             <td className="px-6 py-4 font-medium text-foreground">{u.username}</td>
                             <td className="px-6 py-4">{u.email}</td>
-                            <td className="px-6 py-4"><span className="px-2 py-1 bg-accent/10 text-accent rounded text-xs">Active</span></td>
+                            <td className="px-6 py-4"><span className="px-2 py-1 bg-accent/10 text-accent rounded text-xs">{t('settings.active')}</span></td>
                             <td className="px-6 py-4 flex space-x-3">
                               <button 
                                 onClick={() => { setEditingUser(u); setIsCreateUserOpen(true); }}

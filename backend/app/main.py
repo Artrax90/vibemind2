@@ -224,7 +224,7 @@ async def login(req: LoginRequest, db: Session = Depends(get_db)):
     return {"access_token": encoded_jwt, "token_type": "bearer"}
 
 @app.get("/api/settings")
-async def get_settings(db: Session = Depends(get_db)):
+async def get_settings(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     config = db.query(Config).first()
     if not config:
         return {}
@@ -240,7 +240,7 @@ async def get_settings(db: Session = Depends(get_db)):
     }
 
 @app.post("/api/settings")
-async def update_settings(settings: SettingsUpdate, db: Session = Depends(get_db)):
+async def update_settings(settings: SettingsUpdate, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     """Сохранение настроек в БД и перезапуск бота"""
     config = db.query(Config).first()
     if not config:
@@ -267,7 +267,7 @@ async def update_settings(settings: SettingsUpdate, db: Session = Depends(get_db
     return {"status": "success", "message": "Настройки сохранены, бот перезапускается"}
 
 @app.post("/api/bot/test")
-async def test_bot(req: BotTestRequest):
+async def test_bot(req: BotTestRequest, current_user: User = Depends(get_current_user)):
     if not req.tg_token:
         raise HTTPException(status_code=400, detail="Bot token not configured")
     
@@ -280,7 +280,7 @@ async def test_bot(req: BotTestRequest):
         raise HTTPException(status_code=500, detail=message)
 
 @app.post("/api/proxy/test")
-async def test_proxy(req: ProxyTestRequest):
+async def test_proxy(req: ProxyTestRequest, current_user: User = Depends(get_current_user)):
     import aiohttp
     from aiohttp_socks import ProxyConnector
     
@@ -441,9 +441,11 @@ async def chat_with_notes(req: ChatRequest, db: Session = Depends(get_db), curre
     # Мы просим ИИ сгенерировать ключевые слова на обоих языках (RU/EN)
     search_keywords = [req.message]
     try:
-        expansion_prompt = f"""Сгенерируй 3-5 ключевых слов для поиска в базе заметок по запросу: "{req.message}"
-Учти возможные переводы (RU/EN) и синонимы. Выдай только слова через запятую.
-Пример: "докер" -> "docker, контейнеры, devops, докер"
+        expansion_prompt = f"""Сгенерируй 5-7 ключевых слов для поиска в базе заметок по запросу: "{req.message}"
+Учти возможные переводы (RU/EN), транслитерацию (например, докер -> docker, doker) и синонимы. 
+Выдай только слова через запятую, без нумерации и пояснений.
+Пример: "докер" -> "docker, doker, контейнеры, devops, докер"
+Пример: "шашлык" -> "шашлык, мясо, мангал, гриль, bbq, барбекю"
 """
         # Используем тот же провайдер для расширения
         expanded_text = ""
@@ -503,8 +505,8 @@ async def chat_with_notes(req: ChatRequest, db: Session = Depends(get_db), curre
     
     # 4. Семантический поиск (Semantic Search)
     query_vector = embedding_manager.get_vector(req.message)
-    # Еще строже порог (0.45)
-    semantic_threshold = 0.45
+    # Увеличиваем порог для большего количества совпадений
+    semantic_threshold = 0.65
     
     semantic_results = db.query(
         Note, 
@@ -548,7 +550,7 @@ async def chat_with_notes(req: ChatRequest, db: Session = Depends(get_db), curre
 {context_text}
 
 ИНСТРУКЦИИ:
-1. Если в заметках НЕТ ответа на вопрос, просто скажи "Информации недостаточно" и НЕ приводи цитаты.
+1. Если в заметках НЕТ ответа на вопрос или они не релевантны, просто скажи "Я не нашел информации по этому вопросу в ваших заметках." и НЕ приводи цитаты. НЕ выдумывай информацию.
 2. Если ответ есть, используй [1], [2] для ссылок.
 3. В конце ответа добавь список ID использованных заметок в формате: "SOURCES: ID1, ID2". Это КРИТИЧЕСКИ важно.
 4. Отвечай на языке вопроса.
@@ -662,6 +664,38 @@ async def reindex_notes(db: Session = Depends(get_db), current_user: User = Depe
     db.commit()
     return {"status": "success", "message": f"Reindexed {count} notes"}
 
+@app.get("/api/notes/export")
+async def export_notes(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    """Экспорт всех заметок в ZIP архив (Markdown)"""
+    import io
+    import zipfile
+    
+    notes = db.query(Note).filter(Note.user_id == current_user.id).all()
+    
+    # Create an in-memory zip file
+    zip_buffer = io.BytesIO()
+    with zipfile.ZipFile(zip_buffer, "a", zipfile.ZIP_DEFLATED, False) as zip_file:
+        for note in notes:
+            # Sanitize filename
+            safe_title = "".join([c for c in note.title if c.isalpha() or c.isdigit() or c==' ']).rstrip()
+            if not safe_title:
+                safe_title = f"note_{note.id}"
+            filename = f"{safe_title}.md"
+            
+            # Create markdown content
+            content = f"# {note.title}\n\n{note.content or ''}"
+            zip_file.writestr(filename, content)
+            
+    # Seek to the beginning of the stream
+    zip_buffer.seek(0)
+    
+    from fastapi.responses import Response
+    return Response(
+        content=zip_buffer.getvalue(), 
+        media_type="application/x-zip-compressed", 
+        headers={"Content-Disposition": f"attachment; filename=notes_export_{datetime.now().strftime('%Y%m%d_%H%M%S')}.zip"}
+    )
+
 @app.get("/api/notes/search")
 async def search_notes(query: str, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     """Поиск заметок по заголовку или содержимому (частичное совпадение)"""
@@ -769,7 +803,7 @@ async def delete_folder(folder_id: str, db: Session = Depends(get_db), current_u
     return {"status": "success"}
 
 @app.get("/api/bot/status")
-async def get_bot_status():
+async def get_bot_status(current_user: User = Depends(get_current_user)):
     """Проверка статуса фонового процесса бота"""
     is_running = bot_module.current_bot is not None
     return {"status": "connected" if is_running else "disconnected"}

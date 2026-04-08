@@ -14,6 +14,7 @@ export const updateSettings = async (settings: SettingsPayload) => {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
+      'Authorization': `Bearer ${localStorage.getItem('access_token')}`
     },
     body: JSON.stringify(settings),
   });
@@ -26,7 +27,11 @@ export const updateSettings = async (settings: SettingsPayload) => {
 };
 
 export const getSettings = async () => {
-  const response = await fetch('/api/settings');
+  const response = await fetch('/api/settings', {
+    headers: {
+      'Authorization': `Bearer ${localStorage.getItem('access_token')}`
+    }
+  });
   
   if (!response.ok) {
     throw new Error('Failed to get settings');
@@ -36,7 +41,11 @@ export const getSettings = async () => {
 };
 
 export const getBotStatus = async () => {
-  const response = await fetch('/api/bot/status');
+  const response = await fetch('/api/bot/status', {
+    headers: {
+      'Authorization': `Bearer ${localStorage.getItem('access_token')}`
+    }
+  });
   
   if (!response.ok) {
     throw new Error('Failed to get bot status');
