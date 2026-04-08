@@ -1102,8 +1102,8 @@ async def semantic_search_notes(query: str, db: Session = Depends(get_db), curre
     query_vector = embedding_manager.get_vector(query)
     
     # Search using cosine distance (<=>)
-    # Cosine similarity threshold = 0.55 => Cosine distance threshold = 1 - 0.55 = 0.45
-    distance_threshold = 0.45
+    # Cosine similarity threshold = 0.3 => Cosine distance threshold = 0.7
+    distance_threshold = 0.7
     
     # Get top 5 results that meet the threshold
     results = db.query(
