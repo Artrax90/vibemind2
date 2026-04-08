@@ -249,29 +249,29 @@ export default function App() {
       </div>
       
       <main className="flex-1 flex flex-col relative border-r min-w-0 border-border/50">
-        {/* Header Toggle & Mobile Controls - Moved to bottom center to avoid overlap */}
+        {/* Header Toggle & Mobile Controls - Moved to top center and slightly enlarged */}
         {!showSettings && (
-          <div className="absolute bottom-8 left-1/2 -translate-x-1/2 z-10 flex items-center space-x-2 rounded-lg border border-border/50 bg-background/80 backdrop-blur-sm p-1 shadow-lg">
+          <div className="absolute top-8 left-1/2 -translate-x-1/2 z-10 flex items-center space-x-2 rounded-xl border border-border/50 bg-background/80 backdrop-blur-sm p-1.5 shadow-xl">
             <button 
               onClick={() => setViewMode('edit')}
-              className={`p-1.5 rounded flex items-center transition-colors ${viewMode === 'edit' ? 'bg-primary/20 text-primary' : 'text-muted-foreground hover:text-foreground'}`}
+              className={`p-2 rounded-lg flex items-center transition-all duration-200 ${viewMode === 'edit' ? 'bg-primary/20 text-primary shadow-inner' : 'text-muted-foreground hover:text-foreground hover:bg-secondary/50'}`}
               title="Edit Mode"
             >
-              <Edit3 size={16} />
+              <Edit3 size={18} />
             </button>
             <button 
               onClick={() => setViewMode('preview')}
-              className={`p-1.5 rounded flex items-center transition-colors ${viewMode === 'preview' ? 'bg-primary/20 text-primary' : 'text-muted-foreground hover:text-foreground'}`}
+              className={`p-2 rounded-lg flex items-center transition-all duration-200 ${viewMode === 'preview' ? 'bg-primary/20 text-primary shadow-inner' : 'text-muted-foreground hover:text-foreground hover:bg-secondary/50'}`}
               title="Preview Mode"
             >
-              <Eye size={16} />
+              <Eye size={18} />
             </button>
             <button 
               onClick={() => setViewMode('graph')}
-              className={`p-1.5 rounded flex items-center transition-colors ${viewMode === 'graph' ? 'bg-primary/20 text-primary' : 'text-muted-foreground hover:text-foreground'}`}
+              className={`p-2 rounded-lg flex items-center transition-all duration-200 ${viewMode === 'graph' ? 'bg-primary/20 text-primary shadow-inner' : 'text-muted-foreground hover:text-foreground hover:bg-secondary/50'}`}
               title="Graph View"
             >
-              <Network size={16} />
+              <Network size={18} />
             </button>
           </div>
         )}
