@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Note } from '../App';
 import { api } from '../api/client';
-import { FileText, Eye, Edit3, Wand2, Share2, Bold, Italic, Link, Image, List, Code, Table, CheckCircle, Cloud, CloudOff, Hash, Network } from 'lucide-react';
+import { FileText, Eye, Edit3, Wand2, Share2, Bold, Italic, Link, Image, List, ListOrdered, Code, Table, CheckCircle, Cloud, CloudOff, Hash, Network } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import remarkBreaks from 'remark-breaks';
@@ -264,6 +264,10 @@ export default function Editor({ note, onUpdate, onWikilinkClick, onTagClick, is
     insertMarkdown('- ');
   };
 
+  const insertOrderedList = () => {
+    insertMarkdown('1. ');
+  };
+
   const insertBold = () => {
     insertMarkdown('**', '**');
   };
@@ -357,6 +361,8 @@ export default function Editor({ note, onUpdate, onWikilinkClick, onTagClick, is
               accept="image/*"
             />
           </div>
+
+          <button onClick={insertOrderedList} className="p-1.5 rounded hover:bg-secondary text-muted-foreground hover:text-primary transition-colors" title="Numbered List"><ListOrdered size={16} /></button>
           
           <div className="w-px h-4 bg-border/50 mx-2"></div>
           
@@ -450,6 +456,18 @@ export default function Editor({ note, onUpdate, onWikilinkClick, onTagClick, is
                   },
                   td({children}) {
                     return <td className="px-4 py-2 border-t border-border/30 text-sm">{children}</td>
+                  },
+                  a({node, children, ...props}: any) {
+                    return (
+                      <a 
+                        {...props} 
+                        className="text-primary hover:underline decoration-primary/50 underline-offset-4 transition-all"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                      >
+                        {children}
+                      </a>
+                    )
                   }
                 }}
               >
