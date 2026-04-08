@@ -117,7 +117,7 @@ async def get_current_user(token: str = Depends(oauth2_scheme), db: Session = De
     return user
 
 from pydantic import BaseModel, EmailStr
-from typing import List
+from typing import List, Optional
 
 class UserCreate(BaseModel):
     username: str
