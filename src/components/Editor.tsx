@@ -32,13 +32,15 @@ export default function Editor({ note, onUpdate, onWikilinkClick, onTagClick, is
   const [autocompleteQuery, setAutocompleteQuery] = useState('');
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
+  const isReadOnly = note.permission === 'read';
+
   useEffect(() => {
     setContent(note.content);
     setTitle(note.title);
-  }, [note.id]);
+  }, [note.id, note.content, note.title]);
 
   useEffect(() => {
-    if (content === note.content && title === note.title) return;
+    if (isReadOnly || (content === note.content && title === note.title)) return;
     
     setIsSaving(true);
     const timer = setTimeout(() => {
@@ -286,36 +288,41 @@ export default function Editor({ note, onUpdate, onWikilinkClick, onTagClick, is
           <input
             value={title}
             onChange={(e) => setTitle(e.target.value)}
-            className="text-2xl font-bold text-foreground bg-transparent outline-none flex-1"
+            disabled={isReadOnly}
+            className={`text-2xl font-bold text-foreground bg-transparent outline-none flex-1 ${isReadOnly ? 'cursor-default' : ''}`}
             placeholder={t('editor.noteTitlePlaceholder')}
           />
         </div>
         
         <div className="flex items-center space-x-4">
-          <div className="flex items-center space-x-1 text-xs font-mono">
-            {isSaving ? (
-              <>
-                <Cloud className="w-4 h-4 text-primary animate-pulse" />
-                <span className="text-primary uppercase tracking-widest">{t('editor.syncing')}</span>
-              </>
-            ) : (
-              <>
-                <CheckCircle className="w-4 h-4 text-emerald-500" />
-                <span className="text-emerald-500 uppercase tracking-widest">{t('editor.saved')}</span>
-              </>
-            )}
-          </div>
+          {!isReadOnly && (
+            <div className="flex items-center space-x-1 text-xs font-mono">
+              {isSaving ? (
+                <>
+                  <Cloud className="w-4 h-4 text-primary animate-pulse" />
+                  <span className="text-primary uppercase tracking-widest">{t('editor.syncing')}</span>
+                </>
+              ) : (
+                <>
+                  <CheckCircle className="w-4 h-4 text-emerald-500" />
+                  <span className="text-emerald-500 uppercase tracking-widest">{t('editor.saved')}</span>
+                </>
+              )}
+            </div>
+          )}
 
-          <button 
-            onClick={handleSummarize}
-            disabled={isSummarizing}
-            className="p-2 text-primary hover:bg-primary/10 rounded-lg transition-all hover:scale-110 active:scale-95 disabled:opacity-50"
-            title={t('editor.summarize')}
-          >
-            <Wand2 size={20} className={isSummarizing ? 'animate-spin' : ''} />
-          </button>
+          {!isReadOnly && (
+            <button 
+              onClick={handleSummarize}
+              disabled={isSummarizing}
+              className="p-2 text-primary hover:bg-primary/10 rounded-lg transition-all hover:scale-110 active:scale-95 disabled:opacity-50"
+              title={t('editor.summarize')}
+            >
+              <Wand2 size={20} className={isSummarizing ? 'animate-spin' : ''} />
+            </button>
+          )}
           
-          {onShare && (
+          {onShare && note.permission === 'owner' && (
             <button 
               onClick={onShare}
               className="p-2 text-muted-foreground hover:text-primary rounded-lg transition-all hover:scale-110 active:scale-95"
@@ -328,7 +335,7 @@ export default function Editor({ note, onUpdate, onWikilinkClick, onTagClick, is
       </div>
 
       {/* Toolbar */}
-      {!isPreview && (
+      {!isPreview && !isReadOnly && (
         <div className="px-8 py-2 flex items-center space-x-1 border-b border-border/30 bg-secondary/20">
           <button onClick={insertBold} className="p-1.5 rounded hover:bg-secondary text-muted-foreground hover:text-primary transition-colors" title="Bold"><Bold size={16} /></button>
           <button onClick={insertItalic} className="p-1.5 rounded hover:bg-secondary text-muted-foreground hover:text-primary transition-colors" title="Italic"><Italic size={16} /></button>
@@ -392,7 +399,7 @@ export default function Editor({ note, onUpdate, onWikilinkClick, onTagClick, is
       
       <div className="flex-1 overflow-y-auto p-8 scrollbar-thin flex flex-col">
         <div className="flex-1">
-          {isPreview ? (
+          {isPreview || isReadOnly ? (
             <div className="prose prose-invert max-w-none text-foreground/80" onClick={handleContentClick}>
               <ReactMarkdown 
                 remarkPlugins={[remarkGfm, remarkBreaks]}

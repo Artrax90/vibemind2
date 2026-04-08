@@ -81,6 +81,12 @@ try:
             if 'external_dbs' not in columns:
                 conn.execute(text("ALTER TABLE configs ADD COLUMN external_dbs JSON;"))
                 logger.info("Added external_dbs column to configs table")
+            
+            if 'user_id' not in columns:
+                conn.execute(text("ALTER TABLE configs ADD COLUMN user_id INTEGER;"))
+                # Assign existing config to admin (id=1)
+                conn.execute(text("UPDATE configs SET user_id = 1 WHERE user_id IS NULL;"))
+                logger.info("Added user_id column to configs table")
                 
             conn.commit()
 except Exception as e:
@@ -220,6 +226,7 @@ class LoginRequest(BaseModel):
 
 class BotTestRequest(BaseModel):
     tg_token: str
+    tg_admin_id: str | None = None
     proxy_url: str | None = None
     proxy_config: dict | None = None
 
@@ -270,7 +277,7 @@ async def login(req: LoginRequest, db: Session = Depends(get_db)):
 
 @app.get("/api/settings")
 async def get_settings(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
-    config = db.query(Config).first()
+    config = db.query(Config).filter(Config.user_id == current_user.id).first()
     if not config:
         return {}
     return {
@@ -287,9 +294,9 @@ async def get_settings(db: Session = Depends(get_db), current_user: User = Depen
 @app.post("/api/settings")
 async def update_settings(settings: SettingsUpdate, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     """Сохранение настроек в БД и перезапуск бота"""
-    config = db.query(Config).first()
+    config = db.query(Config).filter(Config.user_id == current_user.id).first()
     if not config:
-        config = Config()
+        config = Config(user_id=current_user.id)
         db.add(config)
     
     # Обновляем поля
@@ -307,7 +314,8 @@ async def update_settings(settings: SettingsUpdate, db: Session = Depends(get_db
     # Динамически перезапускаем бота с новыми настройками
     if config.tg_token:
         # Запускаем перезапуск как фоновую задачу, чтобы не блокировать HTTP ответ
-        asyncio.create_task(restart_bot(config.tg_token, config.proxy_url, config.proxy_config, config.tg_admin_id))
+        from .bot import restart_bot
+        asyncio.create_task(restart_bot(current_user.id, current_user.username, config.tg_token, config.proxy_url, config.proxy_config, config.tg_admin_id))
         
     return {"status": "success", "message": "Настройки сохранены, бот перезапускается"}
 
@@ -316,7 +324,8 @@ async def test_bot(req: BotTestRequest, current_user: User = Depends(get_current
     if not req.tg_token:
         raise HTTPException(status_code=400, detail="Bot token not configured")
     
-    success, message = await test_bot_connection(req.tg_token, req.proxy_url, req.proxy_config)
+    from .bot import test_bot_connection
+    success, message = await test_bot_connection(req.tg_token, req.tg_admin_id, req.proxy_url, req.proxy_config)
     if success:
         return {"ok": True, "message": "Bot is active"}
     else:
@@ -838,9 +847,20 @@ async def get_notes(db: Session = Depends(get_db), current_user: User = Depends(
     for n in notes:
         is_shared = n.user_id != current_user.id
         owner_username = None
+        permission = "owner"
+        
         if is_shared:
             owner = db.query(User).filter(User.id == n.user_id).first()
             owner_username = owner.username if owner else "Unknown"
+            
+            # Get permission from share
+            share = db.query(Share).filter(
+                Share.resource_id == n.id,
+                Share.resource_type == "note",
+                Share.target_user_id == current_user.id
+            ).first()
+            if share:
+                permission = share.permission
             
         result.append({
             "id": n.id, 
@@ -848,7 +868,8 @@ async def get_notes(db: Session = Depends(get_db), current_user: User = Depends(
             "content": n.content, 
             "folderId": n.folderId,
             "isShared": is_shared,
-            "ownerUsername": owner_username
+            "ownerUsername": owner_username,
+            "permission": permission
         })
     return result
 
@@ -1156,16 +1177,28 @@ async def get_folders(db: Session = Depends(get_db), current_user: User = Depend
     for f in folders:
         is_shared = f.user_id != current_user.id
         owner_username = None
+        permission = "owner"
+        
         if is_shared:
             owner = db.query(User).filter(User.id == f.user_id).first()
             owner_username = owner.username if owner else "Unknown"
+            
+            # Get permission from share
+            share = db.query(Share).filter(
+                Share.resource_id == f.id,
+                Share.resource_type == "folder",
+                Share.target_user_id == current_user.id
+            ).first()
+            if share:
+                permission = share.permission
             
         result.append({
             "id": f.id, 
             "name": f.name, 
             "parentId": f.parentId,
             "isShared": is_shared,
-            "ownerUsername": owner_username
+            "ownerUsername": owner_username,
+            "permission": permission
         })
     return result
 
@@ -1215,12 +1248,13 @@ async def delete_folder(folder_id: str, db: Session = Depends(get_db), current_u
 @app.get("/api/bot/status")
 async def get_bot_status(current_user: User = Depends(get_current_user)):
     """Проверка статуса фонового процесса бота"""
-    is_running = bot_module.current_bot is not None
+    from .bot import current_bots
+    is_running = current_bots.get(current_user.id) is not None
     return {"status": "connected" if is_running else "disconnected"}
 
 @app.on_event("startup")
 async def startup_event():
-    """При старте FastAPI сервера поднимаем бота, если есть токен, и создаем админа"""
+    """При старте FastAPI сервера поднимаем ботов для всех пользователей и создаем админа"""
     db = SessionLocal()
     try:
         # 1. Создание дефолтного админа, если таблица пуста
@@ -1228,7 +1262,6 @@ async def startup_event():
             user_count = db.query(User).count()
             if user_count == 0:
                 logger.info("Таблица пользователей пуста. Создаем дефолтного администратора...")
-                # 2. TRUE ZERO-CONFIG: Default Admin Fix
                 hashed_admin = pwd_context.hash("admin")
                 default_admin = User(username="admin", hashed_password=hashed_admin)
                 db.add(default_admin)
@@ -1238,13 +1271,14 @@ async def startup_event():
             logger.error(f"Ошибка при проверке/создании пользователей: {e}")
             db.rollback()
 
-        # 2. Проверка конфига и запуск бота
-        config = db.query(Config).first()
-        if not config or not config.tg_token:
-            logger.info("Токен Telegram не найден в БД. Бот находится в статусе 'Idle'. Пожалуйста, настройте его через Web UI.")
-        else:
-            logger.info("Найден токен Telegram. Запускаем бота...")
-            asyncio.create_task(restart_bot(config.tg_token, config.proxy_url, config.proxy_config, config.tg_admin_id))
+        # 2. Запускаем ботов для всех пользователей у кого есть токен
+        from .bot import restart_bot
+        configs = db.query(Config).filter(Config.tg_token != None).all()
+        for config in configs:
+            user = db.query(User).filter(User.id == config.user_id).first()
+            if user:
+                logger.info(f"Starting bot for user {user.username}")
+                asyncio.create_task(restart_bot(user.id, user.username, config.tg_token, config.proxy_url, config.proxy_config, config.tg_admin_id))
     except Exception as e:
         logger.error(f"Ошибка при запуске: {e}")
     finally:

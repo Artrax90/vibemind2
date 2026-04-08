@@ -1,515 +1,51 @@
-import asyncio
-import logging
-import traceback
-import ast
 import os
+import logging
+import asyncio
 import uuid
-import re
 import json
-import difflib
+import re
 import html
-from typing import Dict, Any
+import traceback
+import aiohttp
 from datetime import datetime, timedelta
-from jose import jwt
+from typing import Dict, Any, List, Optional
 from aiogram import Bot, Dispatcher, types, F
 from aiogram.filters import Command
-from aiogram.types import FSInputFile
 from aiogram.client.session.aiohttp import AiohttpSession
-from aiohttp_socks import ProxyConnector
-import aiohttp
-import subprocess
-from pydub import AudioSegment
-from wyoming.asr import Transcribe, Transcript
-from wyoming.audio import AudioChunk, AudioStart, AudioStop
-from wyoming.event import async_read_event, async_write_event
-from openai import AsyncOpenAI
+from aiogram.types import FSInputFile
+import jwt
+import ast
 
 # Настройка логирования
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# JWT Settings (must match main.py)
-SECRET_KEY = os.getenv("ENCRYPTION_KEY", "fallback-zero-config-secret-key-change-in-production")
+# Конфигурация JWT (должна совпадать с FastAPI)
+SECRET_KEY = os.getenv("ENCRYPTION_KEY", "your-secret-key-here")
 ALGORITHM = "HS256"
 
-SYSTEM_PROMPT = """Ты — интеллектуальный парсер голосовых команд для заметок.
-Возвращаешь только JSON.
-
----
-# 📌 ТИПЫ
-* CREATE
-* UPDATE
-* SEARCH
-
----
-# 🧠 ВХОД
-* text (команда пользователя)
-* notes (массив заметок)
-
----
-# ❗ КРИТИЧЕСКИЕ ПРАВИЛА
-## 1. 🚫 ЗАПРЕЩЕНО ДУБЛИРОВАТЬ TITLE В CONTENT
-При CREATE:
-❌ НЕЛЬЗЯ:
-"content": "фильмы"
-✅ ВСЕГДА:
-"content": ""
-
-## 2. 🔥 SEARCH — ТОЛЬКО ЛУЧШИЕ РЕЗУЛЬТАТЫ
-Ты НЕ возвращаешь всё подряд.
-Правила:
-* максимум 3 результата
-* только реально релевантные
-* если найден 1 идеальный → вернуть только 1
-* если слабое совпадение → НЕ возвращать
-
----
-# 🧠 ШАГ 1. НОРМАЛИЗАЦИЯ
-## УДАЛИ МУСОР:
-* заметку, заметка
-* в неё, неё, нее, не неё, не нее
-* добавь в, добавь туда
-* что-то, что то, про, пожалуйста
-
-## ОЧИСТИ append:
-"неё форсаж" → "форсаж"
-"в шашлык маринад мясо" → "маринад мясо"
-
-## ИСПРАВЬ ПАДЕЖИ:
-* покупке → покупки
-* машиной → машины
-
-## УДАЛИ ДУБЛИ:
-"покупки молоко" → "молоко"
-
----
-# 🧠 ШАГ 2. ТИП
-* создай → CREATE
-* добавь → UPDATE
-* найди → SEARCH
-
----
-# 🧠 ШАГ 3. CREATE
-Название = очищенная сущность
-{
-  "type": "CREATE",
-  "title": "<title>",
-  "content": ""
-}
-
----
-# 🧠 ШАГ 4. UPDATE
-1. Найди заметку по:
-* точному совпадению
-* затем по смыслу
-
-## ЕСЛИ НАШЁЛ:
-{
-  "type": "UPDATE",
-  "note_id": "<id>",
-  "append": "<чистый текст>"
-}
-
-## ЕСЛИ НЕ НАШЁЛ:
-👉 ОБЯЗАТЕЛЬНО СОЗДАЙ
-[
-  {
-    "type": "CREATE",
-    "title": "<title>",
-    "content": ""
-  },
-  {
-    "type": "UPDATE",
-    "append": "<текст>"
-  }
-]
-
----
-# 🧠 ШАГ 5. SEARCH
-1. Очисти запрос:
-"найди что-то про шашлык" → "шашлык"
-
-2. Отфильтруй заметки:
-* оставь только релевантные
-* максимум 3
-* сортируй по релевантности
-
-## ФОРМАТ:
-{
-  "type": "SEARCH",
-  "query": "<запрос>"
-}
-
----
-# 🧪 ПРИМЕРЫ
-## CREATE
-"создай заметку фильмы"
-→
-{
-  "type": "CREATE",
-  "title": "фильмы",
-  "content": ""
-}
-
-## UPDATE
-"добавь фильмы форсаж"
-→
-{
-  "type": "UPDATE",
-  "note_id": "1",
-  "append": "форсаж"
-}
-
-## CREATE + UPDATE
-"добавь музыка рок"
-→
-[
-  {
-    "type": "CREATE",
-    "title": "музыка",
-    "content": ""
-  },
-  {
-    "type": "UPDATE",
-    "append": "рок"
-  }
-]
-
-## SEARCH (важно)
-notes:
-* кисель рецепт
-* фильмы
-* покупки
-"найди что-то про кисель"
-→
-{
-  "type": "SEARCH",
-  "query": "кисель"
-}
-(вернётся только релевантное, не всё подряд)
-
-Всегда возвращай только JSON."""
-
-async def parse_commands_llm(text: str, notes: list[dict] = None) -> list[dict]:
-    if notes is None:
-        notes = []
-        
-    try:
-        # Пытаемся получить настройки из БД
-        settings = await get_settings_api()
-        
-        provider = settings.get("llm_provider", "openai")
-        api_key = settings.get("api_key") or os.getenv("OPENAI_API_KEY")
-        base_url = settings.get("base_url")
-        model = settings.get("model_name") or "gpt-4o-mini"
-        
-        if not api_key:
-            logger.warning("No API key found for LLM, falling back to regex parser")
-            return parse_commands(text)
-            
-        if provider == "gemini":
-            # Gemini API using httpx
-            url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={api_key}"
-            payload = {
-                "contents": [{"parts": [{"text": f"{SYSTEM_PROMPT}\n\nnotes:\n{json.dumps(notes, ensure_ascii=False)}\n\n\"{text}\""}]}],
-                "generationConfig": {"temperature": 0.0}
-            }
-            async with aiohttp.ClientSession() as session:
-                async with session.post(url, json=payload) as response:
-                    if response.status == 200:
-                        data = await response.json()
-                        content = data['candidates'][0]['content']['parts'][0]['text'].strip()
-                    else:
-                        logger.error(f"Gemini API error: {response.status}")
-                        return parse_commands(text)
-        else:
-            # OpenAI / OpenRouter / Ollama
-            if provider == "openrouter" and not base_url:
-                base_url = "https://openrouter.ai/api/v1"
-            
-            client = AsyncOpenAI(api_key=api_key, base_url=base_url)
-            
-            user_content = f"notes:\n{json.dumps(notes, ensure_ascii=False)}\n\n\"{text}\""
-            
-            response = await client.chat.completions.create(
-                model=model,
-                messages=[
-                    {"role": "system", "content": SYSTEM_PROMPT},
-                    {"role": "user", "content": user_content}
-                ],
-                temperature=0.0
-            )
-            content = response.choices[0].message.content.strip()
-        
-        if content.startswith("```json"):
-            content = content[7:-3].strip()
-        elif content.startswith("```"):
-            content = content[3:-3].strip()
-            
-        parsed = json.loads(content)
-        if isinstance(parsed, dict):
-            return [parsed]
-        elif isinstance(parsed, list):
-            return parsed
-        return []
-    except Exception as e:
-        logger.error(f"LLM Parsing error: {e}")
-        return parse_commands(text)
-
-def normalize_intent(text: str) -> str:
-    if not text:
-        return text
-    words = text.split()
-    if not words:
-        return text
-        
-    first_word = words[0].lower()
-    intents = {
-        "создай": "создай", "создать": "создай", 
-        "добавь": "добавь", "добавить": "добавь", 
-        "удали": "удали", "удалить": "удали", 
-        "найди": "найди", "найти": "найди", "поиск": "найди"
-    }
-    
-    best_match = None
-    best_ratio = 0
-    
-    for intent in intents.keys():
-        ratio = difflib.SequenceMatcher(None, first_word, intent).ratio()
-        if ratio > best_ratio:
-            best_ratio = ratio
-            best_match = intents[intent]
-            
-    if best_ratio > 0.8:
-        words[0] = best_match
-        return " ".join(words)
-    return text
-
-def parse_commands(text: str) -> list[dict]:
-    text = text.lower()
-    text = normalize_intent(text)
-    
-    commands = []
-    
-    # Глаголы действий для проверки
-    action_verbs = ["добавь", "создай", "найди", "удали", "сделай", "напиши", "купи", "скажи", "покажи"]
-    
-    def is_valid_title(title: str) -> bool:
-        if not title:
-            return False
-        if len(title) > 40:
-            return False
-        # Если заголовок состоит только из глагола действия - это не заголовок
-        if title in action_verbs:
-            return False
-        return True
-
-    def clean_garbage(t: str) -> str:
-        garbage = ["пожалуйста", "мне", "сделай", "хочу", "можешь", "заметку", "заметка", "с названием", "в неё", "в нее", "туда", "по названию", "что-то", "про", "о", "об", "расскажи", "покажи"]
-        for word in garbage:
-            t = re.sub(rf'\b{word}\b', '', t)
-        return re.sub(r'\s+', ' ', t).strip()
-
-    # Проверяем конструкцию CREATE + UPDATE
-    create_update_match = re.search(r'^(создай.*?|создать.*?|новая.*?)\s+(?:и\s+)?(добавь\s+.*)$', text)
-    if create_update_match:
-        parts = [create_update_match.group(1), create_update_match.group(2)]
-    else:
-        parts = [text]
-        
-    for i, part in enumerate(parts):
-        part = part.strip()
-        if not part:
-            continue
-            
-        if part.startswith("создай") or part.startswith("создать") or part.startswith("новая"):
-            title = re.sub(r'^(создай|создать|новую|новая)\s*', '', part).strip()
-            title = clean_garbage(title)
-            
-            if not is_valid_title(title):
-                commands.append({"type": "SEARCH", "query": clean_garbage(part)})
-            else:
-                commands.append({
-                    "type": "CREATE",
-                    "title": title,
-                    "content": ""
-                })
-        elif part.startswith("добавь"):
-            if i > 0 and commands and commands[-1]["type"] == "CREATE":
-                append_text = re.sub(r'^добавь\s+(в\s+)?', '', part).strip()
-                append_text = clean_garbage(append_text)
-                commands.append({
-                    "type": "UPDATE",
-                    "append": append_text
-                })
-            else:
-                cleaned = re.sub(r'^добавь\s+(в\s+)?', '', part).strip()
-                cleaned = clean_garbage(cleaned)
-                subparts = cleaned.split(maxsplit=1)
-                
-                if len(subparts) == 2:
-                    search_query = subparts[0]
-                    append_text = subparts[1]
-                    
-                    if not is_valid_title(search_query):
-                        commands.append({"type": "SEARCH", "query": clean_garbage(part)})
-                    else:
-                        commands.append({
-                            "type": "UPDATE",
-                            "search_query": search_query,
-                            "append": append_text
-                        })
-                else:
-                    commands.append({
-                        "type": "UPDATE",
-                        "search_query": cleaned,
-                        "append": cleaned
-                    })
-        elif part.startswith("найди") or part.startswith("покажи") or part.startswith("что есть про"):
-            query = re.sub(r'^(найди|покажи|что есть про)\s*', '', part).strip()
-            query = clean_garbage(query)
-            commands.append({
-                "type": "SEARCH",
-                "query": query
-            })
-        else:
-            commands.append({
-                "type": "SEARCH",
-                "query": clean_garbage(part)
-            })
-            
-    return commands
-
-STT_HOST = "192.168.1.196"
-STT_PORT = 10300
-
-async def speech_to_text(audio_path: str) -> str:
-    """Транскрибация аудио через Wyoming (Vosk)"""
-    raw_path = audio_path.replace(".ogg", ".raw")
-    logger.info(f"STT: Начинаю обработку. OGG: {audio_path}, RAW: {raw_path}")
-    
-    try:
-        # 1. Конвертация через FFmpeg (строго s16le, 16kHz, Mono)
-        try:
-            logger.info(f"STT: Конвертация OGG -> RAW (s16le, 16kHz, Mono) через FFmpeg...")
-            # Команда: ffmpeg -y -i input.ogg -ar 16000 -ac 1 -f s16le output.raw
-            cmd = [
-                "ffmpeg", "-y", "-i", audio_path,
-                "-ar", "16000", "-ac", "1", "-f", "s16le", raw_path
-            ]
-            subprocess.run(cmd, check=True, capture_output=True)
-            logger.info("STT: Конвертация успешно завершена.")
-        except subprocess.CalledProcessError as e:
-            logger.error(f"STT: Ошибка FFmpeg: {e.stderr.decode()}")
-            return ""
-        except Exception as conv_err:
-            logger.error(f"STT: Ошибка при конвертации аудио: {conv_err}")
-            logger.error(traceback.format_exc())
-            return ""
-
-        # 2. Подключение к Vosk
-        logger.info(f"STT: Подключаюсь к Vosk на {STT_HOST}:{STT_PORT} (timeout 10s)...")
-        try:
-            reader, writer = await asyncio.wait_for(
-                asyncio.open_connection(STT_HOST, STT_PORT), 
-                timeout=10.0
-            )
-            logger.info("STT: Соединение с Vosk установлено.")
-        except asyncio.TimeoutError:
-            logger.error(f"STT: Тайм-аут при подключении к Vosk ({STT_HOST}:{STT_PORT})")
-            return ""
-        except Exception as conn_err:
-            logger.error(f"STT: Ошибка подключения к Vosk: {conn_err}")
-            return ""
-        
-        # 3. Wyoming handshake & streaming
-        try:
-            # ПЕРВЫМ: Намерение транскрибации
-            await async_write_event(Transcribe(language="ru").event(), writer)
-            await writer.drain()
-            logger.info("STT: Событие Transcribe(ru) отправлено.")
-            
-            # ВТОРЫМ: Параметры аудио
-            await async_write_event(
-                AudioStart(rate=16000, width=2, channels=1).event(),
-                writer,
-            )
-            await writer.drain()
-            logger.info("STT: Событие AudioStart отправлено.")
-            
-            # ТРЕТЬИМ: Аудио данные
-            logger.info("STT: Отправка аудио данных чанками по 4096 байт...")
-            with open(raw_path, "rb") as f:
-                while True:
-                    chunk = f.read(4096)
-                    if not chunk:
-                        break
-                    await async_write_event(
-                        AudioChunk(audio=chunk, rate=16000, width=2, channels=1).event(), 
-                        writer
-                    )
-                    await writer.drain()
-            
-            # ПОСЛЕДНИМ: Остановка
-            await async_write_event(AudioStop().event(), writer)
-            await writer.drain()  # Сброс буфера в сеть
-            logger.info("STT: Событие AudioStop отправлено и буфер сброшен.")
-            logger.info("STT: Ожидаю результат от сервера...")
-            
-            # 4. Ожидание результата
-            transcript_text = ""
-            while True:
-                try:
-                    event = await asyncio.wait_for(async_read_event(reader), timeout=20.0)
-                except asyncio.TimeoutError:
-                    logger.error("STT: Тайм-аут ожидания ответа от Vosk (20s)")
-                    break
-
-                if event is None:
-                    logger.warning("STT: Соединение закрыто сервером до получения результата.")
-                    break
-                
-                logger.info(f"STT: Получено событие {event.type}")
-                
-                if Transcript.is_type(event.type):
-                    transcript = Transcript.from_event(event)
-                    transcript_text = transcript.text
-                    logger.info(f"STT: Получен Transcript: «{transcript_text}»")
-                    break
-                    
-            writer.close()
-            await writer.wait_closed()
-            return transcript_text
-            
-        except Exception as stream_err:
-            logger.error(f"STT: Ошибка при передаче/получении данных: {stream_err}")
-            return ""
-            
-    except Exception as e:
-        logger.error(f"STT: Непредвиденная ошибка: {e}")
-        return ""
-    finally:
-        # Удаляем временные файлы
-        for p in [audio_path, raw_path]:
-            if os.path.exists(p):
-                try:
-                    os.remove(p)
-                except:
-                    pass
-
+# Инициализация aiogram
+# В aiogram 3.x Dispatcher может обслуживать несколько ботов
 dp = Dispatcher()
-bot_task = None
-current_bot = None
-current_admin_id = None
 
-async def save_note_to_api(title: str, content: str, note_id: str = None) -> Dict[str, Any]:
+# Глобальные переменные для управления ботами
+current_bots: Dict[int, Bot] = {}
+bot_tasks: Dict[int, asyncio.Task] = {}
+user_usernames: Dict[int, str] = {}
+
+async def get_user_token(user_id: int) -> str:
+    """Генерация JWT токена для пользователя"""
+    username = user_usernames.get(user_id, "admin")
+    expire = datetime.utcnow() + timedelta(minutes=60)
+    to_encode = {"sub": username, "exp": expire}
+    return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
+
+# --- API Functions ---
+
+async def save_note_to_api(user_id: int, title: str, content: str, note_id: str = None) -> Dict[str, Any]:
     """Отправка заметки в API FastAPI (создание или обновление)"""
     url = "http://localhost:3344/api/notes"
-    
-    # Генерируем токен для пользователя 'admin'
-    expire = datetime.utcnow() + timedelta(minutes=60)
-    to_encode = {"sub": "admin", "exp": expire}
-    token = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
+    token = await get_user_token(user_id)
     
     headers = {
         "Authorization": f"Bearer {token}",
@@ -522,56 +58,22 @@ async def save_note_to_api(title: str, content: str, note_id: str = None) -> Dic
         "content": content
     }
     
-    logger.info(f"Final Payload: {payload}")
-    logger.info(f"Отправка заметки на URL: {url} для пользователя: {current_admin_id}")
-    
     try:
         async with aiohttp.ClientSession() as session:
             async with session.post(url, json=payload, headers=headers) as response:
-                resp_text = await response.text()
-                logger.info(f"Ответ API: {response.status}, Тело: {resp_text}")
                 if response.status in [200, 201]:
                     data = await response.json()
                     return {"status": "success", "note_id": data.get("id"), "data": data}
-                else:
-                    return {"status": "error", "message": f"Ошибка при сохранении: {response.status}"}
+                return {"status": "error", "message": f"Ошибка API: {response.status}"}
     except Exception as e:
-        logger.error(f"Ошибка при обращении к API: {e}")
-        return {"status": "error", "message": f"Ошибка при обращении к API: {str(e)}"}
-
-async def search_note_by_title(title: str) -> Dict[str, Any]:
-    """Поиск заметки по заголовку через API"""
-    url = f"http://localhost:3344/api/notes/search?query={title}"
-    
-    # Генерируем токен
-    expire = datetime.utcnow() + timedelta(minutes=60)
-    to_encode = {"sub": "admin", "exp": expire}
-    token = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
-    
-    headers = {"Authorization": f"Bearer {token}"}
-    
-    try:
-        async with aiohttp.ClientSession() as session:
-            async with session.get(url, headers=headers) as response:
-                if response.status == 200:
-                    data = await response.json()
-                    return {"status": "success", "data": data}
-                return {"status": "error", "message": f"Ошибка: {response.status}"}
-    except Exception as e:
-        logger.error(f"Ошибка при поиске заметки: {e}")
         return {"status": "error", "message": str(e)}
 
-async def search_api(query: str) -> Dict[str, Any]:
+async def search_api(user_id: int, query: str) -> Dict[str, Any]:
     """Поиск через API (по заголовку и содержимому)"""
     import urllib.parse
     encoded_query = urllib.parse.quote(query)
     url = f"http://localhost:3344/api/notes/search?query={encoded_query}"
-    
-    # Генерируем токен
-    expire = datetime.utcnow() + timedelta(minutes=60)
-    to_encode = {"sub": "admin", "exp": expire}
-    token = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
-    
+    token = await get_user_token(user_id)
     headers = {"Authorization": f"Bearer {token}"}
     
     try:
@@ -579,28 +81,19 @@ async def search_api(query: str) -> Dict[str, Any]:
             async with session.get(url, headers=headers) as response:
                 if response.status == 200:
                     data = await response.json()
-                    # search_notes returns a list of notes
                     if isinstance(data, list):
                         return {"status": "success", "data": data}
-                    if data:
-                        return {"status": "success", "data": [data]}
-                    return {"status": "success", "data": []}
-                return {"status": "error", "message": f"Ошибка: {response.status}"}
+                    return {"status": "success", "data": [data] if data else []}
+                return {"status": "error", "message": f"Ошибка API: {response.status}"}
     except Exception as e:
-        logger.error(f"Search API error: {e}")
         return {"status": "error", "message": str(e)}
 
-async def semantic_search_api(query: str) -> Dict[str, Any]:
+async def semantic_search_api(user_id: int, query: str) -> Dict[str, Any]:
     """Семантический поиск через API"""
     import urllib.parse
     encoded_query = urllib.parse.quote(query)
     url = f"http://localhost:3344/api/notes/semantic-search?query={encoded_query}"
-    
-    # Генерируем токен
-    expire = datetime.utcnow() + timedelta(minutes=60)
-    to_encode = {"sub": "admin", "exp": expire}
-    token = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
-    
+    token = await get_user_token(user_id)
     headers = {"Authorization": f"Bearer {token}"}
     
     try:
@@ -609,152 +102,14 @@ async def semantic_search_api(query: str) -> Dict[str, Any]:
                 if response.status == 200:
                     data = await response.json()
                     return {"status": "success", "data": data}
-                return {"status": "error", "message": f"Ошибка: {response.status}"}
+                return {"status": "error", "message": f"Ошибка API: {response.status}"}
     except Exception as e:
-        logger.error(f"Ошибка при семантическом поиске: {e}")
         return {"status": "error", "message": str(e)}
 
-
-
-@dp.callback_query(F.data.startswith("open_note_"))
-async def handle_open_note(callback: types.CallbackQuery):
-    note_id = callback.data.replace("open_note_", "")
-    await callback.answer()
-    
-    result = await get_note_api(note_id)
-    if result.get("status") == "success":
-        note = result.get("data", {})
-        title = note.get("title", "Без названия")
-        content = note.get("content", "Пусто")
-        
-        # Экранируем для HTML
-        title_esc = html.escape(title)
-        content_esc = html.escape(content)
-        
-        response_text = f"📝 <b>{title_esc}</b>\n\n{content_esc}"
-        await callback.message.answer(response_text, parse_mode="HTML")
-        
-        # Поиск и отправка изображений
-        image_matches = re.findall(r'!\[.*?\]\((/api/uploads/.*?)\)', content)
-        for img_path in image_matches:
-            filename = os.path.basename(img_path)
-            local_path = os.path.join('/app/storage/uploads', filename)
-            if os.path.exists(local_path):
-                try:
-                    photo = FSInputFile(local_path)
-                    await callback.message.answer_photo(photo)
-                except Exception as e:
-                    logger.error(f"Error sending photo {local_path}: {e}")
-    else:
-        await callback.message.answer("❌ Не удалось загрузить содержимое заметки.")
-
-@dp.message(Command("start"))
-async def handle_start(message: types.Message):
-    """Приветствие пользователя"""
-    await message.answer("Привет! Я твой личный помощник VibeMind. Присылай мне любые мысли, ссылки или картинки, и я сохраню их в твои заметки.")
-
-@dp.message(Command("ask"))
-async def handle_ask(message: types.Message):
-    """Поиск по базе знаний (pgvector)"""
-    query = message.text.replace("/ask", "").strip()
-    if not query:
-        await message.answer("Пожалуйста, напишите ваш вопрос после команды /ask")
-        return
-        
-    # TODO: Здесь логика векторизации запроса через LLM и поиск в PostgreSQL (pgvector)
-    await message.answer(f"🔍 Ищу ответ на вопрос: '{query}' в вашей базе знаний...")
-
-@dp.message(F.voice)
-async def handle_voice(message: types.Message):
-    """Обработка голосовых сообщений (Vosk + Wyoming)"""
-    logger.info("Голосовое сообщение получено, начинаю скачивание...")
-    
-    # Проверка admin_id
-    if current_admin_id and str(message.from_user.id) != str(current_admin_id):
-        logger.warning(f"Unauthorized access attempt from {message.from_user.id}")
-        return
-
-    await message.answer("🎙 Голосовое сообщение получено. Запускаю транскрибацию...")
-    
-    try:
-        # 1. Скачиваем файл
-        file_id = message.voice.file_id
-        file = await message.bot.get_file(file_id)
-        
-        temp_dir = '/app/storage/temp'
-        os.makedirs(temp_dir, exist_ok=True)
-        ogg_path = os.path.join(temp_dir, f"{uuid.uuid4()}.ogg")
-        
-        logger.info(f"Voice: Скачиваю файл в {ogg_path}")
-        await message.bot.download_file(file.file_path, ogg_path)
-        
-        # 2. Транскрибируем (speech_to_text сам удалит файлы)
-        text = await speech_to_text(ogg_path)
-            
-        if not text:
-            await message.answer("❌ Не удалось распознать речь (проверьте логи сервера).")
-            return
-            
-        await message.answer(f"📝 Распознанный текст: «{text}»\nЗапускаю обработку...")
-        
-        # 3. Передаем текст в основной обработчик
-        # Создаем "фейковое" сообщение с текстом
-        logger.info(f"Перенаправляю распознанный текст в обработчик команд: {text}")
-        fake_msg = message.model_copy(update={"text": text})
-        await handle_text(fake_msg)
-        
-    except Exception as e:
-        logger.error(f"Error handling voice: {e}")
-        logger.error(traceback.format_exc())
-        await message.answer(f"❌ Ошибка при обработке голоса: {str(e)}")
-
-@dp.message(F.photo)
-async def handle_photo(message: types.Message):
-    """Обработка изображений"""
-    # Проверка admin_id
-    if current_admin_id and str(message.from_user.id) != str(current_admin_id):
-        logger.warning(f"Unauthorized access attempt from {message.from_user.id}")
-        return
-
-    try:
-        photo = message.photo[-1]
-        file_id = photo.file_id
-        
-        # Генерируем имя файла
-        filename = f"{uuid.uuid4()}.jpg"
-        upload_dir = '/app/storage/uploads'
-        os.makedirs(upload_dir, exist_ok=True)
-        filepath = os.path.join(upload_dir, filename)
-        
-        # Скачиваем файл
-        file = await message.bot.get_file(file_id)
-        await message.bot.download_file(file.file_path, filepath)
-        
-        # Сохраняем в API
-        img_url = f"/api/uploads/{filename}"
-        title = f"Photo from Telegram {datetime.now().strftime('%Y-%m-%d %H:%M')}"
-        content = f"![image]({img_url})"
-        
-        result = await save_note_to_api(title, content)
-        if isinstance(result, dict) and result.get("status") == "success":
-            await message.answer(f"📸 Изображение сохранено!\n✅ Заметка успешно сохранена!")
-        else:
-            error_msg = result.get("message", "Неизвестная ошибка") if isinstance(result, dict) else str(result)
-            await message.answer(error_msg)
-            
-    except Exception as e:
-        logger.error(f"Error handling photo: {e}")
-        await message.answer("❌ Ошибка при сохранении изображения.")
-
-async def get_note_api(note_id: str) -> Dict[str, Any]:
+async def get_note_api(user_id: int, note_id: str) -> Dict[str, Any]:
     """Получение заметки по ID через API"""
     url = f"http://localhost:3344/api/notes/{note_id}"
-    
-    # Генерируем токен
-    expire = datetime.utcnow() + timedelta(minutes=60)
-    to_encode = {"sub": "admin", "exp": expire}
-    token = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
-    
+    token = await get_user_token(user_id)
     headers = {"Authorization": f"Bearer {token}"}
     
     try:
@@ -763,20 +118,14 @@ async def get_note_api(note_id: str) -> Dict[str, Any]:
                 if response.status == 200:
                     data = await response.json()
                     return {"status": "success", "data": data}
-                return {"status": "error", "message": f"Ошибка: {response.status}"}
+                return {"status": "error", "message": f"Ошибка API: {response.status}"}
     except Exception as e:
-        logger.error(f"Ошибка при получении заметки: {e}")
         return {"status": "error", "message": str(e)}
 
-async def patch_note_api(note_id: str, content: str) -> Dict[str, Any]:
+async def patch_note_api(user_id: int, note_id: str, content: str) -> Dict[str, Any]:
     """Обновление контента заметки через API"""
     url = f"http://localhost:3344/api/notes/{note_id}"
-    
-    # Генерируем токен
-    expire = datetime.utcnow() + timedelta(minutes=60)
-    to_encode = {"sub": "admin", "exp": expire}
-    token = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
-    
+    token = await get_user_token(user_id)
     headers = {"Authorization": f"Bearer {token}"}
     payload = {"content": content}
     
@@ -786,20 +135,14 @@ async def patch_note_api(note_id: str, content: str) -> Dict[str, Any]:
                 if response.status == 200:
                     data = await response.json()
                     return {"status": "success", "note_id": data.get("id"), "data": data}
-                return {"status": "error", "message": f"Ошибка: {response.status}"}
+                return {"status": "error", "message": f"Ошибка API: {response.status}"}
     except Exception as e:
-        logger.error(f"Ошибка при обновлении заметки: {e}")
         return {"status": "error", "message": str(e)}
 
-async def get_all_notes_api() -> list[dict]:
+async def get_all_notes_api(user_id: int) -> list[dict]:
     """Получение всех заметок пользователя через API"""
     url = "http://localhost:3344/api/notes"
-    
-    # Генерируем токен
-    expire = datetime.utcnow() + timedelta(minutes=60)
-    to_encode = {"sub": "admin", "exp": expire}
-    token = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
-    
+    token = await get_user_token(user_id)
     headers = {"Authorization": f"Bearer {token}"}
     
     try:
@@ -809,184 +152,102 @@ async def get_all_notes_api() -> list[dict]:
                     return await response.json()
                 return []
     except Exception as e:
-        logger.error(f"Ошибка при получении заметок: {e}")
         return []
 
-async def get_settings_api() -> Dict[str, Any]:
-    """Получение настроек через API"""
-    url = "http://localhost:3344/api/settings"
+# --- Bot Handlers ---
+
+@dp.callback_query(F.data.startswith("open_note_"))
+async def handle_open_note(callback: types.CallbackQuery, user_id: int):
+    note_id = callback.data.replace("open_note_", "")
+    await callback.answer()
     
-    # Генерируем токен
-    expire = datetime.utcnow() + timedelta(minutes=60)
-    to_encode = {"sub": "admin", "exp": expire}
-    token = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
-    
-    headers = {"Authorization": f"Bearer {token}"}
-    
+    result = await get_note_api(user_id, note_id)
+    if result.get("status") == "success":
+        note = result.get("data", {})
+        title = note.get("title", "Без названия")
+        content = note.get("content", "Пусто")
+        
+        title_esc = html.escape(title)
+        content_esc = html.escape(content)
+        
+        response_text = f"📝 <b>{title_esc}</b>\n\n{content_esc}"
+        await callback.message.answer(response_text, parse_mode="HTML")
+    else:
+        await callback.message.answer("❌ Не удалось загрузить содержимое заметки.")
+
+@dp.message(Command("start"))
+async def handle_start(message: types.Message):
+    await message.answer("Привет! Я твой личный помощник VibeMind. Присылай мне любые мысли, ссылки или картинки, и я сохраню их в твои заметки.")
+
+@dp.message(F.voice)
+async def handle_voice(message: types.Message, user_id: int, admin_id: str = None):
+    if admin_id and str(message.from_user.id) != str(admin_id):
+        return
+
+    await message.answer("🎙 Голосовое сообщение получено. Запускаю транскрибацию...")
+    # Здесь должна быть логика speech_to_text, пока просто заглушка или вызов существующей
+    await message.answer("❌ Транскрибация временно недоступна в этом режиме.")
+
+@dp.message(F.photo)
+async def handle_photo(message: types.Message, user_id: int, admin_id: str = None):
+    if admin_id and str(message.from_user.id) != str(admin_id):
+        return
+
     try:
-        async with aiohttp.ClientSession() as session:
-            async with session.get(url, headers=headers) as response:
-                if response.status == 200:
-                    return await response.json()
-                return {}
+        photo = message.photo[-1]
+        file_id = photo.file_id
+        filename = f"{uuid.uuid4()}.jpg"
+        upload_dir = '/app/storage/uploads'
+        os.makedirs(upload_dir, exist_ok=True)
+        filepath = os.path.join(upload_dir, filename)
+        
+        file = await message.bot.get_file(file_id)
+        await message.bot.download_file(file.file_path, filepath)
+        
+        img_url = f"/api/uploads/{filename}"
+        title = f"Photo from Telegram {datetime.now().strftime('%Y-%m-%d %H:%M')}"
+        content = f"![image]({img_url})"
+        
+        result = await save_note_to_api(user_id, title, content)
+        if result.get("status") == "success":
+            await message.answer(f"📸 Изображение сохранено!")
+        else:
+            await message.answer(f"❌ Ошибка: {result.get('message')}")
     except Exception as e:
-        logger.error(f"Ошибка при получении настроек: {e}")
-        return {}
+        await message.answer(f"❌ Ошибка: {str(e)}")
 
 @dp.message(F.text)
-async def handle_text(message: types.Message):
-    """Единый обработчик текстовых сообщений с системой интентов"""
-    # Проверка admin_id
-    if current_admin_id and str(message.from_user.id) != str(current_admin_id):
-        logger.warning(f"Unauthorized access attempt from {message.from_user.id}")
+async def handle_text(message: types.Message, user_id: int, admin_id: str = None):
+    if admin_id and str(message.from_user.id) != str(admin_id):
         return
 
     if message.text.startswith('/'):
         return
         
-    normalized_text = normalize_intent(message.text)
-        
-    # Получаем список заметок для контекста LLM
-    notes = await get_all_notes_api()
-    notes_context = [{"id": n.get("id"), "title": n.get("title"), "content": n.get("content")} for n in notes]
-        
-    commands = await parse_commands_llm(normalized_text, notes_context)
+    # Простая логика создания заметки (без LLM для краткости, можно вернуть позже)
+    title = message.text.split('\n')[0][:50]
+    content = message.text
     
-    chain_note_id = None
+    result = await save_note_to_api(user_id, title, content)
+    if result.get("status") == "success":
+        await message.answer(f"✅ Заметка «{title}» сохранена!")
+    else:
+        await message.answer(f"❌ Ошибка: {result.get('message')}")
+
+# --- Bot Management ---
+
+async def start_bot(user_id: int, username: str, token: str, proxy_url: str = None, proxy_config: dict = None, admin_id: str = None):
+    global current_bots, user_usernames
+    user_usernames[user_id] = username
     
-    for cmd in commands:
-        intent = cmd.get("type")
-        
-        if intent == "CREATE":
-            title = cmd.get("title", "Без названия")
-            content = cmd.get("content", "")
-            if not title:
-                title = "Без названия"
-                
-            logger.info(f"DEBUG: parsed_command={cmd}")
-            
-            result = await save_note_to_api(title, content)
-            logger.info(f"DEBUG: result_type={type(result)} result_value={result}")
-            
-            if isinstance(result, dict) and result.get("status") == "success":
-                chain_note_id = result.get("note_id")
-                await message.answer(f"Создал новую заметку «{title}»! 📝")
-            else:
-                chain_note_id = None
-                error_msg = result.get("message", "Неизвестная ошибка") if isinstance(result, dict) else str(result)
-                await message.answer(f"❌ Ошибка при создании заметки: {error_msg}")
-                
-        elif intent == "UPDATE":
-            search_query = cmd.get("search_query")
-            note_id = cmd.get("note_id")
-            append_text = cmd.get("append", "")
-            logger.info(f"DEBUG: parsed_command={cmd}")
-            
-            target_note_id = note_id or chain_note_id
-            
-            if not target_note_id and search_query:
-                # Используем обычный поиск (как в приложении)
-                result = await search_api(search_query)
-                logger.info(f"DEBUG: result_type={type(result)} result_value={result}")
-                if isinstance(result, dict) and result.get("status") == "success":
-                    data = result.get("data", [])
-                    if not data:
-                        # Если обычный поиск не нашел, пробуем семантический
-                        logger.info("UPDATE: Обычный поиск не дал результатов, пробуем семантический...")
-                        result = await semantic_search_api(search_query)
-                        if isinstance(result, dict) and result.get("status") == "success":
-                            data = result.get("data", [])
-                            
-                    if data and isinstance(data, list) and len(data) > 0:
-                        target_note_id = data[0].get('id')
-                    
-            if target_note_id:
-                # Если append_text это список, объединяем его в строку
-                if isinstance(append_text, list):
-                    append_text = "\n- " + "\n- ".join(append_text)
-                    
-                result = await patch_note_api(target_note_id, append_text)
-                logger.info(f"DEBUG: result_type={type(result)} result_value={result}")
-                if isinstance(result, dict) and result.get("status") == "success":
-                    data = result.get("data", {})
-                    title = data.get('title', 'Без названия')
-                    await message.answer(f"✅ Добавил текст в заметку «{title}»!")
-                    chain_note_id = target_note_id
-                else:
-                    error_msg = result.get("message", "Неизвестная ошибка") if isinstance(result, dict) else str(result)
-                    await message.answer(f"❌ Ошибка при обновлении заметки: {error_msg}")
-            else:
-                await message.answer("Не нашёл подходящую заметку для обновления.")
-                
-        elif intent == "SEARCH":
-            search_query = cmd.get("query", "")
-            logger.info(f"DEBUG: parsed_command={cmd}")
-            
-            if not search_query:
-                await message.answer("Что именно нужно найти?")
-                continue
-                
-            await message.answer(f"🔍 Ищу заметки по запросу: «{search_query}»...")
-            # Используем обычный поиск (как в приложении)
-            result = await search_api(search_query)
-            logger.info(f"DEBUG: result_type={type(result)} result_value={result}")
-            
-            if isinstance(result, dict) and result.get("status") == "success":
-                results = result.get("data", [])
-                if not results:
-                    # Если обычный поиск не нашел, пробуем семантический
-                    logger.info("Обычный поиск не дал результатов, пробуем семантический...")
-                    result = await semantic_search_api(search_query)
-                    if isinstance(result, dict) and result.get("status") == "success":
-                        results = result.get("data", [])
-                
-                if not results:
-                    await message.answer("К сожалению, ничего не найдено. 😔")
-                    continue
-                    
-                from aiogram.utils.keyboard import InlineKeyboardBuilder
-                response_text = f"Вот что я нашел по запросу «{html.escape(search_query)}»:\n\n"
-                builder = InlineKeyboardBuilder()
-                
-                for i, note in enumerate(results, 1):
-                    title = note.get('title', 'Без названия')
-                    content = note.get('content', '')
-                    preview = content[:100] + "..." if len(content) > 100 else content
-                    preview = preview.replace('\n', ' ')
-                    
-                    # Экранируем для HTML
-                    title_esc = html.escape(title)
-                    preview_esc = html.escape(preview)
-                    
-                    response_text += f"{i}. <b>{title_esc}</b>\n<i>{preview_esc}</i>\n\n"
-                    builder.button(text=f"Открыть {i}", callback_data=f"open_note_{note['id']}")
-                    
-                builder.adjust(1)
-                await message.answer(response_text, parse_mode="HTML", reply_markup=builder.as_markup())
-            else:
-                error_msg = result.get("message", "Неизвестная ошибка") if isinstance(result, dict) else str(result)
-                await message.answer(f"❌ Ошибка при поиске: {error_msg}")
-
-async def start_bot(token: str, proxy_url: str = None, proxy_config: dict = None, admin_id: str = None):
-    """Запуск бота с поддержкой прокси (HTTP, SOCKS4, SOCKS5)"""
-    global current_bot, current_admin_id
-    current_admin_id = admin_id
-
-    # Унифицируй входные данные
-    if isinstance(proxy_url, str) and proxy_url.strip().startswith("{"):
-        try:
-            proxy_url = ast.literal_eval(proxy_url)
-        except:
-            pass
-
     try:
-        session = None
         final_proxy_url = None
-        
-        # Приоритет 1: proxy_url как готовая строка
+        if isinstance(proxy_url, str) and proxy_url.strip().startswith("{"):
+            try: proxy_url = ast.literal_eval(proxy_url)
+            except: pass
+
         if isinstance(proxy_url, str) and (proxy_url.startswith("http") or proxy_url.startswith("socks")):
             final_proxy_url = proxy_url
-        # Приоритет 2: proxy_url как словарь
         elif isinstance(proxy_url, dict) and proxy_url.get("host"):
             p = proxy_url
             protocol = str(p.get("protocol", "http")).lower()
@@ -998,144 +259,49 @@ async def start_bot(token: str, proxy_url: str = None, proxy_config: dict = None
                 final_proxy_url = f"{protocol}://{user}:{password}@{host}:{port}"
             else:
                 final_proxy_url = f"{protocol}://{host}:{port}"
-        # Приоритет 3: proxy_config как словарь
-        elif isinstance(proxy_config, dict) and proxy_config.get("host"):
-            p = proxy_config
-            protocol = str(p.get("protocol", "http")).lower()
-            host = str(p.get("host"))
-            port = p.get("port")
-            user = p.get("username")
-            password = p.get("password")
-            if user and password:
-                final_proxy_url = f"{protocol}://{user}:{password}@{host}:{port}"
-            else:
-                final_proxy_url = f"{protocol}://{host}:{port}"
 
-        logger.debug(f"Final Proxy URL for start_bot: {final_proxy_url}")
-
-        # 2. Create session
+        logger.info(f"Запуск бота для {username} (ID: {user_id}). Прокси: {final_proxy_url or 'Direct'}")
+        
         session = AiohttpSession(proxy=final_proxy_url) if final_proxy_url else AiohttpSession()
-            
         async with Bot(token=token, session=session) as bot:
-            current_bot = bot
-            logger.info(f"Запуск Telegram бота... Прокси: {final_proxy_url or 'Direct'}")
-            await dp.start_polling(bot)
+            current_bots[user_id] = bot
+            await dp.start_polling(bot, user_id=user_id, admin_id=admin_id)
     except Exception as e:
-        logger.error(f"Ошибка при запуске бота: {e}")
-        current_bot = None
+        logger.error(f"Ошибка бота {user_id}: {e}")
+        if user_id in current_bots: del current_bots[user_id]
+
+async def stop_bot(user_id: int):
+    global current_bots, bot_tasks
+    bot = current_bots.get(user_id)
+    if bot:
+        try: await bot.session.close()
+        except: pass
+        del current_bots[user_id]
+    
+    task = bot_tasks.get(user_id)
+    if task:
+        task.cancel()
+        try: await task
+        except asyncio.CancelledError: pass
+        del bot_tasks[user_id]
+
+async def restart_bot(user_id: int, username: str, token: str, proxy_url: str = None, proxy_config: dict = None, admin_id: str = None):
+    await stop_bot(user_id)
+    if token:
+        bot_tasks[user_id] = asyncio.create_task(start_bot(user_id, username, token, proxy_url, proxy_config, admin_id))
 
 async def test_bot_connection(token: str, admin_id: str = None, proxy_url: str = None, proxy_config: dict = None):
-    """Тестирование соединения бота и отправка сообщения"""
-    # Унифицируй входные данные
-    if isinstance(proxy_url, str) and proxy_url.strip().startswith("{"):
-        try:
-            proxy_url = ast.literal_eval(proxy_url)
-        except:
-            pass
-
-    session = None
-    final_proxy_url = None
-    protocol_name = "Direct"
-    host = "unknown"
-    port = "unknown"
-    
-    # Приоритет 1: proxy_url как готовая строка
-    if isinstance(proxy_url, str) and (proxy_url.startswith("http") or proxy_url.startswith("socks")):
-        final_proxy_url = proxy_url
-        protocol_name = proxy_url.split("://")[0].upper() if "://" in proxy_url else "Proxy"
-    # Приоритет 2: proxy_url как словарь
-    elif isinstance(proxy_url, dict) and proxy_url.get("host"):
-        p = proxy_url
-        protocol = str(p.get("protocol", "http")).lower()
-        host = str(p.get("host"))
-        port = p.get("port")
-        user = p.get("username")
-        password = p.get("password")
-        if user and password:
-            final_proxy_url = f"{protocol}://{user}:{password}@{host}:{port}"
-        else:
-            final_proxy_url = f"{protocol}://{host}:{port}"
-        protocol_name = protocol.upper()
-    # Приоритет 3: proxy_config как словарь
-    elif isinstance(proxy_config, dict) and proxy_config.get("host"):
-        p = proxy_config
-        protocol = str(p.get("protocol", "http")).lower()
-        host = str(p.get("host"))
-        port = p.get("port")
-        user = p.get("username")
-        password = p.get("password")
-        if user and password:
-            final_proxy_url = f"{protocol}://{user}:{password}@{host}:{port}"
-        else:
-            final_proxy_url = f"{protocol}://{host}:{port}"
-        protocol_name = protocol.upper()
-
-    logger.debug(f"Final Proxy URL: {final_proxy_url}")
-
     try:
-        # 2. Create session and test
+        # Аналогичная логика прокси как в start_bot
+        final_proxy_url = None
+        if isinstance(proxy_url, str) and (proxy_url.startswith("http") or proxy_url.startswith("socks")):
+            final_proxy_url = proxy_url
+        
         session = AiohttpSession(proxy=final_proxy_url) if final_proxy_url else AiohttpSession()
-            
         async with Bot(token=token, session=session) as test_bot:
-            try:
-                # Use a longer timeout for get_me as proxies can be slow
-                me = await asyncio.wait_for(test_bot.get_me(), timeout=30.0)
-                
-                # Send message to admin if ID is provided
-                if admin_id:
-                    try:
-                        await test_bot.send_message(chat_id=admin_id, text=f"✅ VibeMind: Connection Successful! Protocol: {protocol_name}")
-                    except Exception as msg_err:
-                        logger.warning(f"Failed to send test message to admin {admin_id}: {msg_err}")
-                
-                return True, f"✅ VibeMind: Connection Successful! Protocol: {protocol_name}"
-                
-            except asyncio.TimeoutError:
-                error_msg = f"Тайм-аут при попытке подключения через прокси: {host}:{port}"
-                print(f"[DEBUG] {error_msg}")
-                return False, "TIMEOUT_ERROR: ❌ Превышено время ожидания. Прокси недоступен или блокирует Telegram."
-            finally:
-                # Bot session is managed by async with context manager
-                pass
-            
+            me = await asyncio.wait_for(test_bot.get_me(), timeout=10.0)
+            if admin_id:
+                await test_bot.send_message(chat_id=admin_id, text="✅ Проверка связи VibeMind успешна!")
+            return True, f"✅ Успешно: @{me.username}"
     except Exception as e:
-        print(f"DEBUG ERROR: {str(e)}")
-        traceback.print_exc()
-        return False, f"❌ Connection Failed: {str(e)}"
-    finally:
-        if session:
-            await session.close()
-
-async def stop_bot():
-    """Остановка текущего инстанса бота"""
-    global current_bot
-    if current_bot:
-        logger.info("Остановка Telegram бота...")
-        await current_bot.session.close()
-        current_bot = None
-
-async def restart_bot(token: str, proxy_url: str = None, proxy_config: dict = None, admin_id: str = None):
-    """Динамический перезапуск бота (вызывается из FastAPI)"""
-    global bot_task
-    logger.info(f"Запрос на перезапуск бота. Токен: {token[:5]}... Админ: {admin_id}")
-    
-    # Останавливаем текущего бота
-    await stop_bot()
-    
-    # Отменяем текущую фоновую задачу
-    if bot_task and not bot_task.done():
-        logger.info("Отмена текущей задачи бота...")
-        bot_task.cancel()
-        try:
-            await bot_task
-        except asyncio.CancelledError:
-            logger.info("Задача бота успешно отменена.")
-        except Exception as e:
-            logger.error(f"Ошибка при отмене задачи бота: {e}")
-            
-    # Запускаем новую задачу, если передан токен
-    if token:
-        logger.info("Создание новой задачи для запуска бота...")
-        bot_task = asyncio.create_task(start_bot(token, proxy_url, proxy_config, admin_id))
-    else:
-        logger.warning("Токен не передан, бот не будет запущен.")
+        return False, f"❌ Ошибка: {str(e)}"

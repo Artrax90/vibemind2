@@ -14,8 +14,9 @@ type SettingsProps = {
 
 export default function Settings({ onClose, theme, setTheme }: SettingsProps) {
   const { language, setLanguage, t } = useLanguage();
-  const [activeTab, setActiveTab] = useState<'general' | 'integrations' | 'bots' | 'users'>('general');
+  const [activeTab, setActiveTab] = useState<'general' | 'integrations' | 'bots' | 'users' | 'profile'>('general');
   const [currentUser, setCurrentUser] = useState<any>(null);
+  const [newPassword, setNewPassword] = useState('');
   
   // Proxy State
   const [proxyConfig, setProxyConfig] = useState({
@@ -335,9 +336,12 @@ export default function Settings({ onClose, theme, setTheme }: SettingsProps) {
           <button onClick={() => setActiveTab('bots')} className={`w-full flex items-center px-4 py-3 rounded-lg transition-colors ${activeTab === 'bots' ? 'bg-primary/20 text-primary' : 'text-muted-foreground hover:bg-secondary hover:text-foreground'}`}>
             <MessageSquare size={18} className="mr-3" /> {t('settings.bots')}
           </button>
-          {currentUser?.username === 'admin' && (
+          <button onClick={() => setActiveTab('profile')} className={`w-full flex items-center px-4 py-3 rounded-lg transition-colors ${activeTab === 'profile' ? 'bg-primary/20 text-primary' : 'text-muted-foreground hover:bg-secondary hover:text-foreground'}`}>
+            <User size={18} className="mr-3" /> {t('settings.profile') || 'Profile'}
+          </button>
+          {currentUser?.role === 'admin' && (
             <button onClick={() => setActiveTab('users')} className={`w-full flex items-center px-4 py-3 rounded-lg transition-colors ${activeTab === 'users' ? 'bg-primary/20 text-primary' : 'text-muted-foreground hover:bg-secondary hover:text-foreground'}`}>
-              <User size={18} className="mr-3" /> {t('settings.users')}
+              <Shield size={18} className="mr-3" /> {t('settings.users')}
             </button>
           )}
         </div>
@@ -788,6 +792,49 @@ export default function Settings({ onClose, theme, setTheme }: SettingsProps) {
                     </div>
                   </div>
                 </section>
+              </div>
+            )}
+
+            {activeTab === 'profile' && (
+              <div className="space-y-6">
+                <h3 className="text-lg font-semibold text-foreground">{t('settings.profile') || 'Profile'}</h3>
+                <div className="bg-card p-6 rounded-lg border border-border/50 space-y-4">
+                  <div>
+                    <label className="block text-sm text-muted-foreground mb-1">{t('settings.username') || 'Username'}</label>
+                    <input type="text" value={currentUser?.username || ''} disabled className="w-full bg-secondary/50 border border-border rounded-lg p-2 text-muted-foreground outline-none cursor-not-allowed" />
+                  </div>
+                  <div>
+                    <label className="block text-sm text-muted-foreground mb-1">{t('settings.newPassword') || 'New Password'}</label>
+                    <div className="relative">
+                      <Key className="absolute left-3 top-2.5 w-4 h-4 text-muted-foreground" />
+                      <input 
+                        type="password" 
+                        placeholder="••••••••" 
+                        value={newPassword}
+                        onChange={(e) => setNewPassword(e.target.value)}
+                        className="w-full bg-background border border-border rounded-lg p-2 pl-10 text-foreground focus:border-primary focus:ring-1 focus:ring-primary outline-none transition-all" 
+                      />
+                    </div>
+                  </div>
+                  <div className="pt-4 flex justify-end">
+                    <button 
+                      onClick={async () => {
+                        if (!newPassword) return;
+                        try {
+                          await api.updateUser(currentUser.id, { password: newPassword });
+                          alert(t('settings.passwordUpdated') || 'Password updated successfully');
+                          setNewPassword('');
+                        } catch (e) {
+                          console.error(e);
+                          alert(t('settings.passwordUpdateFailed') || 'Failed to update password');
+                        }
+                      }}
+                      className="px-4 py-2 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors"
+                    >
+                      {t('settings.updatePassword') || 'Update Password'}
+                    </button>
+                  </div>
+                </div>
               </div>
             )}
 

@@ -20,6 +20,7 @@ export type Note = {
   folderId?: string;
   isShared?: boolean;
   ownerUsername?: string;
+  permission?: 'read' | 'write' | 'owner';
 };
 
 export type Folder = {
@@ -28,6 +29,7 @@ export type Folder = {
   parentId?: string;
   isShared?: boolean;
   ownerUsername?: string;
+  permission?: 'read' | 'write' | 'owner';
 };
 
 export default function App() {

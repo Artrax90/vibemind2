@@ -8,6 +8,7 @@ class Config(Base):
     __tablename__ = "configs"
     
     id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, index=True, unique=True)
     tg_token = Column(String, nullable=True)
     tg_admin_id = Column(String, nullable=True)
     llm_provider = Column(String, nullable=True)

@@ -33,7 +33,7 @@ type SidebarProps = {
 };
 
 // Sortable Note Item
-function SortableNoteItem({ note, activeNoteId, onSelectNote, onContextMenu }: any) {
+function SortableNoteItem({ note, activeNoteId, onSelectNote, onContextMenu, t }: any) {
   const { attributes, listeners, setNodeRef, transform, transition } = useSortable({ 
     id: note.id,
     data: { type: 'note', note }
@@ -53,7 +53,7 @@ function SortableNoteItem({ note, activeNoteId, onSelectNote, onContextMenu }: a
           <span className="text-sm truncate">{note.title}</span>
           {note.isShared && (
             <span className="text-[10px] text-muted-foreground/60 truncate flex items-center">
-              <Share2 size={8} className="mr-1" /> {note.ownerUsername}
+              <Share2 size={8} className="mr-1" /> {note.ownerUsername} ({note.permission === 'owner' ? t('sidebar.owner') || 'Owner' : note.permission})
             </span>
           )}
         </div>
@@ -69,7 +69,7 @@ function SortableNoteItem({ note, activeNoteId, onSelectNote, onContextMenu }: a
 }
 
 // Droppable Folder Item
-function DroppableFolder({ folder, isExpanded, isSelected, isRenaming, renameValue, setRenameValue, handleRenameSubmit, toggleFolder, handleContextMenu, children }: any) {
+function DroppableFolder({ folder, isExpanded, isSelected, isRenaming, renameValue, setRenameValue, handleRenameSubmit, toggleFolder, handleContextMenu, t, children }: any) {
   const { isOver, setNodeRef } = useDroppable({
     id: folder.id,
     data: { type: 'folder', folder }
@@ -100,7 +100,7 @@ function DroppableFolder({ folder, isExpanded, isSelected, isRenaming, renameVal
               <span className="text-sm truncate">{folder.name}</span>
               {folder.isShared && (
                 <span className="text-[10px] text-muted-foreground/60 truncate flex items-center">
-                  <Share2 size={8} className="mr-1" /> {folder.ownerUsername}
+                  <Share2 size={8} className="mr-1" /> {folder.ownerUsername} ({folder.permission === 'owner' ? t('sidebar.owner') || 'Owner' : folder.permission})
                 </span>
               )}
             </div>
@@ -261,6 +261,7 @@ export default function Sidebar({ notes, folders, activeNoteId, isLoading = fals
               handleRenameSubmit={handleRenameSubmit}
               toggleFolder={toggleFolder}
               handleContextMenu={handleContextMenu}
+              t={t}
             >
               {isExpanded && renderTree(folder.id, depth + 1)}
             </DroppableFolder>
@@ -275,6 +276,7 @@ export default function Sidebar({ notes, folders, activeNoteId, isLoading = fals
               activeNoteId={activeNoteId} 
               onSelectNote={onSelectNote} 
               onContextMenu={handleContextMenu}
+              t={t}
             />
           ))}
         </SortableContext>
@@ -377,56 +379,67 @@ export default function Sidebar({ notes, folders, activeNoteId, isLoading = fals
           >
             {contextMenu.type === 'note' && (
               <>
-                  <button 
-                    onClick={() => {
-                      setMovingNoteId(contextMenu.id);
-                      setContextMenu(null);
-                    }}
-                    className="w-full flex items-center px-4 py-2 text-sm text-popover-foreground hover:bg-secondary hover:text-foreground transition-colors"
-                  >
-                    <FolderInput size={14} className="mr-2" /> {t('sidebar.moveTo')}
-                  </button>
-                  <button 
-                    onClick={() => handleShareClick('note', contextMenu.id)}
-                    className="w-full flex items-center px-4 py-2 text-sm text-popover-foreground hover:bg-secondary hover:text-foreground transition-colors"
-                  >
-                    <Share2 size={14} className="mr-2" /> {t('sidebar.share')}
-                  </button>
+                  {(notes.find(n => n.id === contextMenu.id)?.permission !== 'read') && (
+                    <button 
+                      onClick={() => {
+                        setMovingNoteId(contextMenu.id);
+                        setContextMenu(null);
+                      }}
+                      className="w-full flex items-center px-4 py-2 text-sm text-popover-foreground hover:bg-secondary hover:text-foreground transition-colors"
+                    >
+                      <FolderInput size={14} className="mr-2" /> {t('sidebar.moveTo')}
+                    </button>
+                  )}
+                  {(notes.find(n => n.id === contextMenu.id)?.permission === 'owner') && (
+                    <button 
+                      onClick={() => handleShareClick('note', contextMenu.id)}
+                      className="w-full flex items-center px-4 py-2 text-sm text-popover-foreground hover:bg-secondary hover:text-foreground transition-colors"
+                    >
+                      <Share2 size={14} className="mr-2" /> {t('sidebar.share')}
+                    </button>
+                  )}
               </>
             )}
             {contextMenu.type === 'folder' && (
               <>
-                  <button 
-                    onClick={() => {
-                      const folder = folders.find(f => f.id === contextMenu.id);
-                      if (folder) {
-                        setRenameValue(folder.name);
-                        setRenamingFolderId(folder.id);
-                      }
-                      setContextMenu(null);
-                    }}
-                    className="w-full flex items-center px-4 py-2 text-sm text-popover-foreground hover:bg-secondary hover:text-foreground transition-colors"
-                  >
-                    <Edit2 size={14} className="mr-2" /> {t('sidebar.rename')}
-                  </button>
-                  <button 
-                    onClick={() => handleShareClick('folder', contextMenu.id)}
-                    className="w-full flex items-center px-4 py-2 text-sm text-popover-foreground hover:bg-secondary hover:text-foreground transition-colors"
-                  >
-                    <Share2 size={14} className="mr-2" /> {t('sidebar.share')}
-                  </button>
+                  {(folders.find(f => f.id === contextMenu.id)?.permission !== 'read') && (
+                    <button 
+                      onClick={() => {
+                        const folder = folders.find(f => f.id === contextMenu.id);
+                        if (folder) {
+                          setRenameValue(folder.name);
+                          setRenamingFolderId(folder.id);
+                        }
+                        setContextMenu(null);
+                      }}
+                      className="w-full flex items-center px-4 py-2 text-sm text-popover-foreground hover:bg-secondary hover:text-foreground transition-colors"
+                    >
+                      <Edit2 size={14} className="mr-2" /> {t('sidebar.rename')}
+                    </button>
+                  )}
+                  {(folders.find(f => f.id === contextMenu.id)?.permission === 'owner') && (
+                    <button 
+                      onClick={() => handleShareClick('folder', contextMenu.id)}
+                      className="w-full flex items-center px-4 py-2 text-sm text-popover-foreground hover:bg-secondary hover:text-foreground transition-colors"
+                    >
+                      <Share2 size={14} className="mr-2" /> {t('sidebar.share')}
+                    </button>
+                  )}
               </>
             )}
-            <button 
-              onClick={() => {
-                if (contextMenu.type === 'note') onDeleteNote(contextMenu.id);
-                else onDeleteFolder(contextMenu.id);
-                setContextMenu(null);
-              }}
-              className="w-full flex items-center px-4 py-2 text-sm text-destructive hover:bg-destructive/10 transition-colors"
-            >
-              <Trash2 size={14} className="mr-2" /> {t('sidebar.delete')}
-            </button>
+            {((contextMenu.type === 'note' && notes.find(n => n.id === contextMenu.id)?.permission === 'owner') || 
+              (contextMenu.type === 'folder' && folders.find(f => f.id === contextMenu.id)?.permission === 'owner')) && (
+              <button 
+                onClick={() => {
+                  if (contextMenu.type === 'note') onDeleteNote(contextMenu.id);
+                  else onDeleteFolder(contextMenu.id);
+                  setContextMenu(null);
+                }}
+                className="w-full flex items-center px-4 py-2 text-sm text-destructive hover:bg-destructive/10 transition-colors"
+              >
+                <Trash2 size={14} className="mr-2" /> {t('sidebar.delete')}
+              </button>
+            )}
           </div>,
           document.body
         )}
