@@ -21,6 +21,7 @@ export type Note = {
   isShared?: boolean;
   ownerUsername?: string;
   permission?: 'read' | 'write' | 'owner';
+  isPinned?: boolean;
 };
 
 export type Folder = {
