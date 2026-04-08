@@ -286,12 +286,14 @@ async def start_bot(user_id: int, username: str, token: str, proxy_url: str = No
         
         while True:
             try:
-                timeout = aiohttp.ClientTimeout(total=60, connect=20)
+                # Use float for timeout to avoid math errors in aiogram (+ buffer)
+                timeout = 60.0
                 session = AiohttpSession(proxy=final_proxy_url, timeout=timeout) if final_proxy_url else AiohttpSession(timeout=timeout)
                 async with Bot(token=token, session=session) as bot:
                     current_bots[user_id] = bot
                     logger.info(f"Бот @{username} начал опрос (polling)...")
-                    await dp.start_polling(bot, user_id=user_id, admin_id=admin_id, handle_signals=False, polling_timeout=40)
+                    # polling_timeout is passed to getUpdates, aiogram adds a buffer to it
+                    await dp.start_polling(bot, user_id=user_id, admin_id=admin_id, handle_signals=False)
             except asyncio.CancelledError:
                 logger.info(f"Бот {user_id} остановлен (CancelledError)")
                 break
@@ -357,7 +359,8 @@ async def test_bot_connection(token: str, admin_id: str = None, proxy_url: str =
             else:
                 final_proxy_url = f"{protocol}://{host}:{port}"
         
-        timeout = aiohttp.ClientTimeout(total=60, connect=20)
+        # Use float for timeout to avoid math errors in aiogram (+ buffer)
+        timeout = 60.0
         session = AiohttpSession(proxy=final_proxy_url, timeout=timeout) if final_proxy_url else AiohttpSession(timeout=timeout)
         async with Bot(token=token, session=session) as test_bot:
             me = await asyncio.wait_for(test_bot.get_me(), timeout=30.0)
