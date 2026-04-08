@@ -449,19 +449,26 @@ async def get_note_api(user_id: int, note_id: str) -> Dict[str, Any]:
         return {"status": "error", "message": str(e)}
 
 async def patch_note_api(user_id: int, note_id: str, content: str) -> Dict[str, Any]:
-    url = f"http://localhost:3344/api/notes/{note_id}"
-    token = await get_user_token(user_id)
-    headers = {"Authorization": f"Bearer {token}"}
-    payload = {"content": content}
-    try:
-        async with aiohttp.ClientSession() as session:
-            async with session.patch(url, json=payload, headers=headers) as response:
-                if response.status == 200:
-                    data = await response.json()
-                    return {"status": "success", "note_id": data.get("id"), "data": data}
-                return {"status": "error", "message": f"Ошибка: {response.status}"}
-    except Exception as e:
-        return {"status": "error", "message": str(e)}
+    # Fetch current note first to append
+    current = await get_note_api(user_id, note_id)
+    if current.get("status") == "success":
+        old_content = current["data"].get("content", "")
+        new_content = f"{old_content}\n\n{content}" if old_content else content
+        
+        url = f"http://localhost:3344/api/notes/{note_id}"
+        token = await get_user_token(user_id)
+        headers = {"Authorization": f"Bearer {token}"}
+        payload = {"content": new_content}
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.patch(url, json=payload, headers=headers) as response:
+                    if response.status == 200:
+                        data = await response.json()
+                        return {"status": "success", "note_id": data.get("id"), "data": data}
+                    return {"status": "error", "message": f"Ошибка: {response.status}"}
+        except Exception as e:
+            return {"status": "error", "message": str(e)}
+    return current
 
 async def get_all_notes_api(user_id: int) -> list[dict]:
     url = "http://localhost:3344/api/notes"
@@ -555,15 +562,56 @@ async def handle_voice(message: types.Message, user_id: int, admin_id: str = Non
 async def handle_photo(message: types.Message, user_id: int, admin_id: str = None):
     if admin_id and str(message.from_user.id) != str(admin_id): return
     try:
+        caption = message.caption or ""
         filename = f"{uuid.uuid4()}.jpg"
         filepath = os.path.join('/app/storage/uploads', filename)
         os.makedirs('/app/storage/uploads', exist_ok=True)
         file = await message.bot.get_file(message.photo[-1].file_id)
         await message.bot.download_file(file.file_path, filepath)
-        result = await save_note_to_api(user_id, f"Photo from Telegram {datetime.now().strftime('%Y-%m-%d %H:%M')}", f"![image](/api/uploads/{filename})")
-        if result.get("status") == "success": await message.answer("📸 Изображение сохранено!")
-        else: await message.answer(f"❌ Ошибка: {result.get('message')}")
-    except Exception as e: await message.answer(f"❌ Ошибка: {str(e)}")
+        
+        image_markdown = f"![image](/api/uploads/{filename})"
+        
+        if caption:
+            logger.info(f"Обработка фото с подписью: «{caption}»")
+            notes = await get_all_notes_api(user_id)
+            notes_context = [{"id": n.get("id"), "title": n.get("title"), "content": n.get("content")} for n in notes]
+            commands = await parse_commands_llm(user_id, caption, notes_context)
+            logger.info(f"Распознанные команды для фото: {commands}")
+            
+            if commands:
+                cmd = commands[0]
+                intent = cmd.get("type")
+                
+                if intent == "UPDATE":
+                    target_id = cmd.get("note_id")
+                    if not target_id and cmd.get("search_query"):
+                        res = await search_api(user_id, cmd.get("search_query"))
+                        if res.get("status") == "success" and res.get("data"):
+                            target_id = res["data"][0].get('id')
+                    
+                    if target_id:
+                        res = await patch_note_api(user_id, target_id, image_markdown)
+                        if res.get("status") == "success":
+                            await message.answer(f"📸 Изображение добавлено в заметку «{res['data'].get('title')}»!")
+                            return
+                
+                elif intent == "CREATE":
+                    title = cmd.get("title", "Без названия")
+                    result = await save_note_to_api(user_id, title, image_markdown)
+                    if result.get("status") == "success":
+                        await message.answer(f"📸 Создал новую заметку «{title}» с изображением!")
+                        return
+
+        # Fallback if no caption or parsing failed to find a target
+        result = await save_note_to_api(user_id, f"Photo from Telegram {datetime.now().strftime('%Y-%m-%d %H:%M')}", image_markdown)
+        if result.get("status") == "success": 
+            await message.answer("📸 Изображение сохранено в новую заметку!")
+        else: 
+            await message.answer(f"❌ Ошибка: {result.get('message')}")
+            
+    except Exception as e: 
+        logger.error(f"Error in handle_photo: {e}")
+        await message.answer(f"❌ Ошибка: {str(e)}")
 
 @dp.message(F.text)
 async def handle_text(message: types.Message, user_id: int, admin_id: str = None):
