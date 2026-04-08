@@ -124,6 +124,11 @@ class UserCreate(BaseModel):
     email: EmailStr
     password: str
 
+class UserUpdate(BaseModel):
+    username: Optional[str] = None
+    email: Optional[EmailStr] = None
+    password: Optional[str] = None
+
 class UserResponse(BaseModel):
     id: int
     username: str
@@ -158,6 +163,23 @@ async def create_user(user: UserCreate, db: Session = Depends(get_db)):
 async def get_users(db: Session = Depends(get_db)):
     users = db.query(User).all()
     return users
+
+@app.patch("/api/users/{user_id}", response_model=UserResponse)
+async def update_user(user_id: int, user_update: UserUpdate, db: Session = Depends(get_db)):
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    if user_update.username is not None:
+        user.username = user_update.username
+    if user_update.email is not None:
+        user.email = user_update.email
+    if user_update.password is not None and user_update.password != "":
+        user.hashed_password = get_password_hash(user_update.password)
+        
+    db.commit()
+    db.refresh(user)
+    return user
 
 class SettingsUpdate(BaseModel):
     tg_token: str | None = None
@@ -695,6 +717,50 @@ async def export_notes(db: Session = Depends(get_db), current_user: User = Depen
         media_type="application/x-zip-compressed", 
         headers={"Content-Disposition": f"attachment; filename=notes_export_{datetime.now().strftime('%Y%m%d_%H%M%S')}.zip"}
     )
+
+@app.post("/api/notes/import")
+async def import_notes(file: UploadFile = File(...), db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    """Импорт заметок из ZIP архива (Markdown)"""
+    import io
+    import zipfile
+    
+    if not file.filename.endswith('.zip'):
+        raise HTTPException(status_code=400, detail="Only ZIP files are supported")
+        
+    content = await file.read()
+    zip_buffer = io.BytesIO(content)
+    
+    imported_count = 0
+    try:
+        with zipfile.ZipFile(zip_buffer, "r") as zip_file:
+            for filename in zip_file.namelist():
+                if not filename.endswith('.md'):
+                    continue
+                    
+                file_content = zip_file.read(filename).decode('utf-8')
+                
+                # Parse title and content
+                lines = file_content.split('\n')
+                title = filename.replace('.md', '')
+                content = file_content
+                
+                if lines and lines[0].startswith('# '):
+                    title = lines[0][2:].strip()
+                    content = '\n'.join(lines[1:]).strip()
+                
+                new_note = Note(
+                    title=title,
+                    content=content,
+                    user_id=current_user.id
+                )
+                db.add(new_note)
+                imported_count += 1
+                
+        db.commit()
+        return {"message": f"Successfully imported {imported_count} notes", "count": imported_count}
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=400, detail=f"Failed to import notes: {str(e)}")
 
 @app.get("/api/notes/search")
 async def search_notes(query: str, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):

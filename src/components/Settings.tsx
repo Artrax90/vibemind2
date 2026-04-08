@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { X, Globe, Shield, User, Download, Cpu, Webhook, MessageSquare, Plus, Save, Trash2, CheckCircle, AlertCircle, Database, Edit2, Server, Lock, Key, Sun, Moon } from 'lucide-react';
+import { X, Globe, Shield, User, Download, Upload, Cpu, Webhook, MessageSquare, Plus, Save, Trash2, CheckCircle, AlertCircle, Database, Edit2, Server, Lock, Key, Sun, Moon } from 'lucide-react';
 import CreateUserModal from './modals/CreateUserModal';
 import AddDBModal from './modals/AddDBModal';
 import { api } from '../api/client';
@@ -252,8 +252,8 @@ export default function Settings({ onClose, theme, setTheme }: SettingsProps) {
   const handleCreateUser = async (user: any) => {
     try {
       if (editingUser) {
-        // Mock update
-        setUsers(users.map(u => u.username === editingUser.username ? { ...u, ...user } : u));
+        const updatedUser = await api.updateUser(editingUser.id, user);
+        setUsers(users.map(u => u.id === editingUser.id ? { ...u, ...updatedUser } : u));
         setEditingUser(null);
       } else {
         const newUser = await api.createUser(user);
@@ -508,6 +508,39 @@ export default function Settings({ onClose, theme, setTheme }: SettingsProps) {
                     >
                       <Download size={16} className="mr-2" /> {t('settings.exportZip')}
                     </button>
+                  </div>
+                  
+                  <div className="flex items-center justify-between p-4 bg-card rounded-lg border border-border/50">
+                    <div>
+                      <div className="text-foreground font-medium">{t('settings.importNotes')}</div>
+                      <div className="text-sm text-muted-foreground">{t('settings.importDesc')}</div>
+                    </div>
+                    <label className="px-4 py-2 bg-secondary text-foreground hover:bg-secondary/80 rounded-lg border border-border/50 hover:border-primary transition-all flex items-center cursor-pointer">
+                      <Upload size={16} className="mr-2" /> {t('settings.importZip')}
+                      <input 
+                        type="file" 
+                        accept=".zip" 
+                        className="hidden" 
+                        onChange={async (e) => {
+                          const file = e.target.files?.[0];
+                          if (!file) return;
+                          
+                          const formData = new FormData();
+                          formData.append('file', file);
+                          
+                          const res = await api.importNotes(formData);
+                          if (res.count > 0) {
+                            alert(`${t('settings.importSuccess')} (${res.count})`);
+                            // Optionally trigger a re-fetch of notes here if needed
+                          } else {
+                            alert(t('settings.importFailed'));
+                          }
+                          
+                          // Reset input
+                          e.target.value = '';
+                        }}
+                      />
+                    </label>
                   </div>
                 </section>
               </>

@@ -81,6 +81,22 @@ export const api = {
     }
   },
   
+  async updateUser(id: string, user: any) {
+    try {
+      const res = await fetch(`${BASE_URL}/api/users/${id}`, {
+        method: 'PATCH',
+        headers: { 
+          'Content-Type': 'application/json',
+          ...getAuthHeaders()
+        },
+        body: JSON.stringify(user)
+      });
+      return await handleResponse(res, { id, ...user });
+    } catch (e) {
+      return { id, ...user };
+    }
+  },
+  
   async getUsers() {
     try {
       const res = await fetch(`${BASE_URL}/api/users`, {
@@ -229,6 +245,20 @@ export const api = {
     } catch (e) {
       console.error('Upload failed:', e);
       return { url: '' };
+    }
+  },
+  
+  async importNotes(formData: FormData) {
+    try {
+      const res = await fetch(`${BASE_URL}/api/notes/import`, {
+        method: 'POST',
+        headers: getAuthHeaders(),
+        body: formData
+      });
+      return await handleResponse(res, { message: 'Imported', count: 0 });
+    } catch (e) {
+      console.error('Import failed:', e);
+      return { message: 'Failed', count: 0 };
     }
   }
 };
