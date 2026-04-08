@@ -15,6 +15,12 @@ from aiogram.client.session.aiohttp import AiohttpSession
 from aiogram.types import FSInputFile
 from jose import jwt
 import ast
+import httpx
+import io
+import base64
+from sqlalchemy.orm import Session
+from ..database import SessionLocal
+from .models import Config, User
 
 # Настройка логирования
 logging.basicConfig(level=logging.INFO)
@@ -184,9 +190,79 @@ async def handle_voice(message: types.Message, user_id: int, admin_id: str = Non
     if admin_id and str(message.from_user.id) != str(admin_id):
         return
 
-    await message.answer("🎙 Голосовое сообщение получено. Запускаю транскрибацию...")
-    # Здесь должна быть логика speech_to_text, пока просто заглушка или вызов существующей
-    await message.answer("❌ Транскрибация временно недоступна в этом режиме.")
+    status_msg = await message.answer("🎙 Голосовое сообщение получено. Запускаю транскрибацию...")
+    
+    try:
+        voice = message.voice
+        file_id = voice.file_id
+        file = await message.bot.get_file(file_id)
+        
+        # Download to memory
+        file_url = f"https://api.telegram.org/file/bot{message.bot.token}/{file.file_path}"
+        
+        db = SessionLocal()
+        config = db.query(Config).filter(Config.user_id == user_id).first()
+        db.close()
+        
+        if not config or not config.tg_token:
+            await status_msg.edit_text("❌ Бот не настроен.")
+            return
+
+        # Transcription logic
+        transcription = ""
+        
+        if config.llm_provider == "openai":
+            from openai import AsyncOpenAI
+            client = AsyncOpenAI(api_key=config.api_key)
+            
+            # Download file
+            async with httpx.AsyncClient() as client_http:
+                resp = await client_http.get(file_url)
+                if resp.status_code == 200:
+                    audio_data = io.BytesIO(resp.content)
+                    audio_data.name = "voice.ogg"
+                    
+                    transcript = await client.audio.transcriptions.create(
+                        model="whisper-1", 
+                        file=audio_data
+                    )
+                    transcription = transcript.text
+        
+        elif config.llm_provider == "gemini":
+            # Gemini 1.5 Flash supports audio
+            api_key = config.api_key
+            model = config.model_name or "gemini-1.5-flash"
+            
+            async with httpx.AsyncClient() as client_http:
+                resp = await client_http.get(file_url)
+                if resp.status_code == 200:
+                    import base64
+                    audio_b64 = base64.b64encode(resp.content).decode('utf-8')
+                    
+                    url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={api_key}"
+                    payload = {
+                        "contents": [{
+                            "parts": [
+                                {"text": "Transcribe this audio to text. Output ONLY the transcription, nothing else."},
+                                {"inline_data": {"mime_type": "audio/ogg", "data": audio_b64}}
+                            ]
+                        }]
+                    }
+                    resp_ai = await client_http.post(url, json=payload, timeout=60)
+                    if resp_ai.status_code == 200:
+                        transcription = resp_ai.json()['candidates'][0]['content']['parts'][0]['text']
+
+        if transcription:
+            await status_msg.edit_text(f"📝 <b>Транскрипция:</b>\n\n{transcription}", parse_mode="HTML")
+            # Process the transcribed text as a normal message
+            message.text = transcription
+            await handle_text(message, user_id, admin_id)
+        else:
+            await status_msg.edit_text("❌ Не удалось выполнить транскрибацию. Попробуйте позже или проверьте настройки ИИ.")
+            
+    except Exception as e:
+        logger.error(f"Voice Error: {e}")
+        await status_msg.edit_text(f"❌ Ошибка при обработке голоса: {str(e)}")
 
 @dp.message(F.photo)
 async def handle_photo(message: types.Message, user_id: int, admin_id: str = None):
@@ -216,6 +292,66 @@ async def handle_photo(message: types.Message, user_id: int, admin_id: str = Non
     except Exception as e:
         await message.answer(f"❌ Ошибка: {str(e)}")
 
+async def call_llm(user_id: int, prompt: str, system_prompt: str = "You are a helpful assistant.") -> str:
+    """Универсальный вызов LLM на основе настроек пользователя"""
+    db = SessionLocal()
+    try:
+        config = db.query(Config).filter(Config.user_id == user_id).first()
+        if not config or not config.llm_provider:
+            return "AI provider not configured."
+
+        if config.llm_provider in ["openai", "ollama", "openrouter"]:
+            from openai import AsyncOpenAI
+            base_url = config.base_url
+            if config.llm_provider == "openrouter" and not base_url:
+                base_url = "https://openrouter.ai/api/v1"
+            client = AsyncOpenAI(api_key=config.api_key or "dummy", base_url=base_url)
+            resp = await client.chat.completions.create(
+                model=config.model_name or "gpt-4o-mini",
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": prompt}
+                ],
+                max_tokens=500
+            )
+            return resp.choices[0].message.content
+        elif config.llm_provider == "gemini":
+            api_key = config.api_key
+            model = config.model_name or "gemini-1.5-flash"
+            url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={api_key}"
+            async with httpx.AsyncClient() as client:
+                payload = {
+                    "contents": [
+                        {"role": "user", "parts": [{"text": f"System: {system_prompt}\n\nUser: {prompt}"}]}
+                    ]
+                }
+                resp = await client.post(url, json=payload, timeout=30)
+                if resp.status_code == 200:
+                    return resp.json()['candidates'][0]['content']['parts'][0]['text']
+                return f"Gemini Error: {resp.status_code}"
+        return "Unsupported LLM provider."
+    except Exception as e:
+        logger.error(f"LLM Error: {e}")
+        return f"Error: {str(e)}"
+    finally:
+        db.close()
+
+async def search_notes_api(user_id: int, query: str) -> Dict[str, Any]:
+    """Поиск по заметкам через API чата"""
+    url = "http://localhost:3344/api/chat"
+    token = await get_user_token(user_id)
+    headers = {"Authorization": f"Bearer {token}"}
+    payload = {"message": query}
+    
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.post(url, json=payload, headers=headers) as response:
+                if response.status == 200:
+                    return await response.json()
+                return {"answer": "Ошибка при поиске.", "citations": []}
+    except Exception as e:
+        return {"answer": f"Ошибка сети: {str(e)}", "citations": []}
+
 @dp.message(F.text)
 async def handle_text(message: types.Message, user_id: int, admin_id: str = None):
     if admin_id and str(message.from_user.id) != str(admin_id):
@@ -223,16 +359,61 @@ async def handle_text(message: types.Message, user_id: int, admin_id: str = None
 
     if message.text.startswith('/'):
         return
-        
-    # Простая логика создания заметки (без LLM для краткости, можно вернуть позже)
-    title = message.text.split('\n')[0][:50]
-    content = message.text
+
+    # 1. Определяем намерение пользователя через LLM
+    intent_prompt = f"""Проанализируй сообщение пользователя и определи его намерение.
+Сообщение: "{message.text}"
+
+Возможные намерения:
+- SAVE: Пользователь хочет сохранить информацию, создать заметку, записать что-то. (Пример: "Запиши что я купил хлеб", "Новая заметка: рецепт блинов")
+- SEARCH: Пользователь задает вопрос по своим знаниям или просит найти что-то в заметках. (Пример: "Найди заметку про компьютер", "Что я писал про проект?", "Когда у меня встреча?")
+- CHAT: Просто общение или вопрос, не требующий поиска в базе.
+
+Верни ответ СТРОГО в формате JSON:
+{{"intent": "SAVE" | "SEARCH" | "CHAT", "title": "краткий заголовок если SAVE", "query": "очищенный запрос если SEARCH"}}
+"""
     
-    result = await save_note_to_api(user_id, title, content)
-    if result.get("status") == "success":
-        await message.answer(f"✅ Заметка «{title}» сохранена!")
+    intent_json_raw = await call_llm(user_id, intent_prompt, "You are an intent classifier. Output only valid JSON.")
+    try:
+        # Очистка от markdown если есть
+        clean_json = re.search(r'\{.*\}', intent_json_raw, re.DOTALL).group(0)
+        intent_data = json.loads(clean_json)
+    except:
+        # Fallback если LLM ошиблась с форматом
+        if any(word in message.text.lower() for word in ["найди", "что", "когда", "где", "вспомни"]):
+            intent_data = {"intent": "SEARCH", "query": message.text}
+        else:
+            intent_data = {"intent": "SAVE", "title": message.text[:50], "query": message.text}
+
+    intent = intent_data.get("intent", "SAVE")
+
+    if intent == "SEARCH":
+        status_msg = await message.answer("🔍 Ищу в ваших заметках...")
+        search_result = await search_notes_api(user_id, intent_data.get("query", message.text))
+        answer = search_result.get("answer", "Ничего не найдено.")
+        citations = search_result.get("citations", [])
+        
+        response = answer
+        if citations:
+            response += "\n\n<b>Источники:</b>"
+            for c in citations:
+                response += f"\n• {c.get('title')}"
+        
+        await status_msg.edit_text(response, parse_mode="HTML")
+        
+    elif intent == "SAVE":
+        title = intent_data.get("title") or message.text.split('\n')[0][:50]
+        content = message.text
+        
+        result = await save_note_to_api(user_id, title, content)
+        if result.get("status") == "success":
+            await message.answer(f"✅ Заметка «{title}» сохранена!")
+        else:
+            await message.answer(f"❌ Ошибка сохранения: {result.get('message')}")
     else:
-        await message.answer(f"❌ Ошибка: {result.get('message')}")
+        # Просто чат
+        response = await call_llm(user_id, message.text)
+        await message.answer(response)
 
 # --- Bot Management ---
 
