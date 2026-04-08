@@ -98,10 +98,10 @@ export default function ShareModal({ isOpen, onClose, resourceId, resourceType, 
         <div className="px-6 py-4 border-b border-border/50 flex items-center justify-between">
           <div>
             <h2 className="text-lg font-semibold text-foreground">
-              {resourceType === 'folder' ? 'Share folder' : 'Share note'}
+              {resourceType === 'folder' ? t('share.titleFolder') : t('share.titleNote')}
             </h2>
             <p className="text-sm text-muted-foreground mt-1">
-              Share with specific users or create a public link.
+              {t('share.description')}
             </p>
           </div>
           <button onClick={onClose} className="p-1 text-muted-foreground hover:text-foreground rounded transition-colors">
@@ -122,7 +122,7 @@ export default function ShareModal({ isOpen, onClose, resourceId, resourceType, 
                 onChange={() => setIsPublic(false)}
                 className="accent-primary"
               />
-              <span className="text-sm text-foreground">Specific User</span>
+              <span className="text-sm text-foreground">{t('share.specificUser')}</span>
             </label>
             <label className="flex items-center gap-2 cursor-pointer">
               <input 
@@ -131,32 +131,32 @@ export default function ShareModal({ isOpen, onClose, resourceId, resourceType, 
                 onChange={() => setIsPublic(true)}
                 className="accent-primary"
               />
-              <span className="text-sm text-foreground">Public Link</span>
+              <span className="text-sm text-foreground">{t('share.publicLink')}</span>
             </label>
           </div>
 
           <div className="flex flex-col sm:flex-row gap-3 items-end">
             {!isPublic && (
               <div className="space-y-2 flex-1 w-full">
-                <label className="text-sm font-medium text-foreground">Target username</label>
+                <label className="text-sm font-medium text-foreground">{t('share.targetUsername')}</label>
                 <input
                   type="text"
                   value={username}
                   onChange={(e) => setUsername(e.target.value)}
-                  placeholder="username"
+                  placeholder={t('share.usernamePlaceholder')}
                   className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm text-foreground focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary transition-all"
                 />
               </div>
             )}
             <div className="space-y-2 w-full sm:w-32">
-              <label className="text-sm font-medium text-foreground">Access</label>
+              <label className="text-sm font-medium text-foreground">{t('share.access')}</label>
               <select
                 value={permission}
                 onChange={(e) => setPermission(e.target.value as 'read' | 'write')}
                 className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm text-foreground focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary transition-all appearance-none"
               >
-                <option value="read">Read</option>
-                <option value="write">Write</option>
+                <option value="read">{t('share.read')}</option>
+                <option value="write">{t('share.write')}</option>
               </select>
             </div>
             <button
@@ -165,7 +165,7 @@ export default function ShareModal({ isOpen, onClose, resourceId, resourceType, 
               className="w-full sm:w-auto flex items-center justify-center px-4 py-2 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed h-[38px]"
             >
               {isPublic ? <Globe size={16} className="mr-2" /> : <UserPlus size={16} className="mr-2" />}
-              {isPublic ? 'Create Link' : 'Grant'}
+              {isPublic ? t('share.createLink') : t('share.grant')}
             </button>
           </div>
 
@@ -177,10 +177,10 @@ export default function ShareModal({ isOpen, onClose, resourceId, resourceType, 
             {loading ? (
               <div className="flex items-center gap-2 text-sm text-muted-foreground">
                 <Loader2 className="h-4 w-4 animate-spin" />
-                Loading shares...
+                {t('share.loading')}
               </div>
             ) : shares.length === 0 ? (
-              <div className="text-sm text-muted-foreground">No shares exist for this resource yet.</div>
+              <div className="text-sm text-muted-foreground">{t('share.noShares')}</div>
             ) : (
               shares.map((share) => (
                 <div key={share.id} className="flex items-center justify-between rounded-lg border border-border/50 bg-secondary/30 p-3">
@@ -191,16 +191,18 @@ export default function ShareModal({ isOpen, onClose, resourceId, resourceType, 
                       <UserPlus size={16} className="text-muted-foreground" />
                     )}
                     <div className="text-sm font-medium text-foreground">
-                      {share.is_public ? 'Public Link' : share.target_username}
+                      {share.is_public ? t('share.publicLink') : share.target_username}
                     </div>
                   </div>
                   <div className="flex items-center gap-3">
-                    <span className="text-xs text-muted-foreground capitalize">{share.permission}</span>
+                    <span className="text-xs text-muted-foreground capitalize">
+                      {share.permission === 'read' ? t('share.read') : t('share.write')}
+                    </span>
                     {share.is_public === 1 && (
                       <button
                         onClick={() => copyLink(share.id)}
                         className="p-1.5 text-muted-foreground hover:text-foreground hover:bg-secondary rounded transition-colors"
-                        title="Copy link"
+                        title={t('share.copyLink')}
                       >
                         {copiedId === share.id ? <Check size={14} className="text-green-500" /> : <Copy size={14} />}
                       </button>
