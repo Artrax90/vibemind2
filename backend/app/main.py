@@ -479,28 +479,37 @@ async def test_integration(data: dict, current_user: User = Depends(get_current_
     base_url = data.get("base_url")
     model_name = data.get("model_name")
     
-    if not provider or not api_key:
-        raise HTTPException(status_code=400, detail="Provider and API Key are required")
+    if not provider:
+        raise HTTPException(status_code=400, detail="Provider is required")
         
     try:
-        if provider == "openai" or provider == "openrouter" or provider == "ollama":
-            async with httpx.AsyncClient() as client:
-                headers = {"Authorization": f"Bearer {api_key}"}
-                # Simple models list or completion test
-                test_url = f"{base_url}/models" if provider != "ollama" else f"{base_url}/tags"
-                resp = await client.get(test_url, headers=headers, timeout=10.0)
-                if resp.status_code == 200:
-                    return {"status": "success", "message": "Connection successful"}
-                else:
-                    return {"status": "error", "message": f"Provider returned {resp.status_code}: {resp.text}"}
+        if provider in ["openai", "openrouter", "ollama"]:
+            # Use AsyncOpenAI for testing as it's what we use in chat
+            kwargs = {"api_key": api_key or "dummy"}
+            if base_url:
+                kwargs["base_url"] = base_url
+            
+            client = AsyncOpenAI(**kwargs)
+            # Minimal request to test connection
+            await client.chat.completions.create(
+                model=model_name or "gpt-4o-mini",
+                messages=[{"role": "user", "content": "ping"}],
+                max_tokens=1
+            )
+            return {"status": "success", "message": "Connection successful"}
         
         elif provider == "gemini":
-            # For Gemini we can try a simple generative model check
-            from google.generativeai import configure, GenerativeModel
-            configure(api_key=api_key)
-            model = GenerativeModel(model_name or 'gemini-1.5-flash')
-            # Just check if we can initialize (actual request might be better but costs quota)
-            return {"status": "success", "message": "Gemini configuration initialized"}
+            if not api_key:
+                raise HTTPException(status_code=400, detail="API Key is required for Gemini")
+            
+            url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name or 'gemini-1.5-flash'}:generateContent?key={api_key}"
+            async with httpx.AsyncClient() as client:
+                payload = {"contents": [{"parts": [{"text": "ping"}]}]}
+                resp = await client.post(url, json=payload, timeout=10.0)
+                if resp.status_code == 200:
+                    return {"status": "success", "message": "Gemini connection successful"}
+                else:
+                    return {"status": "error", "message": f"Gemini returned {resp.status_code}: {resp.text}"}
             
         return {"status": "error", "message": "Unsupported provider"}
     except Exception as e:
