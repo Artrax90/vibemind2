@@ -224,6 +224,43 @@ async def create_note(note: NoteCreate, db: Session = Depends(get_db), current_u
     db.commit()
     return note
 
+@app.post("/api/notes/import")
+async def import_notes(file: UploadFile = File(...), db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    import io, zipfile
+    content = await file.read()
+    count = 0
+    if file.filename.endswith('.zip'):
+        with zipfile.ZipFile(io.BytesIO(content)) as z:
+            for name in z.namelist():
+                if name.endswith(('.md', '.txt')):
+                    text = z.read(name).decode('utf-8')
+                    title = name.rsplit('.', 1)[0]
+                    db.add(Note(id=str(uuid.uuid4()), title=title, content=text, user_id=current_user.id))
+                    count += 1
+    db.commit()
+    return {"status": "success", "count": count}
+
+@app.get("/api/notes/search")
+async def search(query: str, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    notes = db.query(Note).filter(Note.user_id == current_user.id, or_(Note.title.ilike(f"%{query}%"), Note.content.ilike(f"%{query}%"))).limit(10).all()
+    return [{"id": n.id, "title": n.title, "content": n.content} for n in notes]
+
+@app.get("/api/notes/semantic-search")
+async def semantic_search(query: str, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    from .utils.embeddings import embedding_manager
+    v = embedding_manager.get_vector(query)
+    res = db.query(Note, Note.embedding.cosine_distance(v).label("d")).filter(Note.user_id == current_user.id, Note.embedding.is_not(None)).order_by("d").limit(5).all()
+    return [{"id": n.Note.id, "title": n.Note.title, "content": n.Note.content, "distance": float(n.d)} for n in res]
+
+@app.post("/api/notes/reindex")
+async def reindex_notes(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    from .utils.embeddings import embedding_manager
+    notes = db.query(Note).filter(Note.user_id == current_user.id).all()
+    for n in notes:
+        n.embedding = embedding_manager.get_vector(f"{n.title}\n{n.content or ''}")
+    db.commit()
+    return {"status": "success"}
+
 @app.get("/api/notes/{note_id}")
 async def get_note(note_id: str, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     n = db.query(Note).filter(Note.id == note_id).first()
@@ -409,35 +446,6 @@ async def get_upload(name: str):
     path = os.path.join('/app/storage/uploads', name)
     if os.path.exists(path): return FileResponse(path)
     raise HTTPException(status_code=404)
-
-# Search
-@app.post("/api/notes/import")
-async def import_notes(file: UploadFile = File(...), db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
-    import io, zipfile
-    content = await file.read()
-    count = 0
-    if file.filename.endswith('.zip'):
-        with zipfile.ZipFile(io.BytesIO(content)) as z:
-            for name in z.namelist():
-                if name.endswith(('.md', '.txt')):
-                    text = z.read(name).decode('utf-8')
-                    title = name.rsplit('.', 1)[0]
-                    db.add(Note(id=str(uuid.uuid4()), title=title, content=text, user_id=current_user.id))
-                    count += 1
-    db.commit()
-    return {"status": "success", "count": count}
-
-@app.get("/api/notes/search")
-async def search(query: str, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
-    notes = db.query(Note).filter(Note.user_id == current_user.id, or_(Note.title.ilike(f"%{query}%"), Note.content.ilike(f"%{query}%"))).limit(10).all()
-    return [{"id": n.id, "title": n.title, "content": n.content} for n in notes]
-
-@app.get("/api/notes/semantic-search")
-async def semantic_search(query: str, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
-    from .utils.embeddings import embedding_manager
-    v = embedding_manager.get_vector(query)
-    res = db.query(Note, Note.embedding.cosine_distance(v).label("d")).filter(Note.user_id == current_user.id, Note.embedding.is_not(None)).order_by("d").limit(5).all()
-    return [{"id": n.Note.id, "title": n.Note.title, "content": n.Note.content, "distance": float(n.d)} for n in res]
 
 # Chat
 @app.post("/api/chat")
