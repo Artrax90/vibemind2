@@ -197,6 +197,7 @@ notes:
 # Глобальные переменные для управления ботами
 current_bots: Dict[int, Bot] = {}
 bot_tasks: Dict[int, asyncio.Task] = {}
+token_to_user: Dict[str, int] = {} # token -> user_id
 user_usernames: Dict[int, str] = {}
 dp = Dispatcher()
 
@@ -726,7 +727,15 @@ async def handle_text(message: types.Message, user_id: int, admin_id: str = None
 # --- Bot Management ---
 
 async def start_bot(user_id: int, username: str, token: str, proxy_url: str = None, proxy_config: dict = None, admin_id: str = None):
-    global current_bots, user_usernames
+    global current_bots, user_usernames, token_to_user, bot_tasks
+    
+    # Проверяем, не запущен ли уже этот токен другим пользователем
+    if token in token_to_user and token_to_user[token] != user_id:
+        old_user_id = token_to_user[token]
+        logger.warning(f"Token already in use by user {old_user_id}. Stopping old instance...")
+        await stop_bot(old_user_id)
+    
+    token_to_user[token] = user_id
     user_usernames[user_id] = username
     if isinstance(proxy_url, str) and proxy_url.strip().startswith("{"):
         try: proxy_url = ast.literal_eval(proxy_url)
@@ -747,21 +756,46 @@ async def start_bot(user_id: int, username: str, token: str, proxy_url: str = No
         async with Bot(token=token, session=session) as bot:
             current_bots[user_id] = bot
             logger.info(f"Запуск бота для {username}. Прокси: {final_proxy_url or 'Direct'}")
+            # Удаляем вебхук перед запуском поллинга, чтобы избежать ConflictError
+            await bot.delete_webhook(drop_pending_updates=True)
             await dp.start_polling(bot, user_id=user_id, admin_id=admin_id, handle_signals=False)
     except Exception as e:
         logger.error(f"Ошибка бота {user_id}: {e}")
 
 async def stop_bot(user_id: int):
-    global current_bots, bot_tasks
+    global current_bots, bot_tasks, token_to_user
+    
+    # Находим токен, связанный с этим пользователем, чтобы очистить и его
+    token_to_remove = None
+    for token, uid in token_to_user.items():
+        if uid == user_id:
+            token_to_remove = token
+            break
+    
+    if token_to_remove:
+        del token_to_user[token_to_remove]
+
     if bot := current_bots.get(user_id):
-        try: await bot.session.close()
-        except: pass
+        try: 
+            await bot.session.close()
+            logger.info(f"Session closed for user {user_id}")
+        except Exception as e: 
+            logger.error(f"Error closing session for user {user_id}: {e}")
         del current_bots[user_id]
+        
     if task := bot_tasks.get(user_id):
         task.cancel()
-        try: await task
-        except asyncio.CancelledError: pass
+        try: 
+            await task
+            logger.info(f"Task cancelled for user {user_id}")
+        except asyncio.CancelledError: 
+            pass
+        except Exception as e:
+            logger.error(f"Error cancelling task for user {user_id}: {e}")
         del bot_tasks[user_id]
+    
+    # Даем небольшую паузу, чтобы Telegram успел закрыть соединение
+    await asyncio.sleep(0.5)
 
 async def restart_bot(user_id: int, username: str, token: str, proxy_url: str = None, proxy_config: dict = None, admin_id: str = None):
     await stop_bot(user_id)
