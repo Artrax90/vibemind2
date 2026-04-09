@@ -90,12 +90,12 @@ services:
     volumes:
       - ./vosk-model:/data
     command:
-      - --model
-      - /data/vosk-model-small-ru-0.22
       - --uri
       - tcp://0.0.0.0:10300
       - --data-dir
       - /data
+      - --language
+      - ru
 
 volumes:
   vibemind_db_data:
