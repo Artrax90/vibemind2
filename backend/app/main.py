@@ -584,186 +584,198 @@ async def get_upload(name: str):
     if os.path.exists(path): return FileResponse(path)
     raise HTTPException(status_code=404)
 
-# Chat
+class ChatRequest(BaseModel):
+    message: str
+
 @app.post("/api/chat")
-async def chat(req: dict, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
-    from .bot import parse_commands_llm
+async def chat_with_notes(req: ChatRequest, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    """Чат с заметками (Advanced Hybrid RAG with Query Expansion)"""
     from .utils.embeddings import embedding_manager
+    from sqlalchemy import or_
+    import re
     
-    msg = req.get("message", "")
-    if not msg:
-        raise HTTPException(status_code=400, detail="Message is required")
+    # 0. Получение конфигурации LLM
+    config = db.query(Config).first()
+    if not config or not config.llm_provider:
+        return {
+            "answer": "ИИ-провайдер не настроен. Пожалуйста, настройте его в настройках.",
+            "citations": []
+        }
+
+    # 1. Query Expansion (Расширение запроса через LLM)
+    # Мы просим ИИ сгенерировать ключевые слова на обоих языках (RU/EN)
+    search_keywords = [req.message]
+    try:
+        expansion_prompt = f"""Сгенерируй 5-7 ключевых слов для поиска в базе заметок по запросу: "{req.message}"
+Учти возможные переводы (RU/EN), транслитерацию (например, докер -> docker, doker) и синонимы. 
+Выдай только слова через запятую, без нумерации и пояснений.
+Пример: "докер" -> "docker, doker, контейнеры, devops, докер"
+Пример: "шашлык" -> "шашлык, мясо, мангал, гриль, bbq, барбекю"
+"""
+        # Используем тот же провайдер для расширения
+        expanded_text = ""
+        if config.llm_provider in ["openai", "ollama", "openrouter"]:
+            from openai import AsyncOpenAI
+            base_url = config.base_url
+            if config.llm_provider == "openrouter" and not base_url:
+                base_url = "https://openrouter.ai/api/v1"
+            client = AsyncOpenAI(api_key=config.api_key or "dummy", base_url=base_url)
+            resp = await client.chat.completions.create(
+                model=config.model_name or "gpt-4o-mini",
+                messages=[{"role": "user", "content": expansion_prompt}],
+                max_tokens=50
+            )
+            expanded_text = resp.choices[0].message.content
+        elif config.llm_provider == "gemini":
+            api_key = config.api_key
+            model = config.model_name or "gemini-1.5-flash"
+            url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={api_key}"
+            async with httpx.AsyncClient() as client:
+                payload = {"contents": [{"parts": [{"text": expansion_prompt}]}]}
+                resp = await client.post(url, json=payload, timeout=10)
+                if resp.status_code == 200:
+                    expanded_text = resp.json()['candidates'][0]['content']['parts'][0]['text']
         
-    # 1. Search for relevant notes (Vector + Keyword)
-    v = embedding_manager.get_vector(msg)
+        if expanded_text:
+            # Очищаем и добавляем новые слова
+            new_words = [w.strip().lower() for w in expanded_text.replace('\n', ',').split(',') if len(w.strip()) > 2]
+            search_keywords.extend(new_words)
+    except Exception as e:
+        print(f"Query expansion failed: {e}")
+
+    # 2. Проверка на наличие заметок без эмбеддингов (ленивая индексация)
+    notes_without_embeddings = db.query(Note).filter(
+        Note.user_id == current_user.id,
+        Note.embedding.is_(None)
+    ).all()
+    if notes_without_embeddings:
+        for note in notes_without_embeddings:
+            text_to_embed = f"{note.title}\n{note.content or ''}"
+            note.embedding = embedding_manager.get_vector(text_to_embed)
+        db.commit()
+
+    # 3. Ключевой поиск (Keyword Search) по расширенным словам
+    keyword_filters = []
+    unique_words = list(set(search_keywords))
+    for word in unique_words:
+        keyword_filters.append(Note.title.ilike(f"%{word}%"))
+        keyword_filters.append(Note.content.ilike(f"%{word}%"))
     
-    # Extract keywords from message (simple split and filter)
-    keywords = [w.lower() for w in msg.split() if len(w) > 3]
-    
-    # Keyword search (fallback for exact matches)
-    keyword_notes = []
-    if keywords:
-        # Search for notes where title contains any of the keywords
-        keyword_filters = [Note.title.ilike(f"%{kw}%") for kw in keywords]
-        keyword_notes = db.query(Note).filter(
+    keyword_results = []
+    if keyword_filters:
+        keyword_results = db.query(Note).filter(
             Note.user_id == current_user.id,
             or_(*keyword_filters)
-        ).limit(10).all()
+        ).limit(5).all()
     
-    # Vector search
-    vector_notes = db.query(Note).filter(Note.user_id == current_user.id, Note.embedding.is_not(None)).order_by(Note.embedding.cosine_distance(v)).limit(5).all()
+    # 4. Семантический поиск (Semantic Search)
+    query_vector = embedding_manager.get_vector(req.message)
+    # Увеличиваем порог для большего количества совпадений
+    semantic_threshold = 0.65
     
-    # Combine and deduplicate
-    found_notes = []
-    seen_ids = set()
+    semantic_results = db.query(
+        Note, 
+        Note.embedding.cosine_distance(query_vector).label("distance")
+    ).filter(
+        Note.user_id == current_user.id,
+        Note.embedding.is_not(None)
+    ).filter(
+        Note.embedding.cosine_distance(query_vector) <= semantic_threshold
+    ).order_by(
+        Note.embedding.cosine_distance(query_vector)
+    ).limit(5).all()
     
-    # 1. First, add notes that have EXACT title match (case insensitive)
-    msg_clean = msg.lower().strip()
-    for n in keyword_notes:
-        if n.title.lower().strip() == msg_clean:
-            if n.id not in seen_ids:
-                found_notes.append(n)
-                seen_ids.add(n.id)
-
-    # 2. Then add other keyword matches
-    for n in keyword_notes:
-        if n.id not in seen_ids:
-            found_notes.append(n)
-            seen_ids.add(n.id)
+    # 5. Объединение и дедупликация
+    combined_notes = {}
+    for note in keyword_results:
+        combined_notes[note.id] = note
+    for note, dist in semantic_results:
+        if note.id not in combined_notes:
+            combined_notes[note.id] = note
             
-    # 3. Finally add vector search results
-    for n in vector_notes:
-        if n.id not in seen_ids:
-            found_notes.append(n)
-            seen_ids.add(n.id)
-
-    # Filter out "junk" notes (those created by mistake by the bot previously)
-    # A note is likely junk if its title is exactly a search command
-    clean_found_notes = []
-    for n in found_notes:
-        if n.title.lower().startswith("найди ") or n.title.lower().startswith("найди заметку"):
-            # Only skip if there are other notes
-            if len(found_notes) > 1:
-                continue
-        clean_found_notes.append(n)
+    final_notes = list(combined_notes.values())[:5]
     
-    found_notes = clean_found_notes
-
-    # 2. Parse intent using the same logic as the bot
-    # We pass only the top titles to help the LLM identify the right note
-    notes_context = [{"id": n.id, "title": n.title} for n in found_notes]
-    commands = await parse_commands_llm(current_user.id, msg, notes_context)
+    if not final_notes:
+        return {
+            "answer": "Я не нашел релевантной информации в ваших заметках.",
+            "citations": []
+        }
     
-    action_summary = ""
-    found_notes = []
+    # 6. Формирование контекста
+    context_parts = []
+    for i, note in enumerate(final_notes):
+        context_parts.append(f"ЗАМЕТКА [{i+1}]\nID: {note.id}\nЗаголовок: {note.title}\nСодержание: {note.content}")
     
-    if commands:
-        for cmd in commands:
-            cmd_type = cmd.get("type")
-            if cmd_type == "CREATE":
-                new_note = Note(
-                    title=cmd.get("title", "New Note"),
-                    content=cmd.get("content", ""),
-                    user_id=current_user.id,
-                    embedding=embedding_manager.get_vector(f"{cmd.get('title')} {cmd.get('content')}")
-                )
-                db.add(new_note)
-                db.commit()
-                db.refresh(new_note)
-                action_summary += f"(Системное: Создана заметка '{new_note.title}') "
-                found_notes.append(new_note)
-                
-            elif cmd_type == "UPDATE":
-                note_id = cmd.get("note_id")
-                note = db.query(Note).filter(Note.id == note_id, Note.user_id == current_user.id).first()
-                if note:
-                    append_text = cmd.get("append", "")
-                    note.content = (note.content or "") + "\n" + append_text
-                    note.embedding = embedding_manager.get_vector(f"{note.title} {note.content}")
-                    db.commit()
-                    action_summary += f"(Системное: Обновлена заметка '{note.title}') "
-                    found_notes.append(note)
-            
-            elif cmd_type == "SEARCH":
-                query = cmd.get("query", msg)
-                v = embedding_manager.get_vector(query)
-                search_results = db.query(Note).filter(Note.user_id == current_user.id, Note.embedding.is_not(None)).order_by(Note.embedding.cosine_distance(v)).limit(5).all()
-                found_notes.extend(search_results)
-
-    # 3. Always use LLM to generate a natural response
-    # If no notes found yet, do a general search for context
-    if not found_notes:
-        v = embedding_manager.get_vector(msg)
-        found_notes = db.query(Note).filter(Note.user_id == current_user.id, Note.embedding.is_not(None)).order_by(Note.embedding.cosine_distance(v)).limit(5).all()
-
-    # Remove duplicates from found_notes
-    seen_ids = set()
-    unique_notes = []
-    for n in found_notes:
-        if n.id not in seen_ids:
-            unique_notes.append(n)
-            seen_ids.add(n.id)
-
-    context = "\n\n---\n\n".join([f"Title: {n.title}\nContent: {n.content}" for n in unique_notes])
+    context_text = "\n\n---\n\n".join(context_parts)
     
-    config = db.query(Config).first()
-    provider = config.llm_provider if config else "openai"
-    api_key = config.api_key if config else os.getenv("GEMINI_API_KEY")
-    model_name = config.model_name or "gpt-4o-mini"
-    
-    system_prompt = f"""Ты — VibeMind AI, высокоинтеллектуальный персональный ассистент. 
-Твоя главная ценность — информация в заметках пользователя.
+    # 7. Финальный запрос к LLM с требованием верификации цитат
+    prompt = f"""Вы — VibeMind AI. Отвечайте на основе предоставленных заметок.
+
+ЗАМЕТКИ:
+{context_text}
 
 ИНСТРУКЦИИ:
-1. Если в системном логе ниже указано, что действие выполнено ({action_summary}), кратко подтверди это.
-2. Если пользователь что-то ищет или спрашивает, ты ОБЯЗАН извлечь ответ из предоставленного контекста заметок. 
-3. Тщательно изучи ВСЕ предоставленные заметки. Если одна из них называется "шашлык" (или похоже), используй её содержимое!
-4. НЕ отвечай общими фразами типа "Я нашел заметку, что именно вас интересует?". 
-5. СРАЗУ пиши суть: "В вашей заметке '{unique_notes[0].title if unique_notes else ''}' сказано: ...".
-6. Если в контексте несколько заметок, обобщи их или выдели главное.
-7. Пиши живым, человеческим языком, но по делу.
-8. Если информации нет в заметках, так и скажи, но предложи помочь с чем-то другим.
+1. Если в заметках НЕТ ответа на вопрос или они не релевантны, просто скажи "Я не нашел информации по этому вопросу в ваших заметках." и НЕ приводи цитаты. НЕ выдумывай информацию.
+2. Если ответ есть, используй [1], [2] для ссылок.
+3. В конце ответа добавь список ID использованных заметок в формате: "SOURCES: ID1, ID2". Это КРИТИЧЕСКИ важно.
+4. Отвечай на языке вопроса.
 
-{action_summary}"""
+ВОПРОС: {req.message}"""
 
-    user_content = f"КОНТЕКСТ ЗАМЕТОК ПОЛЬЗОВАТЕЛЯ (используй это для ответа):\n{context}\n\nВОПРОС ПОЛЬЗОВАТЕЛЯ: {msg}"
-    
-    answer = ""
     try:
-        if provider == "gemini":
-            url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={api_key}"
-            async with httpx.AsyncClient() as session:
-                payload = {"contents": [{"parts": [{"text": f"{system_prompt}\n\n{user_content}"}]}]}
-                resp = await session.post(url, json=payload, timeout=30)
-                if resp.status_code == 200:
-                    answer = resp.json()['candidates'][0]['content']['parts'][0]['text']
-                else:
-                    answer = f"Ошибка Gemini: {resp.text}"
-        else:
-            # Check for proxy
-            kwargs = {"api_key": api_key}
-            if config and config.base_url:
-                kwargs["base_url"] = config.base_url
-            if config and config.proxy_config and isinstance(config.proxy_config, dict) and config.proxy_config.get("host"):
-                p = config.proxy_config
-                proxy_url = f"{p.get('protocol', 'http').lower()}://{p.get('username')}:{p.get('password')}@{p['host']}:{p['port']}" if p.get('username') else f"{p.get('protocol', 'http').lower()}://{p['host']}:{p['port']}"
-                kwargs["http_client"] = httpx.AsyncClient(proxy=proxy_url)
-                
-            client = AsyncOpenAI(**kwargs)
+        answer = ""
+        if config.llm_provider in ["openai", "ollama", "openrouter"]:
+            from openai import AsyncOpenAI
+            base_url = config.base_url
+            if config.llm_provider == "openrouter" and not base_url:
+                base_url = "https://openrouter.ai/api/v1"
+            client = AsyncOpenAI(api_key=config.api_key or "dummy", base_url=base_url)
             response = await client.chat.completions.create(
-                model=model_name,
-                messages=[{"role": "system", "content": system_prompt}, {"role": "user", "content": user_content}]
+                model=config.model_name or "gpt-4o-mini",
+                messages=[{"role": "user", "content": prompt}]
             )
-            answer = response.choices[0].message.content.strip()
-            
-    except Exception as e:
-        logger.error(f"Final LLM response error: {str(e)}")
-        answer = f"Произошла ошибка при генерации ответа: {str(e)}"
+            answer = response.choices[0].message.content
+        elif config.llm_provider == "gemini":
+            api_key = config.api_key
+            model = config.model_name or "gemini-1.5-flash"
+            url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={api_key}"
+            async with httpx.AsyncClient() as client:
+                payload = {"contents": [{"parts": [{"text": prompt}]}]}
+                response = await client.post(url, json=payload, timeout=30)
+                if response.status_code == 200:
+                    answer = response.json()['candidates'][0]['content']['parts'][0]['text']
+                else:
+                    answer = f"Ошибка Gemini API: {response.text}"
+        
+        # Парсим SOURCES из ответа, чтобы показать только реально использованные цитаты
+        used_ids = []
+        if "SOURCES:" in answer:
+            parts = answer.split("SOURCES:")
+            answer_text = parts[0].strip()
+            ids_part = parts[1].strip()
+            used_ids = [id.strip() for id in ids_part.split(',') if id.strip()]
+            answer = answer_text
+        
+        # Формируем финальный список цитат
+        final_citations = []
+        for note in final_notes:
+            if note.id in used_ids:
+                final_citations.append({
+                    "id": note.id,
+                    "title": note.title,
+                    "snippet": note.content[:100] + "..." if note.content else ""
+                })
+        
+        # Если ИИ не нашел ответа, но все же что-то написал, проверяем на "Информации недостаточно"
+        if "информации недостаточно" in answer.lower() and not final_citations:
+            return {"answer": answer, "citations": []}
 
-    return {
-        "answer": answer, 
-        "citations": [{"id": n.id, "title": n.title} for n in unique_notes]
-    }
+        return {
+            "answer": answer,
+            "citations": final_citations
+        }
+    except Exception as e:
+        return {"answer": f"Ошибка: {str(e)}", "citations": []}
 
 @app.get("/api/debug/notes")
 async def debug_notes(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
