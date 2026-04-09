@@ -280,15 +280,6 @@ async def get_note(note_id: str, db: Session = Depends(get_db), current_user: Us
         "isPinned": bool(n.isPinned), "isShared": is_shared, "ownerUsername": owner_name
     }
 
-@app.post("/api/notes/reindex")
-async def reindex_notes(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
-    from .utils.embeddings import embedding_manager
-    notes = db.query(Note).filter(Note.user_id == current_user.id).all()
-    for n in notes:
-        n.embedding = embedding_manager.get_vector(f"{n.title}\n{n.content or ''}")
-    db.commit()
-    return {"status": "success", "count": len(notes)}
-
 @app.get("/api/notes/export")
 async def export_notes(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     import io, zipfile
