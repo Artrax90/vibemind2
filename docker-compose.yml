@@ -59,32 +59,31 @@ services:
       sh -c "
       set -e;
       TARGET_DIR='/data/vosk-model-small-ru-0.22';
-      if [ ! -d \"\$$TARGET_DIR\" ]; then
+      if [ ! -d \"$$TARGET_DIR\" ]; then
         echo '--- Step 1: Installing dependencies ---';
         apk add --no-cache curl unzip ca-certificates;
-        echo '--- Step 2: Downloading model with auto-resume ---';
-        MAX_RETRIES=20;
+        echo '--- Step 2: Downloading model ---';
+        MAX_RETRIES=10;
         COUNT=0;
-        while [ \$$COUNT -lt \$$MAX_RETRIES ]; do
-          echo \"Attempt \$$((COUNT+1)) of \$$MAX_RETRIES...\";
-          # Удаляем старый файл перед попыткой, чтобы избежать ошибок докачки
+        while [ $$COUNT -lt $$MAX_RETRIES ]; do
+          echo \"Attempt $$((COUNT+1)) of $$MAX_RETRIES...\";
           rm -f /data/model.zip;
-          # Убрали -C - (resume), так как HF не всегда его любит через редиректы
-          if curl -4 -L --connect-timeout 15 https://huggingface.co/alphacep/vosk-model-small-ru-0.22/resolve/main/vosk-model-small-ru-0.22.zip -o /data/model.zip; then
-            echo 'Download command finished, checking integrity...';
-            if unzip -t /data/model.zip > /dev/null 2>&1; then
-              echo 'File is valid!';
-              break;
+          if curl -4 -L https://huggingface.co/alphacep/vosk-model-small-ru-0.22/resolve/main/vosk-model-small-ru-0.22.zip?download=true -o /data/model.zip; then
+            SIZE=$$(stat -c%s /data/model.zip);
+            if [ $$SIZE -gt 1000000 ]; then
+              echo 'Download finished, checking integrity...';
+              if unzip -t /data/model.zip > /dev/null 2>&1; then
+                echo 'File is valid!';
+                break;
+              fi
             else
-              echo 'File is incomplete or corrupted, will retry...';
+              echo \"File too small ($$SIZE bytes), likely a pointer. Retrying...\";
             fi
-          else
-            echo 'Curl failed or timed out, retrying in 5s...';
           fi
-          COUNT=\$$((COUNT+1));
+          COUNT=$$((COUNT+1));
           sleep 5;
         done;
-        if [ \$$COUNT -eq \$$MAX_RETRIES ]; then echo 'CRITICAL: Failed to download model after 20 attempts'; exit 1; fi
+        if [ $$COUNT -eq $$MAX_RETRIES ]; then echo 'CRITICAL: Failed to download model'; exit 1; fi
         echo '--- Step 3: Unzipping model ---';
         unzip -o /data/model.zip -d /data/;
         rm /data/model.zip;
