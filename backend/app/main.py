@@ -86,6 +86,18 @@ oauth2_scheme = OAuth2PasswordBearer(tokenUrl="api/auth/login")
 async def startup_event():
     db = SessionLocal()
     try:
+        # Create default admin if no users exist
+        if db.query(User).count() == 0:
+            admin_user = User(
+                username="admin",
+                email="admin@example.com",
+                hashed_password=pwd_context.hash("admin"),
+                role="admin"
+            )
+            db.add(admin_user)
+            db.commit()
+            logger.info("Default admin user created: admin/admin")
+
         from .bot import start_bot
         configs = db.query(Config).filter(Config.tg_token != None).all()
         for c in configs:
