@@ -233,7 +233,7 @@ async def parse_commands_llm(user_id: int, text: str, notes: list[dict] = None) 
         user_content = f"notes:\n{json.dumps(notes, ensure_ascii=False)}\n\n\"{text}\""
         content = ""
 
-        async def try_parse(p, k, m):
+        async def try_parse(p, k, m, base_url=None, proxy_url=None):
             if p == "gemini":
                 url = f"https://generativelanguage.googleapis.com/v1beta/models/{m}:generateContent?key={k}"
                 async with aiohttp.ClientSession() as session:
@@ -249,7 +249,14 @@ async def parse_commands_llm(user_id: int, text: str, notes: list[dict] = None) 
                             resp_text = await resp.text()
                             raise Exception(f"Gemini error: {resp_text}")
             else:
-                client = AsyncOpenAI(api_key=k)
+                kwargs = {"api_key": k}
+                if base_url:
+                    kwargs["base_url"] = base_url
+                if proxy_url:
+                    import httpx
+                    kwargs["http_client"] = httpx.AsyncClient(proxy=proxy_url)
+                
+                client = AsyncOpenAI(**kwargs)
                 response = await client.chat.completions.create(
                     model=m,
                     messages=[
@@ -261,7 +268,15 @@ async def parse_commands_llm(user_id: int, text: str, notes: list[dict] = None) 
                 return response.choices[0].message.content.strip()
 
         try:
-            content = await try_parse(provider, api_key, model)
+            final_proxy_url = None
+            if config:
+                if config.proxy_url and (config.proxy_url.startswith("http") or config.proxy_url.startswith("socks")):
+                    final_proxy_url = config.proxy_url
+                elif config.proxy_config and isinstance(config.proxy_config, dict) and config.proxy_config.get("host"):
+                    p = config.proxy_config
+                    final_proxy_url = f"{p.get('protocol', 'http').lower()}://{p.get('username')}:{p.get('password')}@{p['host']}:{p['port']}" if p.get('username') else f"{p.get('protocol', 'http').lower()}://{p['host']}:{p['port']}"
+
+            content = await try_parse(provider, api_key, model, config.base_url if config else None, final_proxy_url)
         except Exception as e:
             if provider == "openai" and ("403" in str(e) or "unsupported_country" in str(e)):
                 gemini_key = os.getenv("GEMINI_API_KEY")
