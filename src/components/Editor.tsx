@@ -51,16 +51,22 @@ export default function Editor({ note, onUpdate, onWikilinkClick, onTagClick, is
     return () => clearTimeout(timer);
   }, [content, title, note.id, note.content, note.title, onUpdate]);
 
-  const handleSummarize = () => {
+  const handleSummarize = async () => {
+    if (!content.trim()) return;
     setIsSummarizing(true);
-    // Mock AI Summarization
-    setTimeout(() => {
-      const summary = "\n\n> **TL;DR:** This is an AI-generated summary of the note.";
-      const newContent = content + summary;
-      setContent(newContent);
-      onUpdate(note.id, { content: newContent });
+    try {
+      const response = await api.summarize(content);
+      if (response && response.summary) {
+        const summary = `\n\n> **AI Summary:**\n${response.summary}`;
+        const newContent = content + summary;
+        setContent(newContent);
+        onUpdate(note.id, { content: newContent });
+      }
+    } catch (error) {
+      console.error('Summarization failed:', error);
+    } finally {
       setIsSummarizing(false);
-    }, 1500);
+    }
   };
 
   // Custom renderer for tags and wikilinks
