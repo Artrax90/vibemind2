@@ -1,5 +1,3 @@
-version: "3.9"
-
 services:
   app:
     build: .
@@ -48,43 +46,10 @@ services:
     container_name: vibemind_redis
     restart: always
 
-  vosk-model-download:
-    image: curlimages/curl:8.5.0
-    container_name: vosk_model_download
-    volumes:
-      - ./vosk-model:/data
-    entrypoint: ["/bin/sh", "-c"]
-    command: |
-      set -e
-
-      mkdir -p /data
-
-      if [ -d "/data/vosk-model-small-ru-0.22" ]; then
-        echo "Model already exists"
-        exit 0
-      fi
-
-      echo "Downloading model..."
-
-      curl -L --fail https://alphacephei.com/vosk/models/vosk-model-small-ru-0.22.zip -o /data/model.zip
-
-      echo "Installing unzip..."
-      apk add --no-cache unzip >/dev/null 2>&1 || true
-
-      echo "Unzipping..."
-      unzip /data/model.zip -d /data/
-
-      rm /data/model.zip
-
-      echo "Done!"
-
   vosk:
     image: rhasspy/wyoming-vosk
     container_name: wyoming-vosk
     restart: unless-stopped
-    depends_on:
-      vosk-model-download:
-        condition: service_completed_successfully
     ports:
       - "10300:10300"
     volumes:
@@ -93,6 +58,8 @@ services:
       - --uri
       - tcp://0.0.0.0:10300
       - --data-dir
+      - /data
+      - --download-dir
       - /data
       - --language
       - ru
