@@ -21,6 +21,9 @@ RUN apt-get update && apt-get install -y \
 COPY backend/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
+# Pre-download fastembed models to cache them in the Docker image
+RUN python -c "from fastembed import TextEmbedding; TextEmbedding('sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2'); TextEmbedding('BAAI/bge-small-en-v1.5')"
+
 # Copy backend code
 COPY backend/ ./backend/
 
