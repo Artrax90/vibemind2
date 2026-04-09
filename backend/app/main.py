@@ -65,9 +65,9 @@ Base.metadata.create_all(bind=engine)
 try:
     inspector = inspect(engine)
     if 'notes' in inspector.get_table_names():
-        note_columns = [c['name'] for c in inspector.get_columns('notes')]
+        note_columns = [c['name'].lower() for c in inspector.get_columns('notes')]
         with engine.connect() as conn:
-            if 'isPinned' not in note_columns:
+            if 'ispinned' not in note_columns:
                 conn.execute(text("ALTER TABLE notes ADD COLUMN isPinned INTEGER DEFAULT 0;"))
                 conn.commit()
                 logger.info("Added isPinned to notes")
@@ -423,9 +423,14 @@ async def chat(req: dict, db: Session = Depends(get_db), current_user: User = De
     return {"answer": "RAG response placeholder", "citations": [{"id": n.id, "title": n.title} for n in notes]}
 
 # Static files and SPA fallback
-STATIC_DIR = os.path.join(os.getcwd(), "dist")
+STATIC_DIR = "/app/static"
+if not os.path.exists(STATIC_DIR):
+    STATIC_DIR = os.path.join(os.getcwd(), "dist")
+
 if os.path.exists(STATIC_DIR):
-    app.mount("/assets", StaticFiles(directory=os.path.join(STATIC_DIR, "assets")), name="assets")
+    assets_dir = os.path.join(STATIC_DIR, "assets")
+    if os.path.exists(assets_dir):
+        app.mount("/assets", StaticFiles(directory=assets_dir), name="assets")
     
     @app.get("/{full_path:path}")
     async def serve_spa(full_path: str):
@@ -444,6 +449,8 @@ if os.path.exists(STATIC_DIR):
             return FileResponse(index_path)
         
         raise HTTPException(status_code=404)
+else:
+    logger.warning(f"Static directory not found. Frontend will not be served.")
 
 if __name__ == "__main__":
     import uvicorn
