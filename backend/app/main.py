@@ -82,8 +82,15 @@ except Exception as e:
 app = FastAPI(title="VibeMind Backend")
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="api/auth/login")
 
+starting_up = False
+
 @app.on_event("startup")
 async def startup_event():
+    global starting_up
+    if starting_up:
+        return
+    starting_up = True
+    
     db = SessionLocal()
     try:
         # Create default admin if no users exist
@@ -99,16 +106,26 @@ async def startup_event():
             logger.info("Default admin user created: admin/admin")
 
         configs = db.query(Config).filter(Config.tg_token != None).all()
+        seen_tokens = set()
         for c in configs:
-            if c.tg_token:
-                user = db.query(User).filter(User.id == c.user_id).first()
-                if user:
-                    # Use restart_bot to ensure the task is tracked in bot_tasks
-                    await restart_bot(c.user_id, user.username, c.tg_token, c.proxy_url, c.proxy_config, c.tg_admin_id)
+            if not c.tg_token:
+                continue
+            
+            # Если один и тот же токен у разных пользователей, запускаем только один раз
+            if c.tg_token in seen_tokens:
+                logger.warning(f"Duplicate token found for user {c.user_id}, skipping startup for this instance.")
+                continue
+            
+            seen_tokens.add(c.tg_token)
+            user = db.query(User).filter(User.id == c.user_id).first()
+            if user:
+                # Use restart_bot to ensure the task is tracked in bot_tasks
+                await restart_bot(c.user_id, user.username, c.tg_token, c.proxy_url, c.proxy_config, c.tg_admin_id)
     except Exception as e:
         logger.error(f"Error starting bots on startup: {e}")
     finally:
         db.close()
+        starting_up = False
 
 def get_db():
     db = SessionLocal()
