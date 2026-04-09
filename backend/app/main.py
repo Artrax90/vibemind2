@@ -389,11 +389,13 @@ async def create_user(user: UserCreate, db: Session = Depends(get_db), current_u
 
 @app.patch("/api/users/{user_id}", response_model=UserResponse)
 async def update_user(user_id: int, update: dict, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
-    if current_user.role != "admin":
+    if current_user.role != "admin" and current_user.id != user_id:
         raise HTTPException(status_code=403, detail="Not authorized")
     db_user = db.query(User).filter(User.id == user_id).first()
     if not db_user: raise HTTPException(status_code=404)
     for k, v in update.items():
+        if k == "role" and current_user.role != "admin":
+            continue # Only admins can change roles
         if k == "password" and v:
             db_user.hashed_password = pwd_context.hash(v)
         elif hasattr(db_user, k):
