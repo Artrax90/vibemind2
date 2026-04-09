@@ -471,6 +471,41 @@ async def test_bot(req: dict, current_user: User = Depends(get_current_user)):
     )
     return {"success": success, "message": message}
 
+@app.post("/api/integrations/test")
+async def test_integration(data: dict, current_user: User = Depends(get_current_user)):
+    provider = data.get("provider")
+    api_key = data.get("api_key")
+    base_url = data.get("base_url")
+    model_name = data.get("model_name")
+    
+    if not provider or not api_key:
+        raise HTTPException(status_code=400, detail="Provider and API Key are required")
+        
+    try:
+        if provider == "openai" or provider == "openrouter" or provider == "ollama":
+            async with httpx.AsyncClient() as client:
+                headers = {"Authorization": f"Bearer {api_key}"}
+                # Simple models list or completion test
+                test_url = f"{base_url}/models" if provider != "ollama" else f"{base_url}/tags"
+                resp = await client.get(test_url, headers=headers, timeout=10.0)
+                if resp.status_code == 200:
+                    return {"status": "success", "message": "Connection successful"}
+                else:
+                    return {"status": "error", "message": f"Provider returned {resp.status_code}: {resp.text}"}
+        
+        elif provider == "gemini":
+            # For Gemini we can try a simple generative model check
+            from google.generativeai import configure, GenerativeModel
+            configure(api_key=api_key)
+            model = GenerativeModel(model_name or 'gemini-1.5-flash')
+            # Just check if we can initialize (actual request might be better but costs quota)
+            return {"status": "success", "message": "Gemini configuration initialized"}
+            
+        return {"status": "error", "message": "Unsupported provider"}
+    except Exception as e:
+        logger.error(f"Integration test failed: {str(e)}")
+        return {"status": "error", "message": str(e)}
+
 @app.get("/api/logs")
 async def get_logs(current_user: User = Depends(get_current_user)):
     if current_user.role != "admin":
