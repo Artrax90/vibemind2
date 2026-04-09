@@ -65,12 +65,16 @@ Base.metadata.create_all(bind=engine)
 try:
     inspector = inspect(engine)
     if 'notes' in inspector.get_table_names():
-        note_columns = [c['name'].lower() for c in inspector.get_columns('notes')]
+        actual_columns = [c['name'] for c in inspector.get_columns('notes')]
         with engine.connect() as conn:
-            if 'ispinned' not in note_columns:
-                conn.execute(text("ALTER TABLE notes ADD COLUMN isPinned INTEGER DEFAULT 0;"))
-                conn.commit()
-                logger.info("Added isPinned to notes")
+            if 'isPinned' not in actual_columns:
+                if 'ispinned' in actual_columns:
+                    conn.execute(text('ALTER TABLE notes RENAME COLUMN ispinned TO "isPinned";'))
+                    logger.info("Renamed ispinned to isPinned")
+                else:
+                    conn.execute(text('ALTER TABLE notes ADD COLUMN "isPinned" INTEGER DEFAULT 0;'))
+                    logger.info("Added isPinned to notes")
+            conn.commit()
 except Exception as e:
     logger.warning(f"Migration error: {e}")
 
