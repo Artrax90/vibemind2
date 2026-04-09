@@ -17,10 +17,6 @@ services:
       - STT_HOST=vosk
       - STT_PORT=10300
     restart: always
-    deploy:
-      resources:
-        limits:
-          memory: 1G
     depends_on:
       db:
         condition: service_healthy
@@ -65,52 +61,46 @@ services:
       mkdir -p /data
       chmod 777 /data
 
-      if [ ! -d "/data/vosk-model-small-ru-0.22" ]; then
-        echo "--- Installing dependencies ---"
-        apk add --no-cache curl unzip ca-certificates
-
-        SUCCESS=false
-
-        for url in \
-          https://alphacephei.com/vosk/models/vosk-model-small-ru-0.22.zip \
-          https://github.com/alphacep/vosk-model-small-ru/archive/refs/heads/master.zip \
-          https://github.com/alphacep/vosk-model-small-ru/archive/refs/heads/main.zip
-        do
-          echo "Trying $url"
-          rm -f /data/model.zip
-
-          if curl -L --fail "$url" -o /data/model.zip; then
-            SIZE=$(wc -c < /data/model.zip)
-
-            if [ "$SIZE" -gt 1000000 ]; then
-              echo "Download OK ($SIZE bytes)"
-              SUCCESS=true
-              break
-            else
-              echo "File too small ($SIZE)"
-            fi
-          fi
-        done
-
-        if [ "$SUCCESS" = "false" ]; then
-          echo "CRITICAL: download failed"
-          exit 1
-        fi
-
-        echo "--- Unzipping ---"
-        unzip /data/model.zip -d /data/
-
-        if [ -d "/data/vosk-model-small-ru-master" ]; then
-          mv /data/vosk-model-small-ru-master /data/vosk-model-small-ru-0.22
-        elif [ -d "/data/vosk-model-small-ru-main" ]; then
-          mv /data/vosk-model-small-ru-main /data/vosk-model-small-ru-0.22
-        fi
-
-        rm /data/model.zip
-        echo "--- DONE ---"
-      else
-        echo "--- Model already exists ---"
+      if [ -d "/data/vosk-model-small-ru-0.22" ]; then
+        echo "Model already exists"
+        exit 0
       fi
+
+      echo "--- Installing deps ---"
+      apk add --no-cache curl unzip ca-certificates
+
+      download() {
+        url=$1
+        echo "Trying $url"
+        rm -f /data/model.zip
+
+        if curl -L --fail "$url" -o /data/model.zip; then
+          SIZE=$(wc -c < /data/model.zip)
+          if [ "$SIZE" -gt 1000000 ]; then
+            echo "OK: $SIZE bytes"
+            return 0
+          fi
+        fi
+
+        return 1
+      }
+
+      download https://alphacephei.com/vosk/models/vosk-model-small-ru-0.22.zip ||
+      download https://github.com/alphacep/vosk-model-small-ru/archive/refs/heads/master.zip ||
+      download https://github.com/alphacep/vosk-model-small-ru/archive/refs/heads/main.zip ||
+      (echo "Download failed" && exit 1)
+
+      echo "--- Unzip ---"
+      unzip /data/model.zip -d /data/
+
+      if [ -d "/data/vosk-model-small-ru-master" ]; then
+        mv /data/vosk-model-small-ru-master /data/vosk-model-small-ru-0.22
+      elif [ -d "/data/vosk-model-small-ru-main" ]; then
+        mv /data/vosk-model-small-ru-main /data/vosk-model-small-ru-0.22
+      fi
+
+      rm /data/model.zip
+      echo "--- DONE ---"
       '
 
   vosk:
