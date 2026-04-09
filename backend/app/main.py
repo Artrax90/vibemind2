@@ -476,12 +476,29 @@ async def get_logs(current_user: User = Depends(get_current_user)):
     if current_user.role != "admin":
         raise HTTPException(status_code=403, detail="Not authorized")
     try:
-        if os.path.exists(LOG_FILE):
+        exists = os.path.exists(LOG_FILE)
+        size = os.path.getsize(LOG_FILE) if exists else 0
+        if exists:
             with open(LOG_FILE, "r") as f:
                 # Return last 200 lines
                 lines = f.readlines()
-                return {"logs": "".join(lines[-200:])}
-        return {"logs": "Log file not found"}
+                return {
+                    "logs": "".join(lines[-200:]),
+                    "debug": {
+                        "path": LOG_FILE,
+                        "exists": exists,
+                        "size": size,
+                        "cwd": os.getcwd()
+                    }
+                }
+        return {
+            "logs": f"Log file not found at {LOG_FILE}",
+            "debug": {
+                "path": LOG_FILE,
+                "exists": exists,
+                "cwd": os.getcwd()
+            }
+        }
     except Exception as e:
         return {"logs": f"Error reading logs: {str(e)}"}
 
