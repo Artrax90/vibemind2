@@ -44,6 +44,7 @@ class Note(Base):
     folderId = Column(String, nullable=True)
     user_id = Column(Integer, index=True)
     embedding = Column(Vector(384), nullable=True)
+    isPinned = Column(Integer, default=0)
 
 class Share(Base):
     __tablename__ = "shares"
