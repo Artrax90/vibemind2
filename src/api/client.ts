@@ -127,11 +127,24 @@ export const api = {
       const res = await fetch(`${BASE_URL}/api/users`, {
         headers: getAuthHeaders()
       });
-      return await handleResponse(res, [
-        { id: '1', username: 'admin', email: 'admin@vibemind.local', role: 'admin' }
-      ]);
+      if (!res.ok) throw new Error('Failed to fetch users');
+      return await res.json();
     } catch (e) {
-      return [{ id: '1', username: 'admin', email: 'admin@vibemind.local', role: 'admin' }];
+      console.error(e);
+      return [];
+    }
+  },
+
+  async getLogs() {
+    try {
+      const res = await fetch(`${BASE_URL}/api/logs`, {
+        headers: getAuthHeaders()
+      });
+      if (!res.ok) throw new Error('Failed to fetch logs');
+      return await res.json();
+    } catch (e) {
+      console.error(e);
+      return { logs: 'Failed to fetch logs' };
     }
   },
 
