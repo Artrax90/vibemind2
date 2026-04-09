@@ -791,6 +791,52 @@ async def debug_notes(db: Session = Depends(get_db), current_user: User = Depend
     notes = db.query(Note).filter(Note.user_id == current_user.id).all()
     return [{"id": n.id, "title": n.title, "has_embedding": n.embedding is not None} for n in notes]
 
+@app.post("/api/ai/summarize")
+async def summarize_content(req: dict, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    content = req.get("content")
+    if not content:
+        raise HTTPException(status_code=400, detail="Content is required")
+    
+    config = db.query(Config).filter(Config.user_id == current_user.id).first()
+    if not config or not config.llm_provider:
+        raise HTTPException(status_code=400, detail="LLM provider not configured")
+    
+    prompt = f"""Пожалуйста, сделай краткое резюме (summary) следующего текста. 
+Используй формат TL;DR в начале. Отвечай на языке текста (преимущественно на русском).
+Текст:
+{content}
+"""
+    
+    try:
+        summary = ""
+        if config.llm_provider in ["openai", "ollama", "openrouter"]:
+            from openai import AsyncOpenAI
+            base_url = config.base_url
+            if config.llm_provider == "openrouter" and not base_url:
+                base_url = "https://openrouter.ai/api/v1"
+            client = AsyncOpenAI(api_key=config.api_key or "dummy", base_url=base_url)
+            response = await client.chat.completions.create(
+                model=config.model_name or "gpt-4o-mini",
+                messages=[{"role": "user", "content": prompt}]
+            )
+            summary = response.choices[0].message.content
+        elif config.llm_provider == "gemini":
+            api_key = config.api_key
+            model = config.model_name or "gemini-1.5-flash"
+            url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={api_key}"
+            async with httpx.AsyncClient() as client:
+                payload = {"contents": [{"parts": [{"text": prompt}]}]}
+                response = await client.post(url, json=payload, timeout=30)
+                if response.status_code == 200:
+                    summary = response.json()['candidates'][0]['content']['parts'][0]['text']
+                else:
+                    raise Exception(f"Gemini error: {response.text}")
+        
+        return {"summary": summary}
+    except Exception as e:
+        logger.error(f"Summarization failed: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
 # Static files and SPA fallback
 STATIC_DIR = "/app/static"
 if not os.path.exists(STATIC_DIR):
