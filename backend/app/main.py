@@ -548,7 +548,7 @@ async def test_proxy(req: dict, current_user: User = Depends(get_current_user)):
         proxy_url += f":{port}"
         
     try:
-        async with httpx.AsyncClient(proxies=proxy_url, timeout=10.0) as client:
+        async with httpx.AsyncClient(proxy=proxy_url, timeout=10.0) as client:
             # Try to reach a reliable public API
             resp = await client.get("https://api.ipify.org?format=json")
             if resp.status_code == 200:
