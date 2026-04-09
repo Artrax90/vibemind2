@@ -91,40 +91,56 @@ async def startup_event():
         return
     starting_up = True
     
-    db = SessionLocal()
+    # Файловая блокировка для предотвращения запуска ботов несколькими воркерами uvicorn
+    lock_file = "/tmp/vibemind_bot_startup.lock"
     try:
-        # Create default admin if no users exist
-        if db.query(User).count() == 0:
-            admin_user = User(
-                username="admin",
-                email="admin@example.com",
-                hashed_password=pwd_context.hash("admin"),
-                role="admin"
-            )
-            db.add(admin_user)
-            db.commit()
-            logger.info("Default admin user created: admin/admin")
+        # Проверяем, не запускал ли уже другой процесс ботов недавно (в пределах 30 секунд)
+        if os.path.exists(lock_file):
+            mtime = os.path.getmtime(lock_file)
+            if datetime.now().timestamp() - mtime < 30:
+                logger.info("Bot startup already handled by another worker, skipping.")
+                return
+        
+        # Создаем/обновляем файл блокировки
+        with open(lock_file, "w") as f:
+            f.write(str(os.getpid()))
+            
+        db = SessionLocal()
+        try:
+            # Create default admin if no users exist
+            if db.query(User).count() == 0:
+                admin_user = User(
+                    username="admin",
+                    email="admin@example.com",
+                    hashed_password=pwd_context.hash("admin"),
+                    role="admin"
+                )
+                db.add(admin_user)
+                db.commit()
+                logger.info("Default admin user created: admin/admin")
 
-        configs = db.query(Config).filter(Config.tg_token != None).all()
-        seen_tokens = set()
-        for c in configs:
-            if not c.tg_token:
-                continue
-            
-            # Если один и тот же токен у разных пользователей, запускаем только один раз
-            if c.tg_token in seen_tokens:
-                logger.warning(f"Duplicate token found for user {c.user_id}, skipping startup for this instance.")
-                continue
-            
-            seen_tokens.add(c.tg_token)
-            user = db.query(User).filter(User.id == c.user_id).first()
-            if user:
-                # Use restart_bot to ensure the task is tracked in bot_tasks
-                await restart_bot(c.user_id, user.username, c.tg_token, c.proxy_url, c.proxy_config, c.tg_admin_id)
+            configs = db.query(Config).filter(Config.tg_token != None).all()
+            seen_tokens = set()
+            for c in configs:
+                if not c.tg_token:
+                    continue
+                
+                if c.tg_token in seen_tokens:
+                    logger.warning(f"Duplicate token found for user {c.user_id}, skipping startup for this instance.")
+                    continue
+                
+                seen_tokens.add(c.tg_token)
+                user = db.query(User).filter(User.id == c.user_id).first()
+                if user:
+                    logger.info(f"Starting bot for user {user.username} (ID: {c.user_id})")
+                    await restart_bot(c.user_id, user.username, c.tg_token, c.proxy_url, c.proxy_config, c.tg_admin_id)
+        except Exception as e:
+            logger.error(f"Error starting bots on startup: {e}")
+        finally:
+            db.close()
     except Exception as e:
-        logger.error(f"Error starting bots on startup: {e}")
+        logger.error(f"Error in startup lock logic: {e}")
     finally:
-        db.close()
         starting_up = False
 
 def get_db():
