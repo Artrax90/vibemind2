@@ -528,6 +528,37 @@ async def test_integration(data: dict, current_user: User = Depends(get_current_
         logger.error(f"Integration test failed: {str(e)}")
         return {"status": "error", "message": str(e)}
 
+@app.post("/api/proxy/test")
+async def test_proxy(req: dict, current_user: User = Depends(get_current_user)):
+    proxy_config = req.get("proxy_config")
+    if not proxy_config or not proxy_config.get("host"):
+        raise HTTPException(status_code=400, detail="Proxy host is required")
+    
+    protocol = proxy_config.get("protocol", "http")
+    host = proxy_config.get("host")
+    port = proxy_config.get("port")
+    username = proxy_config.get("username")
+    password = proxy_config.get("password")
+    
+    proxy_url = f"{protocol}://"
+    if username and password:
+        proxy_url += f"{username}:{password}@"
+    proxy_url += f"{host}"
+    if port:
+        proxy_url += f":{port}"
+        
+    try:
+        async with httpx.AsyncClient(proxies=proxy_url, timeout=10.0) as client:
+            # Try to reach a reliable public API
+            resp = await client.get("https://api.ipify.org?format=json")
+            if resp.status_code == 200:
+                return {"status": "success", "message": f"Proxy connection successful. IP: {resp.json().get('ip')}"}
+            else:
+                return {"status": "error", "message": f"Proxy returned status {resp.status_code}"}
+    except Exception as e:
+        logger.error(f"Proxy test failed: {str(e)}")
+        return {"status": "error", "message": str(e)}
+
 @app.get("/api/logs")
 async def get_logs(current_user: User = Depends(get_current_user)):
     if current_user.role != "admin":
