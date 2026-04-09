@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { Send, Bot, Link as LinkIcon, FileText, Loader2 } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { Note } from '../App';
@@ -22,6 +22,14 @@ export default function Chat({ notes, activeNoteId, onNoteClick }: ChatProps) {
   ]);
   const [input, setInput] = useState('');
   const [isTyping, setIsTyping] = useState(false);
+  const scrollRef = useRef<HTMLDivElement>(null);
+
+  // Auto-scroll to bottom when messages change
+  useEffect(() => {
+    if (scrollRef.current) {
+      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+    }
+  }, [messages, isTyping]);
 
   const handleSend = async () => {
     if (!input.trim() || isTyping) return;
@@ -85,7 +93,10 @@ export default function Chat({ notes, activeNoteId, onNoteClick }: ChatProps) {
         </h3>
       </div>
       
-      <div className="flex-1 overflow-y-auto p-4 space-y-4 scrollbar-thin">
+      <div 
+        ref={scrollRef}
+        className="flex-1 overflow-y-auto p-4 space-y-4 scrollbar-thin scroll-smooth"
+      >
         {messages.map((msg, i) => (
             <motion.div 
               initial={{ opacity: 0, y: 10 }}
