@@ -58,34 +58,14 @@ services:
     command: >
       sh -c "
       set -e;
-      TARGET_DIR='/data/vosk-model-small-ru-0.22';
-      if [ ! -d \"$$TARGET_DIR\" ]; then
+      if [ ! -d '/data/vosk-model-small-ru-0.22' ]; then
         echo '--- Step 1: Installing dependencies ---';
         apk add --no-cache curl unzip ca-certificates;
-        echo '--- Step 2: Downloading model ---';
-        MAX_RETRIES=10;
-        COUNT=0;
-        while [ $$COUNT -lt $$MAX_RETRIES ]; do
-          echo \"Attempt $$((COUNT+1)) of $$MAX_RETRIES...\";
-          rm -f /data/model.zip;
-          if curl -4 -L https://huggingface.co/alphacep/vosk-model-small-ru-0.22/resolve/main/vosk-model-small-ru-0.22.zip?download=true -o /data/model.zip; then
-            SIZE=$$(stat -c%s /data/model.zip);
-            if [ $$SIZE -gt 1000000 ]; then
-              echo 'Download finished, checking integrity...';
-              if unzip -t /data/model.zip > /dev/null 2>&1; then
-                echo 'File is valid!';
-                break;
-              fi
-            else
-              echo \"File too small ($$SIZE bytes), likely a pointer. Retrying...\";
-            fi
-          fi
-          COUNT=$$((COUNT+1));
-          sleep 5;
-        done;
-        if [ $$COUNT -eq $$MAX_RETRIES ]; then echo 'CRITICAL: Failed to download model'; exit 1; fi
-        echo '--- Step 3: Unzipping model ---';
-        unzip -o /data/model.zip -d /data/;
+        echo '--- Step 2: Downloading model from GitHub ---';
+        curl -L https://github.com/alphacep/vosk-model-small-ru/archive/refs/heads/master.zip -o /data/model.zip;
+        echo '--- Step 3: Unzipping and organizing ---';
+        unzip /data/model.zip -d /data/;
+        mv /data/vosk-model-small-ru-master /data/vosk-model-small-ru-0.22;
         rm /data/model.zip;
         echo '--- Step 4: Done! ---';
       else
