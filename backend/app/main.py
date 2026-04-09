@@ -302,6 +302,44 @@ async def delete_folder(id: str, db: Session = Depends(get_db), current_user: Us
     db.commit()
     return {"status": "success"}
 
+# Sharing Endpoints
+@app.get("/api/shares")
+async def get_shares(resource_id: str, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    shares = db.query(Share).filter(Share.resource_id == resource_id, Share.owner_id == current_user.id).all()
+    res = []
+    for s in shares:
+        target_username = None
+        if s.target_user_id:
+            u = db.query(User).filter(User.id == s.target_user_id).first()
+            target_username = u.username if u else "Unknown"
+        res.append({
+            "id": s.id, "resource_id": s.resource_id, "resource_type": s.resource_type,
+            "target_username": target_username, "permission": s.permission, "is_public": s.is_public
+        })
+    return res
+
+@app.post("/api/shares")
+async def create_share(s: ShareCreate, resource_id: str, resource_type: str, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    target_user_id = None
+    if s.target_username:
+        u = db.query(User).filter(User.username == s.target_username).first()
+        if not u: raise HTTPException(status_code=404, detail="User not found")
+        target_user_id = u.id
+    
+    share_id = str(uuid.uuid4())
+    db_share = Share(id=share_id, resource_id=resource_id, resource_type=resource_type, owner_id=current_user.id, target_user_id=target_user_id, permission=s.permission, is_public=s.is_public)
+    db.add(db_share)
+    db.commit()
+    return {"id": share_id}
+
+@app.delete("/api/shares/{share_id}")
+async def delete_share(share_id: str, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    s = db.query(Share).filter(Share.id == share_id, Share.owner_id == current_user.id).first()
+    if not s: raise HTTPException(status_code=404)
+    db.delete(s)
+    db.commit()
+    return {"status": "success"}
+
 # Settings & Bot
 @app.get("/api/settings")
 async def get_settings(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
@@ -383,6 +421,29 @@ async def chat(req: dict, db: Session = Depends(get_db), current_user: User = De
     # This is a bit of a hack but we need an answer
     # For now, let's just use a placeholder or try to call the LLM logic
     return {"answer": "RAG response placeholder", "citations": [{"id": n.id, "title": n.title} for n in notes]}
+
+# Static files and SPA fallback
+STATIC_DIR = os.path.join(os.getcwd(), "dist")
+if os.path.exists(STATIC_DIR):
+    app.mount("/assets", StaticFiles(directory=os.path.join(STATIC_DIR, "assets")), name="assets")
+    
+    @app.get("/{full_path:path}")
+    async def serve_spa(full_path: str):
+        # If it's an API call that wasn't caught, let it 404
+        if full_path.startswith("api/"):
+            raise HTTPException(status_code=404)
+            
+        # Check if requested file exists in static dir
+        file_path = os.path.join(STATIC_DIR, full_path)
+        if os.path.isfile(file_path):
+            return FileResponse(file_path)
+            
+        # Otherwise serve index.html for SPA routing
+        index_path = os.path.join(STATIC_DIR, "index.html")
+        if os.path.exists(index_path):
+            return FileResponse(index_path)
+        
+        raise HTTPException(status_code=404)
 
 if __name__ == "__main__":
     import uvicorn
