@@ -81,6 +81,22 @@ except Exception as e:
 app = FastAPI(title="VibeMind Backend")
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="api/auth/login")
 
+@app.on_event("startup")
+async def startup_event():
+    db = SessionLocal()
+    try:
+        from .bot import start_bot
+        configs = db.query(Config).filter(Config.tg_token != None).all()
+        for c in configs:
+            if c.tg_token:
+                user = db.query(User).filter(User.id == c.user_id).first()
+                if user:
+                    asyncio.create_task(start_bot(c.user_id, user.username, c.tg_token, c.proxy_url, c.proxy_config, c.tg_admin_id))
+    except Exception as e:
+        logger.error(f"Error starting bots on startup: {e}")
+    finally:
+        db.close()
+
 def get_db():
     db = SessionLocal()
     try:
@@ -363,6 +379,23 @@ async def update_settings(s: dict, db: Session = Depends(get_db), current_user: 
     if c.tg_token:
         asyncio.create_task(restart_bot(current_user.id, current_user.username, c.tg_token, c.proxy_url, c.proxy_config, c.tg_admin_id))
     return {"status": "success"}
+
+@app.get("/api/bot/status")
+async def bot_status(current_user: User = Depends(get_current_user)):
+    from .bot import current_bots
+    is_running = current_user.id in current_bots
+    return {"status": "running" if is_running else "stopped"}
+
+@app.post("/api/bot/test")
+async def test_bot(req: dict, current_user: User = Depends(get_current_user)):
+    from .bot import test_bot_connection
+    success, message = await test_bot_connection(
+        token=req.get("tg_token"),
+        admin_id=req.get("tg_admin_id"),
+        proxy_url=req.get("proxy_url"),
+        proxy_config=req.get("proxy_config")
+    )
+    return {"success": success, "message": message}
 
 @app.post("/api/upload")
 async def upload(file: UploadFile = File(...), current_user: User = Depends(get_current_user)):
