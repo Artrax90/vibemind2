@@ -98,13 +98,13 @@ async def startup_event():
             db.commit()
             logger.info("Default admin user created: admin/admin")
 
-        from .bot import start_bot
         configs = db.query(Config).filter(Config.tg_token != None).all()
         for c in configs:
             if c.tg_token:
                 user = db.query(User).filter(User.id == c.user_id).first()
                 if user:
-                    asyncio.create_task(start_bot(c.user_id, user.username, c.tg_token, c.proxy_url, c.proxy_config, c.tg_admin_id))
+                    # Use restart_bot to ensure the task is tracked in bot_tasks
+                    await restart_bot(c.user_id, user.username, c.tg_token, c.proxy_url, c.proxy_config, c.tg_admin_id)
     except Exception as e:
         logger.error(f"Error starting bots on startup: {e}")
     finally:
@@ -470,8 +470,55 @@ async def update_settings(s: dict, db: Session = Depends(get_db), current_user: 
 @app.get("/api/bot/status")
 async def bot_status(current_user: User = Depends(get_current_user)):
     from .bot import current_bots
-    is_running = current_user.id in current_bots
-    return {"status": "running" if is_running else "stopped"}
+    bot = current_bots.get(current_user.id)
+    if bot:
+        try:
+            me = await bot.get_me()
+            return {
+                "status": "connected",
+                "username": me.username,
+                "first_name": me.first_name
+            }
+        except Exception as e:
+            logger.error(f"Error getting bot info: {e}")
+            return {"status": "connected", "username": "Unknown"}
+    return {"status": "disconnected"}
+
+@app.get("/api/admin/bots")
+async def admin_bots(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    if current_user.role != "admin":
+        raise HTTPException(status_code=403, detail="Not authorized")
+    
+    from .bot import current_bots
+    users = db.query(User).all()
+    configs = db.query(Config).all()
+    config_dict = {c.user_id: c for c in configs}
+    
+    res = []
+    for u in users:
+        c = config_dict.get(u.id)
+        is_configured = c is not None and c.tg_token is not None
+        bot = current_bots.get(u.id)
+        
+        bot_info = None
+        if bot:
+            try:
+                me = await bot.get_me()
+                bot_info = {
+                    "username": me.username,
+                    "first_name": me.first_name
+                }
+            except:
+                bot_info = {"username": "Error"}
+        
+        res.append({
+            "user_id": u.id,
+            "username": u.username,
+            "is_configured": is_configured,
+            "is_running": bot is not None,
+            "bot_info": bot_info
+        })
+    return res
 
 @app.post("/api/bot/test")
 async def test_bot(req: dict, current_user: User = Depends(get_current_user)):
