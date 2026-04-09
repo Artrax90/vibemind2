@@ -60,13 +60,43 @@ services:
       set -e;
       if [ ! -d '/data/vosk-model-small-ru-0.22' ]; then
         echo '--- Step 1: Installing dependencies ---';
-        apk add --no-cache curl unzip ca-certificates;
-        echo '--- Step 2: Downloading model from GitHub ---';
-        curl -L https://github.com/alphacep/vosk-model-small-ru/archive/refs/heads/master.zip -o /data/model.zip;
+        apk add --no-cache wget unzip ca-certificates;
+        echo '--- Step 2: Downloading model ---';
+        # Попробуем разные источники с проверкой размера
+        SUCCESS=false;
+        for url in \
+          'https://alphacephei.com/vosk/models/vosk-model-small-ru-0.22.zip' \
+          'https://github.com/alphacep/vosk-model-small-ru/archive/refs/heads/master.zip' \
+          'https://github.com/alphacep/vosk-model-small-ru/archive/refs/heads/main.zip';
+        do
+          echo \"Trying URL: \$$url\";
+          rm -f /data/model.zip;
+          if wget -4 -q --show-progress --no-check-certificate --user-agent='Mozilla/5.0' \"\$$url\" -O /data/model.zip; then
+            SIZE=\$$(stat -c%s /data/model.zip);
+            if [ \$$SIZE -gt 1000000 ]; then
+              echo \"Download successful (\$$SIZE bytes)!\";
+              SUCCESS=true;
+              break;
+            else
+              echo \"File too small (\$$SIZE bytes), skipping...\";
+            fi
+          fi
+        done;
+
+        if [ \"\$$SUCCESS\" = \"false\" ]; then
+          echo 'CRITICAL: All download sources failed.';
+          exit 1;
+        fi
+
         echo '--- Step 3: Unzipping and organizing ---';
-        unzip /data/model.zip -d /data/;
-        mv /data/vosk-model-small-ru-master /data/vosk-model-small-ru-0.22;
-        rm /data/model.zip;
+        unzip -q /data/model.zip -d /data/;
+        # GitHub пакует в папку с названием ветки
+        if [ -d '/data/vosk-model-small-ru-master' ]; then
+          mv /data/vosk-model-small-ru-master /data/vosk-model-small-ru-0.22;
+        elif [ -d '/data/vosk-model-small-ru-main' ]; then
+          mv /data/vosk-model-small-ru-main /data/vosk-model-small-ru-0.22;
+        fi
+        rm -f /data/model.zip;
         echo '--- Step 4: Done! ---';
       else
         echo '--- Model already exists, skipping ---';
