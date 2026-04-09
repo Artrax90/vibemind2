@@ -14,7 +14,7 @@ pytesseract
 Pillow
 cryptography
 passlib
-httpx
+httpx[socks]
 pydantic[email]
 aiohttp-socks
 python-jose[cryptography]
