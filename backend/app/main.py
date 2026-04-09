@@ -307,6 +307,19 @@ async def reindex_notes(db: Session = Depends(get_db), current_user: User = Depe
     db.commit()
     return {"status": "success"}
 
+@app.get("/api/notes/export")
+async def export_notes(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    import io, zipfile
+    notes = db.query(Note).filter(Note.user_id == current_user.id).all()
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "a", zipfile.ZIP_DEFLATED, False) as z:
+        for n in notes:
+            safe_title = "".join([c for c in n.title if c.isalnum() or c==' ']).strip() or f"note_{n.id}"
+            z.writestr(f"{safe_title}.md", f"# {n.title}\n\n{n.content or ''}")
+    buf.seek(0)
+    from fastapi.responses import Response
+    return Response(content=buf.getvalue(), media_type="application/x-zip-compressed", headers={"Content-Disposition": f"attachment; filename=notes_export.zip"})
+
 @app.get("/api/notes/{note_id}")
 async def get_note(note_id: str, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     n = db.query(Note).filter(Note.id == note_id).first()
@@ -325,19 +338,6 @@ async def get_note(note_id: str, db: Session = Depends(get_db), current_user: Us
         "id": n.id, "title": n.title, "content": n.content, "folderId": n.folderId,
         "isPinned": bool(n.isPinned), "isShared": is_shared, "ownerUsername": owner_name
     }
-
-@app.get("/api/notes/export")
-async def export_notes(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
-    import io, zipfile
-    notes = db.query(Note).filter(Note.user_id == current_user.id).all()
-    buf = io.BytesIO()
-    with zipfile.ZipFile(buf, "a", zipfile.ZIP_DEFLATED, False) as z:
-        for n in notes:
-            safe_title = "".join([c for c in n.title if c.isalnum() or c==' ']).strip() or f"note_{n.id}"
-            z.writestr(f"{safe_title}.md", f"# {n.title}\n\n{n.content or ''}")
-    buf.seek(0)
-    from fastapi.responses import Response
-    return Response(content=buf.getvalue(), media_type="application/x-zip-compressed", headers={"Content-Disposition": f"attachment; filename=notes_export.zip"})
 
 @app.patch("/api/notes/{note_id}")
 async def patch_note(note_id: str, update: NoteUpdate, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
