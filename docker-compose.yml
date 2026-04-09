@@ -49,59 +49,34 @@ services:
     restart: always
 
   vosk-model-download:
-    image: alpine:3.19
+    image: curlimages/curl:8.5.0
     container_name: vosk_model_download
     volumes:
       - ./vosk-model:/data
-    restart: "no"
+    entrypoint: ["/bin/sh", "-c"]
     command: |
-      sh -c '
       set -e
 
       mkdir -p /data
-      chmod 777 /data
 
       if [ -d "/data/vosk-model-small-ru-0.22" ]; then
         echo "Model already exists"
         exit 0
       fi
 
-      echo "--- Installing deps ---"
-      apk add --no-cache curl unzip ca-certificates
+      echo "Downloading model..."
 
-      download() {
-        url=$1
-        echo "Trying $url"
-        rm -f /data/model.zip
+      curl -L --fail https://alphacephei.com/vosk/models/vosk-model-small-ru-0.22.zip -o /data/model.zip
 
-        if curl -L --fail "$url" -o /data/model.zip; then
-          SIZE=$(wc -c < /data/model.zip)
-          if [ "$SIZE" -gt 1000000 ]; then
-            echo "OK: $SIZE bytes"
-            return 0
-          fi
-        fi
+      echo "Installing unzip..."
+      apk add --no-cache unzip >/dev/null 2>&1 || true
 
-        return 1
-      }
-
-      download https://alphacephei.com/vosk/models/vosk-model-small-ru-0.22.zip ||
-      download https://github.com/alphacep/vosk-model-small-ru/archive/refs/heads/master.zip ||
-      download https://github.com/alphacep/vosk-model-small-ru/archive/refs/heads/main.zip ||
-      (echo "Download failed" && exit 1)
-
-      echo "--- Unzip ---"
+      echo "Unzipping..."
       unzip /data/model.zip -d /data/
 
-      if [ -d "/data/vosk-model-small-ru-master" ]; then
-        mv /data/vosk-model-small-ru-master /data/vosk-model-small-ru-0.22
-      elif [ -d "/data/vosk-model-small-ru-main" ]; then
-        mv /data/vosk-model-small-ru-main /data/vosk-model-small-ru-0.22
-      fi
-
       rm /data/model.zip
-      echo "--- DONE ---"
-      '
+
+      echo "Done!"
 
   vosk:
     image: rhasspy/wyoming-vosk
