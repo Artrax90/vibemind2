@@ -14,6 +14,8 @@ services:
       - REDIS_URL=redis://redis:6379/0
       - ENCRYPTION_KEY=super-secret-default-key-change-me-later-123
       - TZ=Europe/Moscow
+      - STT_HOST=vosk
+      - STT_PORT=10300
     restart: always
     deploy:
       resources:
@@ -23,6 +25,8 @@ services:
       db:
         condition: service_healthy
       redis:
+        condition: service_started
+      vosk:
         condition: service_started
 
   db:
@@ -47,6 +51,44 @@ services:
     image: redis:7-alpine
     container_name: vibemind_redis
     restart: always
+
+  vosk-model-download:
+    image: alpine
+    container_name: vosk_model_download
+    volumes:
+      - ./vosk-model:/data
+    command: >
+      sh -c "
+      if [ ! -d '/data/vosk-model-small-ru-0.22' ]; then
+        echo 'Downloading Vosk model ru-0.22...';
+        apk add --no-cache wget unzip;
+        wget -q https://alphacephei.com/vosk/models/vosk-model-small-ru-0.22.zip -O /data/model.zip;
+        unzip -q /data/model.zip -d /data/;
+        rm /data/model.zip;
+        echo 'Download complete.';
+      else
+        echo 'Model already exists, skipping download.';
+      fi
+      "
+
+  vosk:
+    image: rhasspy/wyoming-vosk
+    container_name: wyoming-vosk
+    restart: unless-stopped
+    depends_on:
+      vosk-model-download:
+        condition: service_completed_successfully
+    ports:
+      - "10300:10300"
+    volumes:
+      - ./vosk-model:/data
+    command:
+      - --model
+      - /data/vosk-model-small-ru-0.22
+      - --uri
+      - tcp://0.0.0.0:10300
+      - --data-dir
+      - /data
 
 volumes:
   vibemind_db_data:
