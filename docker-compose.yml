@@ -59,11 +59,15 @@ services:
       sh -c "
       set -e;
       if [ ! -d '/data/vosk-model-small-ru-0.22' ]; then
-        echo '--- Step 1: Installing dependencies (curl, unzip) ---';
-        apk add --no-cache curl unzip ca-certificates;
+        echo '--- Step 1: Installing dependencies ---';
+        apk add --no-cache wget unzip ca-certificates;
         echo '--- Step 2: Downloading model (approx. 40MB) ---';
         rm -f /data/model.zip;
-        curl -L --progress-bar https://alphacephei.com/vosk/models/vosk-model-small-ru-0.22.zip -o /data/model.zip;
+        # Запускаем мониторинг размера в фоне
+        (while [ ! -f /data/model.zip ]; do sleep 1; done; while [ -f /data/model.zip ]; do ls -lh /data/model.zip; sleep 5; done) &
+        MONITOR_PID=\$!;
+        wget --no-check-certificate --progress=dot:giga https://alphacephei.com/vosk/models/vosk-model-small-ru-0.22.zip -O /data/model.zip;
+        kill \$MONITOR_PID || true;
         echo '--- Step 3: Unzipping model ---';
         unzip /data/model.zip -d /data/;
         rm /data/model.zip;
