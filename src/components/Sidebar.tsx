@@ -72,7 +72,7 @@ function SortableNoteItem({ note, activeNoteId, onSelectNote, onContextMenu, t }
 }
 
 // Droppable Folder Item
-function DroppableFolder({ folder, isExpanded, isSelected, isRenaming, renameValue, setRenameValue, handleRenameSubmit, toggleFolder, handleContextMenu, t, children }: any) {
+function DroppableFolder({ folder, isExpanded, isSelected, isRenaming, renameValue, setRenameValue, handleRenameSubmit, toggleFolder, handleContextMenu, onDeleteFolder, onShare, t, children }: any) {
   const { isOver, setNodeRef } = useDroppable({
     id: folder.id,
     data: { type: 'folder', folder }
@@ -110,12 +110,32 @@ function DroppableFolder({ folder, isExpanded, isSelected, isRenaming, renameVal
           )}
         </div>
         {!isRenaming && (
-          <button 
-            onClick={(e) => { e.stopPropagation(); handleContextMenu(e, 'folder', folder.id); }}
-            className="opacity-0 group-hover:opacity-100 p-1 text-muted-foreground hover:text-foreground transition-opacity"
-          >
-            <MoreVertical size={14} />
-          </button>
+          <div className="flex items-center opacity-0 group-hover:opacity-100 transition-opacity">
+            {folder.permission === 'owner' && (
+              <>
+                <button 
+                  onClick={(e) => { e.stopPropagation(); onShare('folder', folder.id); }}
+                  className="p-1 text-muted-foreground hover:text-primary transition-colors"
+                  title={t('sidebar.share')}
+                >
+                  <Share2 size={14} />
+                </button>
+                <button 
+                  onClick={(e) => { e.stopPropagation(); onDeleteFolder(folder.id); }}
+                  className="p-1 text-muted-foreground hover:text-destructive transition-colors"
+                  title={t('sidebar.delete')}
+                >
+                  <Trash2 size={14} />
+                </button>
+              </>
+            )}
+            <button 
+              onClick={(e) => { e.stopPropagation(); handleContextMenu(e, 'folder', folder.id); }}
+              className="p-1 text-muted-foreground hover:text-foreground transition-colors"
+            >
+              <MoreVertical size={14} />
+            </button>
+          </div>
         )}
       </div>
       {children}
@@ -159,7 +179,7 @@ export default function Sidebar({ notes, folders, activeNoteId, isLoading = fals
 
   const handleCreateFolder = async (name: string, parentId?: string) => {
     try {
-      const newFolder = { id: `f${Date.now()}`, name, parentId };
+      const newFolder: FolderType = { id: `f${Date.now()}`, name, parentId, permission: 'owner' };
       api.createFolder(newFolder).catch(console.error);
       onAddFolder(newFolder);
       if (parentId) {
@@ -172,7 +192,7 @@ export default function Sidebar({ notes, folders, activeNoteId, isLoading = fals
 
   const handleCreateNote = async () => {
     setPlusMenuOpen(false);
-    const newNote = { id: `n${Date.now()}`, title: 'New Note', content: '', folderId: selectedFolderId };
+    const newNote: Note = { id: `n${Date.now()}`, title: 'New Note', content: '', folderId: selectedFolderId, permission: 'owner' };
     try {
       api.createNote(newNote).catch(console.error);
       onAddNote(newNote);
@@ -285,6 +305,8 @@ export default function Sidebar({ notes, folders, activeNoteId, isLoading = fals
               handleRenameSubmit={handleRenameSubmit}
               toggleFolder={toggleFolder}
               handleContextMenu={handleContextMenu}
+              onDeleteFolder={onDeleteFolder}
+              onShare={onShare}
               t={t}
             >
               {isExpanded && renderTree(folder.id, depth + 1)}
