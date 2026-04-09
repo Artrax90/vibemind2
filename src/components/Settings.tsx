@@ -637,7 +637,14 @@ export default function Settings({ onClose, theme, setTheme }: SettingsProps) {
 
                         <div className="grid grid-cols-2 gap-4">
                           <div>
-                            <label className="block text-sm text-muted-foreground mb-1">{t('settings.baseUrl')}</label>
+                            <label className="block text-sm text-muted-foreground mb-1">
+                              {t('settings.baseUrl')}
+                              {provider.provider === 'ollama' && (
+                                <span className="ml-2 text-[10px] text-accent italic">
+                                  (Use host IP if in Docker, e.g. http://192.168.1.5:11434/v1)
+                                </span>
+                              )}
+                            </label>
                             <input 
                               type="text" 
                               value={provider.baseUrl} 
