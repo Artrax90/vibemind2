@@ -61,8 +61,8 @@ services:
       sh -c "
       if [ ! -d '/data/vosk-model-small-ru-0.22' ]; then
         echo 'Downloading Vosk model ru-0.22...';
-        apk add --no-cache wget unzip;
-        wget -q https://alphacephei.com/vosk/models/vosk-model-small-ru-0.22.zip -O /data/model.zip;
+        apk add --no-cache wget unzip ca-certificates;
+        wget https://alphacephei.com/vosk/models/vosk-model-small-ru-0.22.zip -O /data/model.zip;
         unzip -q /data/model.zip -d /data/;
         rm /data/model.zip;
         echo 'Download complete.';
