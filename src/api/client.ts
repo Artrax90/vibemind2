@@ -148,17 +148,54 @@ export const api = {
     }
   },
 
-  async getLogs(lines: number = 100) {
+  async getExternalDbs() {
     try {
-      const res = await fetch(`${BASE_URL}/api/admin/logs?lines=${lines}`, {
+      const res = await fetch(`${BASE_URL}/api/external-db`, {
         headers: getAuthHeaders()
       });
-      return await handleResponse(res, { logs: 'Failed to fetch logs' });
+      if (!res.ok) throw new Error('Failed to fetch external DBs');
+      const data = await res.json();
+      return data.dbs || [];
     } catch (e) {
-      return { logs: 'Network error' };
+      console.error(e);
+      return [];
     }
   },
-  
+
+  async addExternalDb(dbData: any) {
+    try {
+      const res = await fetch(`${BASE_URL}/api/external-db`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...getAuthHeaders()
+        },
+        body: JSON.stringify(dbData)
+      });
+      if (!res.ok) throw new Error('Failed to add external DB');
+      const data = await res.json();
+      return data.dbs || [];
+    } catch (e) {
+      console.error(e);
+      throw e;
+    }
+  },
+
+  async deleteExternalDb(id: string) {
+    try {
+      const res = await fetch(`${BASE_URL}/api/external-db/${id}`, {
+        method: 'DELETE',
+        headers: getAuthHeaders()
+      });
+      if (!res.ok) throw new Error('Failed to delete external DB');
+      const data = await res.json();
+      return data.dbs || [];
+    } catch (e) {
+      console.error(e);
+      throw e;
+    }
+  },
+
   async createNote(note: any) {
     try {
       const res = await fetch(`${BASE_URL}/api/notes`, {
