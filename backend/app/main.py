@@ -594,11 +594,64 @@ async def chat(req: dict, db: Session = Depends(get_db), current_user: User = De
     if not msg:
         raise HTTPException(status_code=400, detail="Message is required")
         
-    # 1. Get all user notes for context (titles only for parsing efficiency)
-    all_notes = db.query(Note).filter(Note.user_id == current_user.id).all()
-    notes_context = [{"id": n.id, "title": n.title} for n in all_notes]
+    # 1. Search for relevant notes (Vector + Keyword)
+    v = embedding_manager.get_vector(msg)
     
+    # Extract keywords from message (simple split and filter)
+    keywords = [w.lower() for w in msg.split() if len(w) > 3]
+    
+    # Keyword search (fallback for exact matches)
+    keyword_notes = []
+    if keywords:
+        # Search for notes where title contains any of the keywords
+        keyword_filters = [Note.title.ilike(f"%{kw}%") for kw in keywords]
+        keyword_notes = db.query(Note).filter(
+            Note.user_id == current_user.id,
+            or_(*keyword_filters)
+        ).limit(10).all()
+    
+    # Vector search
+    vector_notes = db.query(Note).filter(Note.user_id == current_user.id, Note.embedding.is_not(None)).order_by(Note.embedding.cosine_distance(v)).limit(5).all()
+    
+    # Combine and deduplicate
+    found_notes = []
+    seen_ids = set()
+    
+    # 1. First, add notes that have EXACT title match (case insensitive)
+    msg_clean = msg.lower().strip()
+    for n in keyword_notes:
+        if n.title.lower().strip() == msg_clean:
+            if n.id not in seen_ids:
+                found_notes.append(n)
+                seen_ids.add(n.id)
+
+    # 2. Then add other keyword matches
+    for n in keyword_notes:
+        if n.id not in seen_ids:
+            found_notes.append(n)
+            seen_ids.add(n.id)
+            
+    # 3. Finally add vector search results
+    for n in vector_notes:
+        if n.id not in seen_ids:
+            found_notes.append(n)
+            seen_ids.add(n.id)
+
+    # Filter out "junk" notes (those created by mistake by the bot previously)
+    # A note is likely junk if its title is exactly a search command
+    clean_found_notes = []
+    for n in found_notes:
+        if n.title.lower().startswith("найди ") or n.title.lower().startswith("найди заметку"):
+            # Only skip if there are other notes
+            if len(found_notes) > 1:
+                continue
+        clean_found_notes.append(n)
+    
+    found_notes = clean_found_notes
+
     # 2. Parse intent using the same logic as the bot
+    # We pass only the top titles to help the LLM identify the right note
+    notes_context = [{"id": n.id, "title": n.title} for n in found_notes]
     commands = await parse_commands_llm(current_user.id, msg, notes_context)
     
     action_summary = ""
@@ -664,11 +717,12 @@ async def chat(req: dict, db: Session = Depends(get_db), current_user: User = De
 ИНСТРУКЦИИ:
 1. Если в системном логе ниже указано, что действие выполнено ({action_summary}), кратко подтверди это.
 2. Если пользователь что-то ищет или спрашивает, ты ОБЯЗАН извлечь ответ из предоставленного контекста заметок. 
-3. НЕ отвечай общими фразами типа "Я нашел заметку, что именно вас интересует?". 
-4. СРАЗУ пиши суть: "В ваших заметках про шашлык указано: [содержимое]".
-5. Если в контексте несколько заметок, обобщи их или выдели главное.
-6. Пиши живым, человеческим языком, но по делу.
-7. Если информации нет в заметках, так и скажи, но предложи помочь с чем-то другим.
+3. Тщательно изучи ВСЕ предоставленные заметки. Если одна из них называется "шашлык" (или похоже), используй её содержимое!
+4. НЕ отвечай общими фразами типа "Я нашел заметку, что именно вас интересует?". 
+5. СРАЗУ пиши суть: "В вашей заметке '{unique_notes[0].title if unique_notes else ''}' сказано: ...".
+6. Если в контексте несколько заметок, обобщи их или выдели главное.
+7. Пиши живым, человеческим языком, но по делу.
+8. Если информации нет в заметках, так и скажи, но предложи помочь с чем-то другим.
 
 {action_summary}"""
 
@@ -710,6 +764,11 @@ async def chat(req: dict, db: Session = Depends(get_db), current_user: User = De
         "answer": answer, 
         "citations": [{"id": n.id, "title": n.title} for n in unique_notes]
     }
+
+@app.get("/api/debug/notes")
+async def debug_notes(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    notes = db.query(Note).filter(Note.user_id == current_user.id).all()
+    return [{"id": n.id, "title": n.title, "has_embedding": n.embedding is not None} for n in notes]
 
 # Static files and SPA fallback
 STATIC_DIR = "/app/static"
