@@ -501,8 +501,7 @@ async def patch_note_api(user_id: int, note_id: str, content: str) -> Dict[str, 
             async with aiohttp.ClientSession() as session:
                 async with session.patch(url, json=payload, headers=headers) as response:
                     if response.status == 200:
-                        data = await response.json()
-                        return {"status": "success", "note_id": data.get("id"), "data": data}
+                        return {"status": "success", "note_id": note_id, "data": current["data"]}
                     return {"status": "error", "message": f"Ошибка: {response.status}"}
         except Exception as e:
             return {"status": "error", "message": str(e)}
