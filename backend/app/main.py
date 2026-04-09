@@ -11,6 +11,7 @@ import os
 import logging
 import httpx
 import uuid
+from openai import AsyncOpenAI
 from passlib.context import CryptContext
 from jose import jwt
 from datetime import datetime, timedelta
@@ -586,22 +587,80 @@ async def get_upload(name: str):
 # Chat
 @app.post("/api/chat")
 async def chat(req: dict, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
-    # Simple RAG implementation
     from .utils.embeddings import embedding_manager
     msg = req.get("message", "")
+    if not msg:
+        raise HTTPException(status_code=400, detail="Message is required")
+        
+    # 1. Search for relevant notes
     v = embedding_manager.get_vector(msg)
-    notes = db.query(Note).filter(Note.user_id == current_user.id, Note.embedding.is_not(None)).order_by(Note.embedding.cosine_distance(v)).limit(3).all()
-    context = "\n".join([f"Note: {n.title}\n{n.content}" for n in notes])
+    notes = db.query(Note).filter(Note.user_id == current_user.id, Note.embedding.is_not(None)).order_by(Note.embedding.cosine_distance(v)).limit(5).all()
     
+    context_parts = []
+    for n in notes:
+        context_parts.append(f"Title: {n.title}\nContent: {n.content}")
+    context = "\n\n---\n\n".join(context_parts)
+    
+    # 2. Get LLM Config
     config = db.query(Config).first()
-    if not config or not config.llm_provider: return {"answer": "AI not configured"}
+    if not config or not config.llm_provider:
+        return {"answer": "AI Assistant is not configured. Please set up an LLM provider in Settings.", "citations": []}
+        
+    # 3. Call LLM
+    provider = config.llm_provider
+    api_key = config.api_key
+    base_url = config.base_url
+    model_name = config.model_name
     
-    prompt = f"Context:\n{context}\n\nQuestion: {msg}\nAnswer based on context:"
-    # Use bot_module.parse_commands_llm or similar logic
-    from .bot import parse_commands_llm
-    # This is a bit of a hack but we need an answer
-    # For now, let's just use a placeholder or try to call the LLM logic
-    return {"answer": "RAG response placeholder", "citations": [{"id": n.id, "title": n.title} for n in notes]}
+    system_prompt = "You are VibeMind AI, a helpful personal assistant. Answer the user's question based ONLY on the provided context of their personal notes. If the answer is not in the context, say that you don't know based on the notes, but try to be helpful. Use the same language as the user."
+    user_content = f"Context from my notes:\n{context}\n\nQuestion: {msg}"
+    
+    answer = ""
+    try:
+        if provider == "gemini":
+            url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={api_key}"
+            async with httpx.AsyncClient() as session:
+                payload = {
+                    "contents": [{"parts": [{"text": f"{system_prompt}\n\n{user_content}"}]}],
+                    "generationConfig": {"temperature": 0.7}
+                }
+                resp = await session.post(url, json=payload, timeout=30)
+                if resp.status_code == 200:
+                    data = resp.json()
+                    answer = data['candidates'][0]['content']['parts'][0]['text']
+                else:
+                    answer = f"Gemini Error: {resp.text}"
+        else:
+            # OpenAI / OpenRouter / Ollama
+            kwargs = {"api_key": api_key}
+            if base_url:
+                kwargs["base_url"] = base_url
+            
+            # Check for proxy
+            if config.proxy_config and isinstance(config.proxy_config, dict) and config.proxy_config.get("host"):
+                p = config.proxy_config
+                proxy_url = f"{p.get('protocol', 'http').lower()}://{p.get('username')}:{p.get('password')}@{p['host']}:{p['port']}" if p.get('username') else f"{p.get('protocol', 'http').lower()}://{p['host']}:{p['port']}"
+                kwargs["http_client"] = httpx.AsyncClient(proxy=proxy_url)
+            
+            client = AsyncOpenAI(**kwargs)
+            response = await client.chat.completions.create(
+                model=model_name,
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_content}
+                ],
+                temperature=0.7
+            )
+            answer = response.choices[0].message.content.strip()
+            
+    except Exception as e:
+        logger.error(f"Chat LLM error: {str(e)}")
+        answer = f"Error calling AI: {str(e)}"
+        
+    return {
+        "answer": answer, 
+        "citations": [{"id": n.id, "title": n.title} for n in notes]
+    }
 
 # Static files and SPA fallback
 STATIC_DIR = "/app/static"
