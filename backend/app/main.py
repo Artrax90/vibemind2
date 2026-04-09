@@ -601,14 +601,12 @@ async def chat(req: dict, db: Session = Depends(get_db), current_user: User = De
     # 2. Parse intent using the same logic as the bot
     commands = await parse_commands_llm(current_user.id, msg, notes_context)
     
-    results = []
-    answer = ""
-    citations = []
+    action_summary = ""
+    found_notes = []
     
     if commands:
         for cmd in commands:
             cmd_type = cmd.get("type")
-            
             if cmd_type == "CREATE":
                 new_note = Note(
                     title=cmd.get("title", "New Note"),
@@ -619,8 +617,8 @@ async def chat(req: dict, db: Session = Depends(get_db), current_user: User = De
                 db.add(new_note)
                 db.commit()
                 db.refresh(new_note)
-                answer += f"✅ Создана заметка: **{new_note.title}**\n"
-                citations.append({"id": new_note.id, "title": new_note.title})
+                action_summary += f"(Системное: Создана заметка '{new_note.title}') "
+                found_notes.append(new_note)
                 
             elif cmd_type == "UPDATE":
                 note_id = cmd.get("note_id")
@@ -630,61 +628,81 @@ async def chat(req: dict, db: Session = Depends(get_db), current_user: User = De
                     note.content = (note.content or "") + "\n" + append_text
                     note.embedding = embedding_manager.get_vector(f"{note.title} {note.content}")
                     db.commit()
-                    answer += f"📝 Обновлена заметка: **{note.title}**\n"
-                    citations.append({"id": note.id, "title": note.title})
-                else:
-                    answer += "❌ Заметка для обновления не найдена.\n"
-                    
+                    action_summary += f"(Системное: Обновлена заметка '{note.title}') "
+                    found_notes.append(note)
+            
             elif cmd_type == "SEARCH":
                 query = cmd.get("query", msg)
                 v = embedding_manager.get_vector(query)
-                found_notes = db.query(Note).filter(Note.user_id == current_user.id, Note.embedding.is_not(None)).order_by(Note.embedding.cosine_distance(v)).limit(5).all()
-                if found_notes:
-                    answer += f"🔍 Нашел релевантные заметки по запросу '{query}':\n"
-                    for n in found_notes:
-                        answer += f"* **{n.title}**: {n.content[:100]}...\n"
-                        citations.append({"id": n.id, "title": n.title})
-                else:
-                    answer += "🤷‍♂️ Ничего не нашел по вашему запросу.\n"
-    
-    # 3. If no specific command was identified or we want a conversational response
-    if not answer:
-        # Fallback to RAG (Question Answering)
+                search_results = db.query(Note).filter(Note.user_id == current_user.id, Note.embedding.is_not(None)).order_by(Note.embedding.cosine_distance(v)).limit(5).all()
+                found_notes.extend(search_results)
+
+    # 3. Always use LLM to generate a natural response
+    # If no notes found yet, do a general search for context
+    if not found_notes:
         v = embedding_manager.get_vector(msg)
         found_notes = db.query(Note).filter(Note.user_id == current_user.id, Note.embedding.is_not(None)).order_by(Note.embedding.cosine_distance(v)).limit(5).all()
-        context = "\n\n---\n\n".join([f"Title: {n.title}\nContent: {n.content}" for n in found_notes])
-        
-        config = db.query(Config).first()
-        provider = config.llm_provider if config else "openai"
-        api_key = config.api_key if config else os.getenv("GEMINI_API_KEY")
-        model_name = config.model_name or "gpt-4o-mini"
-        
-        system_prompt = "You are VibeMind AI. Answer based on the notes context. Be conversational and helpful."
-        user_content = f"Context:\n{context}\n\nQuestion: {msg}"
-        
-        try:
-            # Re-using the logic for LLM call (simplified for this edit)
-            if provider == "gemini":
-                url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={api_key}"
-                async with httpx.AsyncClient() as session:
-                    payload = {"contents": [{"parts": [{"text": f"{system_prompt}\n\n{user_content}"}]}]}
-                    resp = await session.post(url, json=payload, timeout=30)
-                    if resp.status_code == 200:
-                        answer = resp.json()['candidates'][0]['content']['parts'][0]['text']
-            else:
-                client = AsyncOpenAI(api_key=api_key, base_url=config.base_url if config else None)
-                response = await client.chat.completions.create(
-                    model=model_name,
-                    messages=[{"role": "system", "content": system_prompt}, {"role": "user", "content": user_content}]
-                )
-                answer = response.choices[0].message.content.strip()
-            
-            citations = [{"id": n.id, "title": n.title} for n in found_notes]
-        except Exception as e:
-            answer = f"Я нашел эти заметки, но не смог сгенерировать ответ: {str(e)}"
-            citations = [{"id": n.id, "title": n.title} for n in found_notes]
 
-    return {"answer": answer, "citations": citations}
+    # Remove duplicates from found_notes
+    seen_ids = set()
+    unique_notes = []
+    for n in found_notes:
+        if n.id not in seen_ids:
+            unique_notes.append(n)
+            seen_ids.add(n.id)
+
+    context = "\n\n---\n\n".join([f"Title: {n.title}\nContent: {n.content}" for n in unique_notes])
+    
+    config = db.query(Config).first()
+    provider = config.llm_provider if config else "openai"
+    api_key = config.api_key if config else os.getenv("GEMINI_API_KEY")
+    model_name = config.model_name or "gpt-4o-mini"
+    
+    system_prompt = f"""Ты — VibeMind AI, персональный интеллектуальный ассистент. 
+Твоя задача: общаться с пользователем естественно и помогать ему управлять заметками.
+{action_summary}
+Если в системном сообщении выше сказано, что действие выполнено (создано/обновлено), обязательно подтверди это пользователю в дружелюбной форме.
+Если пользователь что-то ищет или спрашивает, используй предоставленный контекст заметок, чтобы дать развернутый и полезный ответ.
+НЕ пиши технические подробности (типа ID заметок). Пиши как человек."""
+
+    user_content = f"Контекст моих заметок:\n{context}\n\nСообщение пользователя: {msg}"
+    
+    answer = ""
+    try:
+        if provider == "gemini":
+            url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={api_key}"
+            async with httpx.AsyncClient() as session:
+                payload = {"contents": [{"parts": [{"text": f"{system_prompt}\n\n{user_content}"}]}]}
+                resp = await session.post(url, json=payload, timeout=30)
+                if resp.status_code == 200:
+                    answer = resp.json()['candidates'][0]['content']['parts'][0]['text']
+                else:
+                    answer = f"Ошибка Gemini: {resp.text}"
+        else:
+            # Check for proxy
+            kwargs = {"api_key": api_key}
+            if config and config.base_url:
+                kwargs["base_url"] = config.base_url
+            if config and config.proxy_config and isinstance(config.proxy_config, dict) and config.proxy_config.get("host"):
+                p = config.proxy_config
+                proxy_url = f"{p.get('protocol', 'http').lower()}://{p.get('username')}:{p.get('password')}@{p['host']}:{p['port']}" if p.get('username') else f"{p.get('protocol', 'http').lower()}://{p['host']}:{p['port']}"
+                kwargs["http_client"] = httpx.AsyncClient(proxy=proxy_url)
+                
+            client = AsyncOpenAI(**kwargs)
+            response = await client.chat.completions.create(
+                model=model_name,
+                messages=[{"role": "system", "content": system_prompt}, {"role": "user", "content": user_content}]
+            )
+            answer = response.choices[0].message.content.strip()
+            
+    except Exception as e:
+        logger.error(f"Final LLM response error: {str(e)}")
+        answer = f"Произошла ошибка при генерации ответа: {str(e)}"
+
+    return {
+        "answer": answer, 
+        "citations": [{"id": n.id, "title": n.title} for n in unique_notes]
+    }
 
 # Static files and SPA fallback
 STATIC_DIR = "/app/static"
