@@ -46,7 +46,8 @@ export default function Settings({ onClose, theme, setTheme }: SettingsProps) {
   // Telegram State
   const [botToken, setBotToken] = useState('');
   const [adminId, setAdminId] = useState('');
-  const [botStatus, setBotStatus] = useState<'disconnected' | 'connected' | 'error'>('disconnected');
+  const [botStatus, setBotStatus] = useState<any>({ status: 'disconnected' });
+  const [allBots, setAllBots] = useState<any[]>([]);
   const [isSaving, setIsSaving] = useState(false);
   const [isTesting, setIsTesting] = useState(false);
   const [testingProviderId, setTestingProviderId] = useState<string | null>(null);
@@ -113,6 +114,14 @@ export default function Settings({ onClose, theme, setTheme }: SettingsProps) {
           setExternalDbs([]);
         });
     }
+    if (activeTab === 'bots' && currentUser?.role === 'admin') {
+      fetch('/api/admin/bots', {
+        headers: { 'Authorization': `Bearer ${localStorage.getItem('access_token')}` }
+      })
+      .then(res => res.json())
+      .then(setAllBots)
+      .catch(console.error);
+    }
   }, [activeTab, currentUser]);
 
   const fetchLogs = async () => {
@@ -134,9 +143,9 @@ export default function Settings({ onClose, theme, setTheme }: SettingsProps) {
     const checkStatus = async () => {
       try {
         const data = await getBotStatus();
-        setBotStatus(data.status);
+        setBotStatus(data);
       } catch (e) {
-        setBotStatus('error');
+        setBotStatus({ status: 'error' });
       }
     };
     
@@ -169,7 +178,7 @@ export default function Settings({ onClose, theme, setTheme }: SettingsProps) {
 
   const handleTestBot = async () => {
     if (!botToken) {
-      setBotStatus('error');
+      setBotStatus({ status: 'error' });
       return;
     }
     
@@ -186,15 +195,15 @@ export default function Settings({ onClose, theme, setTheme }: SettingsProps) {
 
       const data = await response.json();
       if (response.ok) {
-        setBotStatus('connected');
+        setBotStatus({ status: 'connected' });
         alert(data.message || t('settings.connSuccess'));
       } else {
-        setBotStatus('error');
+        setBotStatus({ status: 'error' });
         alert(`${t('settings.connFailed')}${data.detail || 'Unknown error'}`);
       }
     } catch (error) {
       console.error('Network Error:', error);
-      setBotStatus('error');
+      setBotStatus({ status: 'error' });
       alert(t('settings.apiFailed'));
     } finally {
       setIsTesting(false);
@@ -410,11 +419,11 @@ export default function Settings({ onClose, theme, setTheme }: SettingsProps) {
                         <div>
                           <div className="text-xs text-muted-foreground">{t('settings.telegramBot')}</div>
                           <div className="text-sm font-medium text-foreground">
-                            {botStatus === 'connected' ? t('settings.live') : t('settings.offline')}
+                            {botStatus.status === 'connected' ? (botStatus.username ? `@${botStatus.username}` : t('settings.live')) : t('settings.offline')}
                           </div>
                         </div>
                       </div>
-                      {botStatus === 'connected' ? (
+                      {botStatus.status === 'connected' ? (
                         <CheckCircle size={16} className="text-accent" />
                       ) : (
                         <AlertCircle size={16} className="text-muted-foreground" />
@@ -744,15 +753,54 @@ export default function Settings({ onClose, theme, setTheme }: SettingsProps) {
                   <div className="pt-4 border-t border-border/50 flex items-center justify-between">
                     <div className="flex items-center space-x-2">
                       <span className="text-sm text-muted-foreground">{t('settings.status')}</span>
-                      {botStatus === 'connected' && <span className="flex items-center text-accent text-sm"><CheckCircle size={16} className="mr-1" /> {t('settings.live')}</span>}
-                      {botStatus === 'error' && <span className="flex items-center text-destructive text-sm"><AlertCircle size={16} className="mr-1" /> {t('settings.error')}</span>}
-                      {botStatus === 'disconnected' && <span className="text-muted-foreground text-sm">{t('settings.disconnected')}</span>}
+                      {botStatus.status === 'connected' && (
+                        <span className="flex items-center text-accent text-sm">
+                          <CheckCircle size={16} className="mr-1" /> 
+                          {botStatus.username ? `@${botStatus.username}` : t('settings.live')}
+                        </span>
+                      )}
+                      {botStatus.status === 'error' && <span className="flex items-center text-destructive text-sm"><AlertCircle size={16} className="mr-1" /> {t('settings.error')}</span>}
+                      {botStatus.status === 'disconnected' && <span className="text-muted-foreground text-sm">{t('settings.disconnected')}</span>}
                     </div>
                     <button onClick={handleTestBot} disabled={isTesting} className="px-4 py-2 bg-secondary text-foreground hover:bg-secondary/80 rounded-lg border border-border/50 hover:border-primary transition-all disabled:opacity-50">
                       {isTesting ? t('settings.testing') : t('settings.testConnection')}
                     </button>
                   </div>
                 </div>
+
+                {currentUser?.role === 'admin' && allBots.length > 0 && (
+                  <section className="space-y-4">
+                    <h3 className="text-lg font-semibold text-foreground">{t('settings.allBots') || 'All User Bots'}</h3>
+                    <div className="space-y-3">
+                      {allBots.map((bot, idx) => (
+                        <div key={idx} className="bg-card p-4 rounded-lg border border-border/50 flex items-center justify-between">
+                          <div className="flex items-center space-x-3">
+                            <div className={`p-2 rounded-lg ${bot.is_running ? 'bg-accent/10' : 'bg-secondary'}`}>
+                              <MessageSquare className={`${bot.is_running ? 'text-accent' : 'text-muted-foreground'} w-5 h-5`} />
+                            </div>
+                            <div>
+                              <div className="text-foreground font-medium">{bot.username}</div>
+                              <div className="text-xs text-muted-foreground">
+                                {bot.is_running ? (
+                                  <span className="text-accent">Running: {bot.bot_info?.username ? `@${bot.bot_info.username}` : 'Active'}</span>
+                                ) : bot.is_configured ? (
+                                  <span>Configured (Stopped)</span>
+                                ) : (
+                                  <span className="opacity-50">Not configured</span>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                          {bot.is_running && (
+                            <div className="flex items-center text-accent text-xs">
+                              <CheckCircle size={14} className="mr-1" /> Online
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </section>
+                )}
 
                 <section className="space-y-4">
                   <h3 className="text-lg font-semibold text-foreground">{t('settings.proxy')}</h3>
