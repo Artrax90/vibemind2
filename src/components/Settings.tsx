@@ -61,6 +61,7 @@ export default function Settings({ onClose, theme, setTheme }: SettingsProps) {
     const loadSettings = async () => {
       try {
         const me = await api.getMe();
+        console.log('Current user:', me);
         setCurrentUser(me);
         
         const config = await getSettings();
@@ -101,20 +102,28 @@ export default function Settings({ onClose, theme, setTheme }: SettingsProps) {
       fetchLogs();
     }
     if (activeTab === 'integrations') {
-      fetch('/api/external-db')
-        .then(res => res.json())
-        .then(data => setExternalDbs(data.dbs))
-        .catch(console.error);
+      console.log('Fetching external DBs...');
+      api.getExternalDbs()
+        .then(dbs => {
+          console.log('External DBs:', dbs);
+          setExternalDbs(dbs || []);
+        })
+        .catch(err => {
+          console.error('Failed to fetch external DBs:', err);
+          setExternalDbs([]);
+        });
     }
   }, [activeTab, currentUser]);
 
   const fetchLogs = async () => {
+    console.log('Fetching logs...');
     setIsLoadingLogs(true);
     try {
       const response = await api.getLogs();
-      setLogs(response.logs);
+      console.log('Logs response:', response);
+      setLogs(response.logs || '');
     } catch (e) {
-      console.error(e);
+      console.error('Failed to fetch logs:', e);
     } finally {
       setIsLoadingLogs(false);
     }
@@ -219,22 +228,23 @@ export default function Settings({ onClose, theme, setTheme }: SettingsProps) {
 
   const handleAddExternalDB = async (dbData: any) => {
     try {
-      const response = await fetch('/api/external-db', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(dbData)
-      });
-      
-      if (response.ok) {
-        const data = await response.json();
-        setExternalDbs(data.dbs);
-        alert(t('settings.dbSuccess'));
-      } else {
-        alert(t('settings.dbFailed'));
-      }
+      const dbs = await api.addExternalDb(dbData);
+      setExternalDbs(dbs);
+      alert(t('settings.dbSuccess'));
     } catch (e) {
       console.error(e);
       alert(t('settings.dbError'));
+    }
+  };
+
+  const handleDeleteExternalDB = async (dbId: string) => {
+    if (!confirm(t('settings.confirmDeleteDb') || 'Are you sure you want to delete this database connection?')) return;
+    try {
+      const dbs = await api.deleteExternalDb(dbId);
+      setExternalDbs(dbs);
+    } catch (e) {
+      console.error(e);
+      alert(t('settings.deleteDbFailed') || 'Failed to delete database connection');
     }
   };
 
@@ -679,20 +689,20 @@ export default function Settings({ onClose, theme, setTheme }: SettingsProps) {
                   </div>
                   
                   <div className="space-y-3">
-                    {externalDbs.length > 0 ? (
+                    {externalDbs && externalDbs.length > 0 ? (
                       externalDbs.map((db, idx) => (
-                        <div key={idx} className="bg-card p-4 rounded-lg border border-border/50 flex items-center justify-between">
+                        <div key={db.id || idx} className="bg-card p-4 rounded-lg border border-border/50 flex items-center justify-between">
                           <div className="flex items-center space-x-3">
                             <div className="p-2 bg-primary/10 rounded-lg">
                               <Database className="text-primary w-5 h-5" />
                             </div>
                             <div>
-                              <div className="text-foreground font-medium">{db.name}</div>
-                              <div className="text-xs text-muted-foreground font-mono">{db.type.toUpperCase()} // {db.connection_string.split('@')[1] || 'Local'}</div>
+                              <div className="text-foreground font-medium">{db.display_name || db.name}</div>
+                              <div className="text-xs text-muted-foreground font-mono">{(db.db_type || db.type || 'DB').toUpperCase()} // {db.connection_string ? (db.connection_string.split('@')[1] || 'Local') : '...'}</div>
                             </div>
                           </div>
                           <button 
-                            onClick={() => setExternalDbs(externalDbs.filter((_, i) => i !== idx))}
+                            onClick={() => handleDeleteExternalDB(db.id)}
                             className="p-2 text-muted-foreground hover:text-destructive transition-colors"
                           >
                             <Trash2 size={16} />
