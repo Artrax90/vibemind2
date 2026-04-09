@@ -58,7 +58,7 @@ services:
     volumes:
       - ./vosk-model:/data
     restart: "no"
-    command: >
+    command: |
       sh -c '
       set -e
 
