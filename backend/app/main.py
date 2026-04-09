@@ -320,6 +320,52 @@ async def delete_note(note_id: str, db: Session = Depends(get_db), current_user:
     db.commit()
     return {"status": "success"}
 
+@app.get("/api/users", response_model=List[UserResponse])
+async def get_users(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    if current_user.role != "admin":
+        raise HTTPException(status_code=403, detail="Not authorized")
+    return db.query(User).all()
+
+@app.post("/api/users", response_model=UserResponse)
+async def create_user(user: UserCreate, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    if current_user.role != "admin":
+        raise HTTPException(status_code=403, detail="Not authorized")
+    db_user = User(
+        username=user.username,
+        email=user.email,
+        hashed_password=pwd_context.hash(user.password),
+        role=user.role or "user"
+    )
+    db.add(db_user)
+    db.commit()
+    db.refresh(db_user)
+    return db_user
+
+@app.patch("/api/users/{user_id}", response_model=UserResponse)
+async def update_user(user_id: int, update: dict, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    if current_user.role != "admin":
+        raise HTTPException(status_code=403, detail="Not authorized")
+    db_user = db.query(User).filter(User.id == user_id).first()
+    if not db_user: raise HTTPException(status_code=404)
+    for k, v in update.items():
+        if k == "password" and v:
+            db_user.hashed_password = pwd_context.hash(v)
+        elif hasattr(db_user, k):
+            setattr(db_user, k, v)
+    db.commit()
+    db.refresh(db_user)
+    return db_user
+
+@app.delete("/api/users/{user_id}")
+async def delete_user(user_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    if current_user.role != "admin":
+        raise HTTPException(status_code=403, detail="Not authorized")
+    db_user = db.query(User).filter(User.id == user_id).first()
+    if not db_user: raise HTTPException(status_code=404)
+    db.delete(db_user)
+    db.commit()
+    return {"status": "success"}
+
 # Folder Endpoints
 @app.get("/api/folders")
 async def get_folders(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
@@ -424,6 +470,53 @@ async def test_bot(req: dict, current_user: User = Depends(get_current_user)):
         proxy_config=req.get("proxy_config")
     )
     return {"success": success, "message": message}
+
+@app.get("/api/logs")
+async def get_logs(current_user: User = Depends(get_current_user)):
+    if current_user.role != "admin":
+        raise HTTPException(status_code=403, detail="Not authorized")
+    try:
+        if os.path.exists(LOG_FILE):
+            with open(LOG_FILE, "r") as f:
+                # Return last 200 lines
+                lines = f.readlines()
+                return {"logs": "".join(lines[-200:])}
+        return {"logs": "Log file not found"}
+    except Exception as e:
+        return {"logs": f"Error reading logs: {str(e)}"}
+
+@app.get("/api/external-db")
+async def get_external_dbs(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    config = db.query(Config).filter(Config.user_id == current_user.id).first()
+    if not config or not config.external_dbs:
+        return {"dbs": []}
+    return {"dbs": config.external_dbs}
+
+@app.post("/api/external-db")
+async def add_external_db(db_data: dict, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    config = db.query(Config).filter(Config.user_id == current_user.id).first()
+    if not config:
+        config = Config(user_id=current_user.id)
+        db.add(config)
+    
+    dbs = config.external_dbs or []
+    # Add unique ID to new DB
+    db_data['id'] = str(uuid.uuid4())
+    dbs.append(db_data)
+    config.external_dbs = dbs
+    db.commit()
+    return {"status": "success", "dbs": dbs}
+
+@app.delete("/api/external-db/{db_id}")
+async def delete_external_db(db_id: str, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    config = db.query(Config).filter(Config.user_id == current_user.id).first()
+    if not config or not config.external_dbs:
+        raise HTTPException(status_code=404)
+    
+    dbs = [d for d in config.external_dbs if d.get('id') != db_id]
+    config.external_dbs = dbs
+    db.commit()
+    return {"status": "success", "dbs": dbs}
 
 @app.post("/api/upload")
 async def upload(file: UploadFile = File(...), current_user: User = Depends(get_current_user)):
