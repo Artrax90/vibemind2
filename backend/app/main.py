@@ -228,11 +228,21 @@ async def get_me(current_user: User = Depends(get_current_user)):
 # Note Endpoints
 @app.get("/api/notes")
 async def get_notes(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    # Notes owned by user
     notes = db.query(Note).filter(Note.user_id == current_user.id).all()
-    shared = db.query(Share).filter(Share.target_user_id == current_user.id, Share.resource_type == "note").all()
-    for s in shared:
+    
+    # Notes shared directly with user
+    shared_notes = db.query(Share).filter(Share.target_user_id == current_user.id, Share.resource_type == "note").all()
+    for s in shared_notes:
         n = db.query(Note).filter(Note.id == s.resource_id).first()
         if n and n not in notes: notes.append(n)
+        
+    # Notes in folders shared with user
+    shared_folders = db.query(Share).filter(Share.target_user_id == current_user.id, Share.resource_type == "folder").all()
+    for s in shared_folders:
+        folder_notes = db.query(Note).filter(Note.folderId == s.resource_id).all()
+        for n in folder_notes:
+            if n not in notes: notes.append(n)
     
     res = []
     for n in notes:
@@ -242,8 +252,15 @@ async def get_notes(db: Session = Depends(get_db), current_user: User = Depends(
         if is_shared:
             owner = db.query(User).filter(User.id == n.user_id).first()
             owner_name = owner.username if owner else "Unknown"
+            # Check direct share
             s = db.query(Share).filter(Share.resource_id == n.id, Share.target_user_id == current_user.id).first()
-            if s: permission = s.permission
+            if s: 
+                permission = s.permission
+            else:
+                # Check folder share
+                if n.folderId:
+                    fs = db.query(Share).filter(Share.resource_id == n.folderId, Share.target_user_id == current_user.id).first()
+                    if fs: permission = fs.permission
         res.append({
             "id": n.id, "title": n.title, "content": n.content, "folderId": n.folderId,
             "isPinned": bool(n.isPinned), "isShared": is_shared, "ownerUsername": owner_name, "permission": permission
@@ -418,10 +435,49 @@ async def delete_user(user_id: int, db: Session = Depends(get_db), current_user:
 @app.get("/api/folders")
 async def get_folders(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     folders = db.query(Folder).filter(Folder.user_id == current_user.id).all()
-    return [{"id": f.id, "name": f.name, "parentId": f.parentId} for f in folders]
+    
+    # Shared folders
+    shared = db.query(Share).filter(Share.target_user_id == current_user.id, Share.resource_type == "folder").all()
+    for s in shared:
+        f = db.query(Folder).filter(Folder.id == s.resource_id).first()
+        if f and f not in folders: folders.append(f)
+        
+    res = []
+    for f in folders:
+        is_shared = f.user_id != current_user.id
+        owner_name = None
+        permission = "owner"
+        if is_shared:
+            owner = db.query(User).filter(User.id == f.user_id).first()
+            owner_name = owner.username if owner else "Unknown"
+            s = db.query(Share).filter(Share.resource_id == f.id, Share.target_user_id == current_user.id).first()
+            if s: permission = s.permission
+        res.append({
+            "id": f.id, "name": f.name, "parentId": f.parentId,
+            "isShared": is_shared, "ownerUsername": owner_name, "permission": permission
+        })
+    return res
 
 @app.post("/api/folders")
 async def create_folder(f: FolderCreate, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    # Check if folder already exists (to avoid IntegrityError on duplicate ID)
+    existing = db.query(Folder).filter(Folder.id == f.id).first()
+    if existing:
+        if existing.user_id == current_user.id:
+            existing.name = f.name
+            existing.parentId = f.parentId
+            db.commit()
+            return f
+        else:
+            # ID collision with another user's folder - should be rare with UUIDs but possible with frontend timestamps
+            # Generate a new ID if collision
+            new_id = f"f{int(datetime.now().timestamp() * 1000)}"
+            db_f = Folder(id=new_id, name=f.name, parentId=f.parentId, user_id=current_user.id)
+            db.add(db_f)
+            db.commit()
+            f.id = new_id
+            return f
+            
     db_f = Folder(id=f.id, name=f.name, parentId=f.parentId, user_id=current_user.id)
     db.add(db_f)
     db.commit()
@@ -445,9 +501,9 @@ async def delete_folder(id: str, db: Session = Depends(get_db), current_user: Us
     return {"status": "success"}
 
 # Sharing Endpoints
-@app.get("/api/shares")
-async def get_shares(resource_id: str, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
-    shares = db.query(Share).filter(Share.resource_id == resource_id, Share.owner_id == current_user.id).all()
+@app.get("/api/shares/{resource_type}/{resource_id}")
+async def get_shares(resource_type: str, resource_id: str, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    shares = db.query(Share).filter(Share.resource_id == resource_id, Share.resource_type == resource_type, Share.owner_id == current_user.id).all()
     res = []
     for s in shares:
         target_username = None
@@ -460,14 +516,27 @@ async def get_shares(resource_id: str, db: Session = Depends(get_db), current_us
         })
     return res
 
-@app.post("/api/shares")
-async def create_share(s: ShareCreate, resource_id: str, resource_type: str, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+@app.post("/api/shares/{resource_type}/{resource_id}")
+async def create_share(resource_type: str, resource_id: str, s: ShareCreate, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     target_user_id = None
     if s.target_username:
         u = db.query(User).filter(User.username == s.target_username).first()
         if not u: raise HTTPException(status_code=404, detail="User not found")
         target_user_id = u.id
     
+    # Check if share already exists
+    existing = db.query(Share).filter(
+        Share.resource_id == resource_id,
+        Share.resource_type == resource_type,
+        Share.target_user_id == target_user_id,
+        Share.is_public == s.is_public
+    ).first()
+    
+    if existing:
+        existing.permission = s.permission
+        db.commit()
+        return {"id": existing.id}
+
     share_id = str(uuid.uuid4())
     db_share = Share(id=share_id, resource_id=resource_id, resource_type=resource_type, owner_id=current_user.id, target_user_id=target_user_id, permission=s.permission, is_public=s.is_public)
     db.add(db_share)
