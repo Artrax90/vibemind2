@@ -67,7 +67,8 @@ services:
         COUNT=0;
         while [ \$$COUNT -lt \$$MAX_RETRIES ]; do
           echo \"Attempt \$$((COUNT+1)) of \$$MAX_RETRIES...\";
-          if curl -4 -L -C - --connect-timeout 15 --speed-time 30 --speed-limit 1024 https://alphacephei.com/vosk/models/vosk-model-small-ru-0.22.zip -o /data/model.zip; then
+          # Переключаемся на зеркало Hugging Face (CDN)
+          if curl -4 -L -C - --connect-timeout 15 https://huggingface.co/alphacep/vosk-model-small-ru-0.22/resolve/main/vosk-model-small-ru-0.22.zip -o /data/model.zip; then
             echo 'Download command finished, checking integrity...';
             if unzip -t /data/model.zip > /dev/null 2>&1; then
               echo 'File is valid!';
