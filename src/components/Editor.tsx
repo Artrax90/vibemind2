@@ -426,7 +426,7 @@ export default function Editor({ note, onUpdate, onWikilinkClick, onTagClick, is
       <div className="flex-1 overflow-y-auto p-8 scrollbar-thin flex flex-col">
         <div className="flex-1">
           {isPreview || isReadOnly ? (
-            <div className="prose prose-invert max-w-none text-foreground/80" onClick={handleContentClick}>
+            <div className="prose prose-invert max-w-none text-foreground/80 whitespace-pre-wrap" onClick={handleContentClick}>
               <ReactMarkdown 
                 remarkPlugins={[remarkGfm, remarkBreaks]}
                 components={{
@@ -449,23 +449,24 @@ export default function Editor({ note, onUpdate, onWikilinkClick, onTagClick, is
                     )
                   },
                   p({children}) {
-                    // Check if children is a single string that looks like an ordered list item
-                    // ReactMarkdown with remarkGfm usually handles lists, but our custom 'p' renderer
-                    // might be interfering if it's not a proper list structure in the AST.
-                    // However, the best way is to let ReactMarkdown handle 'ol' and 'li'.
+                    const childrenArray = React.Children.toArray(children);
+                    const isEmpty = childrenArray.length === 0 || 
+                                   (childrenArray.length === 1 && typeof childrenArray[0] === 'string' && childrenArray[0].trim() === '');
                     
-                    if (typeof children === 'string') {
-                      return <p dangerouslySetInnerHTML={{ __html: renderContent(children) }} />;
+                    if (isEmpty) {
+                      return <p className="min-h-[1.5em]">&nbsp;</p>;
                     }
-                    if (Array.isArray(children)) {
-                      return <p>{children.map((child, i) => {
-                        if (typeof child === 'string') {
-                          return <span key={i} dangerouslySetInnerHTML={{ __html: renderContent(child) }} />;
-                        }
-                        return <React.Fragment key={i}>{child}</React.Fragment>;
-                      })}</p>;
-                    }
-                    return <p>{children}</p>;
+
+                    return (
+                      <p className="mb-4">
+                        {childrenArray.map((child, i) => {
+                          if (typeof child === 'string') {
+                            return <span key={i} dangerouslySetInnerHTML={{ __html: renderContent(child) }} />;
+                          }
+                          return <React.Fragment key={i}>{child}</React.Fragment>;
+                        })}
+                      </p>
+                    );
                   },
                   ol({children}) {
                     return <ol className="list-decimal list-inside my-4 space-y-1">{children}</ol>;
