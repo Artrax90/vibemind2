@@ -415,8 +415,8 @@ def parse_commands(text: str) -> list[dict]:
             commands.append({"type": "SEARCH", "query": query})
     return commands
 
-STT_HOST = "192.168.1.196"
-STT_PORT = 10300
+STT_HOST = os.getenv("STT_HOST", "vosk")
+STT_PORT = int(os.getenv("STT_PORT", 10300))
 
 async def speech_to_text(audio_path: str) -> str:
     """Транскрибация аудио через Wyoming (Vosk)"""
