@@ -412,5 +412,22 @@ export const api = {
       console.error('Import failed:', e);
       return { message: 'Failed', count: 0 };
     }
+  },
+
+  async summarize(content: string) {
+    try {
+      const res = await fetch(`${BASE_URL}/api/ai/summarize`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...getAuthHeaders()
+        },
+        body: JSON.stringify({ content })
+      });
+      return await handleResponse(res, { summary: 'Failed to generate summary' });
+    } catch (e) {
+      console.error('Summarization failed:', e);
+      return { summary: 'Network error' };
+    }
   }
 };
