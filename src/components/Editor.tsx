@@ -426,7 +426,7 @@ export default function Editor({ note, onUpdate, onWikilinkClick, onTagClick, is
       <div className="flex-1 overflow-y-auto p-8 scrollbar-thin flex flex-col">
         <div className="flex-1">
           {isPreview || isReadOnly ? (
-            <div className="prose prose-invert max-w-none text-foreground/80 whitespace-pre-wrap" onClick={handleContentClick}>
+            <div className="prose prose-invert max-w-none text-foreground/80" onClick={handleContentClick}>
               <ReactMarkdown 
                 remarkPlugins={[remarkGfm, remarkBreaks]}
                 components={{
@@ -450,17 +450,20 @@ export default function Editor({ note, onUpdate, onWikilinkClick, onTagClick, is
                   },
                   p({children}) {
                     const childrenArray = React.Children.toArray(children);
-                    const isEmpty = childrenArray.length === 0 || 
-                                   (childrenArray.length === 1 && typeof childrenArray[0] === 'string' && childrenArray[0].trim() === '');
                     
-                    if (isEmpty) {
-                      return <p className="min-h-[1.5em]">&nbsp;</p>;
+                    // If it's just a single br, render an empty line
+                    if (childrenArray.length === 1 && React.isValidElement(childrenArray[0]) && childrenArray[0].type === 'br') {
+                        return <p className="min-h-[1.5em] m-0 leading-relaxed">&nbsp;</p>;
                     }
 
                     return (
-                      <p className="mb-4">
+                      <p className="mb-4 leading-relaxed">
                         {childrenArray.map((child, i) => {
                           if (typeof child === 'string') {
+                            // If the string is entirely empty or just whitespace, and it's the only child
+                            if (child.trim() === '' && childrenArray.length === 1) {
+                                return <span key={i} className="inline-block min-h-[1.5em] w-full">&nbsp;</span>;
+                            }
                             return <span key={i} dangerouslySetInnerHTML={{ __html: renderContent(child) }} />;
                           }
                           return <React.Fragment key={i}>{child}</React.Fragment>;
@@ -516,7 +519,7 @@ export default function Editor({ note, onUpdate, onWikilinkClick, onTagClick, is
                   }
                 }}
               >
-                {content}
+                {content.replace(/\n{2,}/g, (match) => '\n\n' + '\u00A0\n\n'.repeat(match.length - 2))}
               </ReactMarkdown>
             </div>
           ) : (
