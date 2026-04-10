@@ -183,6 +183,7 @@ class NoteCreate(BaseModel):
     isPinned: bool | None = False
 
 class NoteUpdate(BaseModel):
+    id: str | None = None
     title: str | None = None
     content: str | None = None
     folderId: str | None = None
@@ -607,8 +608,6 @@ async def get_public_share(share_id: str, db: Session = Depends(get_db)):
     if s.resource_type == "note":
         n = db.query(Note).filter(Note.id == s.resource_id).first()
         if not n: raise HTTPException(status_code=404, detail="Note not found")
-        # Convert to dict to avoid issues with Vector type in JSON response if needed, 
-        # but Note model should be fine if we don't include embedding
         return {
             "share": {
                 "id": s.id, "resource_id": s.resource_id, "resource_type": s.resource_type,
@@ -618,6 +617,28 @@ async def get_public_share(share_id: str, db: Session = Depends(get_db)):
                 "id": n.id, "title": n.title, "content": n.content, "folderId": n.folderId
             }
         }
+    
+    if s.resource_type == "folder":
+        f = db.query(Folder).filter(Folder.id == s.resource_id).first()
+        if not f: raise HTTPException(status_code=404, detail="Folder not found")
+        
+        # Get all notes in this folder
+        notes = db.query(Note).filter(Note.folderId == f.id).all()
+        
+        return {
+            "share": {
+                "id": s.id, "resource_id": s.resource_id, "resource_type": s.resource_type,
+                "permission": s.permission, "is_public": s.is_public
+            },
+            "folder": {
+                "id": f.id, "name": f.name, "parentId": f.parentId
+            },
+            "notes": [
+                {"id": n.id, "title": n.title, "content": n.content, "folderId": n.folderId}
+                for n in notes
+            ]
+        }
+    
     return {"error": "Unsupported resource type"}
 
 @app.patch("/api/public/shares/{share_id}")
@@ -632,6 +653,20 @@ async def update_public_share(share_id: str, update: NoteUpdate, db: Session = D
         if update.content is not None: n.content = update.content
         db.commit()
         return {"status": "success"}
+    
+    if s.resource_type == "folder":
+        if not update.id:
+            raise HTTPException(status_code=400, detail="Note ID is required for folder share updates")
+        
+        # Verify note belongs to the shared folder
+        n = db.query(Note).filter(Note.id == update.id, Note.folderId == s.resource_id).first()
+        if not n: raise HTTPException(status_code=404, detail="Note not found in this shared folder")
+        
+        if update.title is not None: n.title = update.title
+        if update.content is not None: n.content = update.content
+        db.commit()
+        return {"status": "success"}
+        
     return {"error": "Unsupported resource type for update"}
 
 # Settings & Bot
