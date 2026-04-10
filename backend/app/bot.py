@@ -558,6 +558,28 @@ async def semantic_search_api(user_id: int, query: str) -> Dict[str, Any]:
     except Exception as e:
         return {"status": "error", "message": str(e)}
 
+async def send_long_message(message: types.Message, text: str, parse_mode: str = "HTML", **kwargs):
+    """Sends a long message in multiple parts if it exceeds Telegram's limit."""
+    if len(text) <= 4096:
+        return await message.answer(text, parse_mode=parse_mode, **kwargs)
+    
+    # Simple chunking
+    limit = 4000
+    chunks = [text[i:i+limit] for i in range(0, len(text), limit)]
+    
+    for i, chunk in enumerate(chunks):
+        # Only add reply_markup to the last chunk
+        current_kwargs = kwargs.copy()
+        if i < len(chunks) - 1:
+            current_kwargs.pop("reply_markup", None)
+            
+        try:
+            await message.answer(chunk, parse_mode=parse_mode, **current_kwargs)
+        except Exception as e:
+            logger.error(f"Error sending chunk: {e}")
+            # Fallback: send without parse_mode if HTML is broken by split
+            await message.answer(chunk, **current_kwargs)
+
 # --- Bot Handlers ---
 
 @dp.callback_query(F.data.startswith("open_note_"))
@@ -568,8 +590,23 @@ async def handle_open_note(callback: types.CallbackQuery, user_id: int):
     if result.get("status") == "success":
         note = result.get("data", {})
         title_esc = html.escape(note.get("title", "Без названия"))
-        content_esc = html.escape(note.get("content", "Пусто"))
-        await callback.message.answer(f"📝 <b>{title_esc}</b>\n\n{content_esc}", parse_mode="HTML")
+        content = note.get("content", "Пусто")
+        content_esc = html.escape(content)
+        
+        full_text = f"📝 <b>{title_esc}</b>\n\n{content_esc}"
+        
+        if len(full_text) <= 4096:
+            await callback.message.answer(full_text, parse_mode="HTML")
+        else:
+            # Send header first
+            header = f"📝 <b>{title_esc}</b>\n\n"
+            await callback.message.answer(header, parse_mode="HTML")
+            
+            # Send content in chunks
+            limit = 4000
+            for i in range(0, len(content_esc), limit):
+                await callback.message.answer(content_esc[i:i+limit], parse_mode="HTML")
+                
         image_matches = re.findall(r'!\[.*?\]\((/api/uploads/.*?)\)', note.get("content", ""))
         for img_path in image_matches:
             local_path = os.path.join('/app/storage/uploads', os.path.basename(img_path))
@@ -600,7 +637,7 @@ async def handle_voice(message: types.Message, user_id: int, admin_id: str = Non
         # Convert words to digits for better processing
         text = words_to_digits(text)
         
-        await message.answer(f"📝 Распознанный текст: «{text}»\nЗапускаю обработку...")
+        await send_long_message(message, f"📝 Распознанный текст: «{text}»\nЗапускаю обработку...")
         fake_msg = message.model_copy(update={"text": text})
         await handle_text(fake_msg, user_id, admin_id)
     except Exception as e:
@@ -728,7 +765,7 @@ async def handle_text(message: types.Message, user_id: int, admin_id: str = None
                 resp += f"{i}. <b>{t_esc}</b>\n<i>{p_esc}</i>\n\n"
                 builder.button(text=f"Открыть {i}", callback_data=f"open_note_{note['id']}")
             builder.adjust(1)
-            await message.answer(resp, parse_mode="HTML", reply_markup=builder.as_markup())
+            await send_long_message(message, resp, parse_mode="HTML", reply_markup=builder.as_markup())
 
 # --- Bot Management ---
 
