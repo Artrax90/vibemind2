@@ -61,8 +61,10 @@ export default function ShareModal({ isOpen, onClose, resourceId, resourceType, 
         permission,
         is_public: isPublic ? 1 : 0
       });
-      setShares([...shares, newShare]);
-      setUsername('');
+      if (newShare) {
+        setShares([...shares, newShare]);
+        setUsername('');
+      }
     } catch (e: any) {
       console.error('Failed to create share', e);
       setError(e.message || 'Failed to create share');
