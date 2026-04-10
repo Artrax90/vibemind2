@@ -233,7 +233,7 @@ export const api = {
         },
         body: JSON.stringify(shareData)
       });
-      return await handleResponse(res, null);
+      return await res.json();
     } catch (e) {
       throw e;
     }
