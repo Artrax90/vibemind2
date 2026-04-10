@@ -19,6 +19,7 @@ export type Note = {
   content: string;
   folderId?: string;
   isShared?: boolean;
+  isSharedByMe?: boolean;
   ownerUsername?: string;
   permission?: 'read' | 'write' | 'owner';
   isPinned?: boolean;
@@ -29,6 +30,7 @@ export type Folder = {
   name: string;
   parentId?: string;
   isShared?: boolean;
+  isSharedByMe?: boolean;
   ownerUsername?: string;
   permission?: 'read' | 'write' | 'owner';
 };
