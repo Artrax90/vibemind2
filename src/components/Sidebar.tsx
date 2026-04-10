@@ -53,7 +53,10 @@ function SortableNoteItem({ note, activeNoteId, onSelectNote, onContextMenu, t }
           {note.isPinned && <Pin size={10} className="ml-1 text-primary fill-primary" />}
         </div>
         <div className="flex flex-col min-w-0">
-          <span className="text-sm truncate">{note.title}</span>
+          <div className="flex items-center">
+            <span className="text-sm truncate">{note.title}</span>
+            {note.isSharedByMe && <Share2 size={10} className="ml-1 text-primary opacity-70" />}
+          </div>
           {note.isShared && (
             <span className="text-[10px] text-muted-foreground/60 truncate flex items-center">
               <Share2 size={8} className="mr-1" /> {note.ownerUsername} ({note.permission === 'owner' ? t('sidebar.owner') || 'Owner' : note.permission})
@@ -100,7 +103,10 @@ function DroppableFolder({ folder, isExpanded, isSelected, isRenaming, renameVal
             </form>
           ) : (
             <div className="flex flex-col min-w-0">
-              <span className="text-sm truncate">{folder.name}</span>
+              <div className="flex items-center">
+                <span className="text-sm truncate">{folder.name}</span>
+                {folder.isSharedByMe && <Share2 size={10} className="ml-1 text-primary opacity-70" />}
+              </div>
               {folder.isShared && (
                 <span className="text-[10px] text-muted-foreground/60 truncate flex items-center">
                   <Share2 size={8} className="mr-1" /> {folder.ownerUsername} ({folder.permission === 'owner' ? t('sidebar.owner') || 'Owner' : folder.permission})
