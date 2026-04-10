@@ -261,9 +261,21 @@ async def get_notes(db: Session = Depends(get_db), current_user: User = Depends(
                 if n.folderId:
                     fs = db.query(Share).filter(Share.resource_id == n.folderId, Share.target_user_id == current_user.id).first()
                     if fs: permission = fs.permission
+        
+        # Check if shared by me
+        is_shared_by_me = False
+        if not is_shared:
+            share_count = db.query(Share).filter(Share.resource_id == n.id, Share.owner_id == current_user.id).count()
+            is_shared_by_me = share_count > 0
+            # Also check if parent folder is shared by me
+            if not is_shared_by_me and n.folderId:
+                folder_share_count = db.query(Share).filter(Share.resource_id == n.folderId, Share.owner_id == current_user.id).count()
+                is_shared_by_me = folder_share_count > 0
+
         res.append({
             "id": n.id, "title": n.title, "content": n.content, "folderId": n.folderId,
-            "isPinned": bool(n.isPinned), "isShared": is_shared, "ownerUsername": owner_name, "permission": permission
+            "isPinned": bool(n.isPinned), "isShared": is_shared, "ownerUsername": owner_name, 
+            "permission": permission, "isSharedByMe": is_shared_by_me
         })
     return res
 
@@ -274,8 +286,15 @@ async def create_note(note: NoteCreate, db: Session = Depends(get_db), current_u
     db_note = db.query(Note).filter(Note.id == note.id).first()
     if db_note:
         if db_note.user_id != current_user.id:
+            # Check direct share
             s = db.query(Share).filter(Share.resource_id == note.id, Share.target_user_id == current_user.id, Share.permission == "write").first()
-            if not s: raise HTTPException(status_code=403)
+            if not s:
+                # Check folder share
+                if db_note.folderId:
+                    fs = db.query(Share).filter(Share.resource_id == db_note.folderId, Share.target_user_id == current_user.id, Share.permission == "write").first()
+                    if not fs: raise HTTPException(status_code=403)
+                else:
+                    raise HTTPException(status_code=403)
         db_note.title = note.title
         db_note.content = note.content
         db_note.folderId = note.folderId
@@ -362,8 +381,15 @@ async def patch_note(note_id: str, update: NoteUpdate, db: Session = Depends(get
     n = db.query(Note).filter(Note.id == note_id).first()
     if not n: raise HTTPException(status_code=404)
     if n.user_id != current_user.id:
+        # Check direct share
         s = db.query(Share).filter(Share.resource_id == note_id, Share.target_user_id == current_user.id, Share.permission == "write").first()
-        if not s: raise HTTPException(status_code=403)
+        if not s:
+            # Check folder share
+            if n.folderId:
+                fs = db.query(Share).filter(Share.resource_id == n.folderId, Share.target_user_id == current_user.id, Share.permission == "write").first()
+                if not fs: raise HTTPException(status_code=403)
+            else:
+                raise HTTPException(status_code=403)
     
     if update.title is not None: n.title = update.title
     if update.content is not None: n.content = update.content
@@ -452,9 +478,17 @@ async def get_folders(db: Session = Depends(get_db), current_user: User = Depend
             owner_name = owner.username if owner else "Unknown"
             s = db.query(Share).filter(Share.resource_id == f.id, Share.target_user_id == current_user.id).first()
             if s: permission = s.permission
+        
+        # Check if shared by me
+        is_shared_by_me = False
+        if not is_shared:
+            share_count = db.query(Share).filter(Share.resource_id == f.id, Share.owner_id == current_user.id).count()
+            is_shared_by_me = share_count > 0
+
         res.append({
             "id": f.id, "name": f.name, "parentId": f.parentId,
-            "isShared": is_shared, "ownerUsername": owner_name, "permission": permission
+            "isShared": is_shared, "ownerUsername": owner_name, 
+            "permission": permission, "isSharedByMe": is_shared_by_me
         })
     return res
 
@@ -535,13 +569,27 @@ async def create_share(resource_type: str, resource_id: str, s: ShareCreate, db:
     if existing:
         existing.permission = s.permission
         db.commit()
-        return {"id": existing.id}
+        return {
+            "id": existing.id, 
+            "resource_id": existing.resource_id, 
+            "resource_type": existing.resource_type,
+            "target_username": s.target_username,
+            "permission": existing.permission,
+            "is_public": existing.is_public
+        }
 
     share_id = str(uuid.uuid4())
     db_share = Share(id=share_id, resource_id=resource_id, resource_type=resource_type, owner_id=current_user.id, target_user_id=target_user_id, permission=s.permission, is_public=s.is_public)
     db.add(db_share)
     db.commit()
-    return {"id": share_id}
+    return {
+        "id": share_id, 
+        "resource_id": resource_id, 
+        "resource_type": resource_type,
+        "target_username": s.target_username,
+        "permission": s.permission,
+        "is_public": s.is_public
+    }
 
 @app.delete("/api/shares/{share_id}")
 async def delete_share(share_id: str, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
