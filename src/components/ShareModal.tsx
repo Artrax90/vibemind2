@@ -186,15 +186,22 @@ export default function ShareModal({ isOpen, onClose, resourceId, resourceType, 
             ) : (
               shares.map((share) => (
                 <div key={share.id} className="flex items-center justify-between rounded-lg border border-border/50 bg-secondary/30 p-3">
-                  <div className="flex items-center gap-2">
-                    {share.is_public ? (
-                      <Globe size={16} className="text-primary" />
-                    ) : (
-                      <UserPlus size={16} className="text-muted-foreground" />
-                    )}
-                    <div className="text-sm font-medium text-foreground">
-                      {share.is_public ? t('share.publicLink') : share.target_username}
+                  <div className="flex flex-col flex-1 min-w-0">
+                    <div className="flex items-center gap-2">
+                      {share.is_public ? (
+                        <Globe size={16} className="text-primary" />
+                      ) : (
+                        <UserPlus size={16} className="text-muted-foreground" />
+                      )}
+                      <div className="text-sm font-medium text-foreground truncate">
+                        {share.is_public ? t('share.publicLink') : share.target_username}
+                      </div>
                     </div>
+                    {share.is_public === 1 && (
+                      <div className="text-[10px] text-muted-foreground truncate mt-1 select-all">
+                        {`${window.location.origin}/shared/${share.id}`}
+                      </div>
+                    )}
                   </div>
                   <div className="flex items-center gap-3">
                     <span className="text-xs text-muted-foreground capitalize">
