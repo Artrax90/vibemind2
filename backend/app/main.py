@@ -599,6 +599,41 @@ async def delete_share(share_id: str, db: Session = Depends(get_db), current_use
     db.commit()
     return {"status": "success"}
 
+@app.get("/api/public/shares/{share_id}")
+async def get_public_share(share_id: str, db: Session = Depends(get_db)):
+    s = db.query(Share).filter(Share.id == share_id, Share.is_public == 1).first()
+    if not s: raise HTTPException(status_code=404, detail="Public share not found")
+    
+    if s.resource_type == "note":
+        n = db.query(Note).filter(Note.id == s.resource_id).first()
+        if not n: raise HTTPException(status_code=404, detail="Note not found")
+        # Convert to dict to avoid issues with Vector type in JSON response if needed, 
+        # but Note model should be fine if we don't include embedding
+        return {
+            "share": {
+                "id": s.id, "resource_id": s.resource_id, "resource_type": s.resource_type,
+                "permission": s.permission, "is_public": s.is_public
+            },
+            "note": {
+                "id": n.id, "title": n.title, "content": n.content, "folderId": n.folderId
+            }
+        }
+    return {"error": "Unsupported resource type"}
+
+@app.patch("/api/public/shares/{share_id}")
+async def update_public_share(share_id: str, update: NoteUpdate, db: Session = Depends(get_db)):
+    s = db.query(Share).filter(Share.id == share_id, Share.is_public == 1, Share.permission == "write").first()
+    if not s: raise HTTPException(status_code=403, detail="No write access to this public share")
+    
+    if s.resource_type == "note":
+        n = db.query(Note).filter(Note.id == s.resource_id).first()
+        if not n: raise HTTPException(status_code=404)
+        if update.title is not None: n.title = update.title
+        if update.content is not None: n.content = update.content
+        db.commit()
+        return {"status": "success"}
+    return {"error": "Unsupported resource type for update"}
+
 # Settings & Bot
 @app.get("/api/settings")
 async def get_settings(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
