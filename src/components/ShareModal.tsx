@@ -64,6 +64,9 @@ export default function ShareModal({ isOpen, onClose, resourceId, resourceType, 
       if (newShare) {
         setShares([...shares, newShare]);
         setUsername('');
+        if (isPublic) {
+          copyLink(newShare.id);
+        }
       }
     } catch (e: any) {
       console.error('Failed to create share', e);
@@ -80,11 +83,29 @@ export default function ShareModal({ isOpen, onClose, resourceId, resourceType, 
     }
   };
 
-  const copyLink = (shareId: string) => {
+  const copyLink = async (shareId: string) => {
     const url = `${window.location.origin}/shared/${shareId}`;
-    navigator.clipboard.writeText(url);
-    setCopiedId(shareId);
-    setTimeout(() => setCopiedId(null), 2000);
+    try {
+      if (navigator.clipboard && window.isSecureContext) {
+        await navigator.clipboard.writeText(url);
+      } else {
+        // Fallback for non-secure contexts or older browsers
+        const textArea = document.createElement("textarea");
+        textArea.value = url;
+        textArea.style.position = "fixed";
+        textArea.style.left = "-9999px";
+        textArea.style.top = "0";
+        document.body.appendChild(textArea);
+        textArea.focus();
+        textArea.select();
+        document.execCommand('copy');
+        textArea.remove();
+      }
+      setCopiedId(shareId);
+      setTimeout(() => setCopiedId(null), 2000);
+    } catch (err) {
+      console.error('Failed to copy link', err);
+    }
   };
 
   if (!isOpen) return null;
