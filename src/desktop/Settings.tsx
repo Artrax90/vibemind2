@@ -405,7 +405,10 @@ export default function Settings({ onClose, theme, setTheme }: SettingsProps) {
                             log('Connection successful');
                           } else {
                             const data = await res.json().catch(() => ({}));
-                            const err = `${res.status} ${data.detail || ''}`;
+                            let err = `${res.status} ${data.detail || ''}`;
+                            if (res.status === 502) {
+                              err += ' (Bad Gateway - check if backend is running or proxy settings)';
+                            }
                             setTestResult(`error: ${err}`);
                             log(`Connection failed: ${err}`);
                           }
