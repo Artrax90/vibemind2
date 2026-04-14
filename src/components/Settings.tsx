@@ -737,46 +737,97 @@ export default function Settings({ onClose, theme, setTheme }: SettingsProps) {
             )}
 
             {activeTab === 'bots' && (
-              <section className="space-y-6">
-                <div className="flex items-center justify-between">
-                  <h3 className="text-lg font-semibold text-foreground">{t('settings.telegramBot')}</h3>
-                  <div className="flex items-center space-x-2">
-                    <span className={`w-2 h-2 rounded-full ${botStatus.status === 'connected' ? 'bg-accent' : 'bg-destructive'}`} />
-                    <span className="text-sm text-muted-foreground">{botStatus.status === 'connected' ? t('settings.live') : t('settings.offline')}</span>
+              <section className="space-y-8">
+                <div className="space-y-6">
+                  <h3 className="text-lg font-semibold text-foreground">{t('settings.botConfig')}</h3>
+                  
+                  <div className="bg-card p-6 rounded-lg border border-border/50 space-y-4">
+                    <div>
+                      <label className="block text-sm text-muted-foreground mb-1">{t('settings.botToken')}</label>
+                      <input type="password" value={botToken} onChange={(e) => setBotToken(e.target.value)} placeholder="123456789:ABCDEF..." className="w-full bg-background border border-border rounded-lg p-2 text-foreground focus:border-primary focus:ring-1 focus:ring-primary outline-none transition-all" />
+                    </div>
+                    <div>
+                      <label className="block text-sm text-muted-foreground mb-1">{t('settings.adminId')}</label>
+                      <input type="text" value={adminId} onChange={(e) => setAdminId(e.target.value)} placeholder={t('settings.phAdminId')} className="w-full bg-background border border-border rounded-lg p-2 text-foreground focus:border-primary focus:ring-1 focus:ring-primary outline-none transition-all" />
+                      <p className="text-[10px] text-muted-foreground mt-1">{t('settings.adminIdDesc')}</p>
+                    </div>
+                    
+                    <div className="flex items-center justify-between pt-2">
+                      <div className="flex items-center space-x-2">
+                        <span className="text-sm text-muted-foreground">{t('settings.status')}:</span>
+                        <span className={botStatus.status === 'connected' ? 'text-accent' : 'text-muted-foreground'}>
+                          {botStatus.status === 'connected' ? t('settings.live') : t('settings.offline')}
+                        </span>
+                      </div>
+                      <button onClick={handleTestBot} disabled={isTesting} className="px-6 py-2 bg-secondary text-foreground hover:bg-secondary/80 rounded-lg border border-border/50 hover:border-primary transition-all">
+                        {isTesting ? t('settings.testing') : t('settings.testBot')}
+                      </button>
+                    </div>
                   </div>
                 </div>
 
-                <div className="bg-card p-6 rounded-lg border border-border/50 space-y-4">
-                  <div>
-                    <label className="block text-sm text-muted-foreground mb-1">{t('settings.botToken')}</label>
-                    <input type="password" value={botToken} onChange={(e) => setBotToken(e.target.value)} placeholder="123456789:ABCDEF..." className="w-full bg-background border border-border rounded-lg p-2 text-foreground focus:border-primary focus:ring-1 focus:ring-primary outline-none transition-all" />
+                {currentUser?.role === 'admin' && (
+                  <div className="space-y-4">
+                    <h3 className="text-lg font-semibold text-foreground">{t('settings.allBots')}</h3>
+                    <div className="space-y-3">
+                      {allBots.map((bot, idx) => (
+                        <div key={idx} className="bg-card p-4 rounded-lg border border-border/50 flex items-center space-x-4">
+                          <div className="p-2 bg-secondary rounded-lg">
+                            <MessageSquare size={20} className="text-muted-foreground" />
+                          </div>
+                          <div>
+                            <div className="text-foreground font-medium">{bot.username}</div>
+                            <div className="text-xs text-muted-foreground">{bot.status}</div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
                   </div>
-                  <div>
-                    <label className="block text-sm text-muted-foreground mb-1">{t('settings.adminId')}</label>
-                    <input type="text" value={adminId} onChange={(e) => setAdminId(e.target.value)} placeholder="123456789" className="w-full bg-background border border-border rounded-lg p-2 text-foreground focus:border-primary focus:ring-1 focus:ring-primary outline-none transition-all" />
-                  </div>
-                  
-                  <div className="pt-4 border-t border-border/50">
-                    <h4 className="text-sm font-medium text-foreground mb-3">{t('settings.proxySettings')}</h4>
-                    <div className="grid grid-cols-2 gap-4">
+                )}
+
+                <div className="space-y-4">
+                  <h3 className="text-lg font-semibold text-foreground">{t('settings.proxy')}</h3>
+                  <div className="bg-card p-6 rounded-lg border border-border/50 space-y-4">
+                    <div className="grid grid-cols-3 gap-4">
                       <div>
-                        <label className="block text-sm text-muted-foreground mb-1">{t('settings.proxyHost')}</label>
-                        <input type="text" value={proxyConfig.host} onChange={(e) => setProxyConfig({ ...proxyConfig, host: e.target.value })} placeholder="1.2.3.4" className="w-full bg-background border border-border rounded-lg p-2 text-foreground focus:border-primary focus:ring-1 focus:ring-primary outline-none transition-all" />
+                        <label className="block text-xs uppercase text-muted-foreground mb-1">{t('settings.protocol')}</label>
+                        <select value={proxyConfig.protocol} onChange={(e) => setProxyConfig({ ...proxyConfig, protocol: e.target.value })} className="w-full bg-background border border-border rounded-lg p-2 text-foreground focus:border-primary focus:ring-1 focus:ring-primary outline-none transition-all">
+                          <option value="HTTP">HTTP</option>
+                          <option value="HTTPS">HTTPS</option>
+                          <option value="SOCKS4">SOCKS4</option>
+                          <option value="SOCKS5">SOCKS5</option>
+                        </select>
+                      </div>
+                      <div className="col-span-1">
+                        <label className="block text-xs uppercase text-muted-foreground mb-1">{t('settings.host')}</label>
+                        <input type="text" value={proxyConfig.host} onChange={(e) => setProxyConfig({ ...proxyConfig, host: e.target.value })} placeholder="127.0.0.1" className="w-full bg-background border border-border rounded-lg p-2 text-foreground focus:border-primary focus:ring-1 focus:ring-primary outline-none transition-all" />
                       </div>
                       <div>
-                        <label className="block text-sm text-muted-foreground mb-1">{t('settings.proxyPort')}</label>
+                        <label className="block text-xs uppercase text-muted-foreground mb-1">{t('settings.port')}</label>
                         <input type="text" value={proxyConfig.port} onChange={(e) => setProxyConfig({ ...proxyConfig, port: e.target.value })} placeholder="8080" className="w-full bg-background border border-border rounded-lg p-2 text-foreground focus:border-primary focus:ring-1 focus:ring-primary outline-none transition-all" />
                       </div>
                     </div>
-                  </div>
-
-                  <div className="flex space-x-4 pt-2">
-                    <button onClick={handleTestBot} disabled={isTesting} className="flex-1 px-4 py-2 bg-secondary text-foreground hover:bg-secondary/80 rounded-lg border border-border/50 hover:border-primary transition-all flex items-center justify-center">
-                      {isTesting ? t('settings.testing') : t('settings.testBot')}
-                    </button>
-                    <button onClick={handleTestProxy} className="flex-1 px-4 py-2 bg-secondary text-foreground hover:bg-secondary/80 rounded-lg border border-border/50 hover:border-primary transition-all">
-                      {t('settings.testProxy')}
-                    </button>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-xs uppercase text-muted-foreground mb-1">{t('settings.usernameOptional')}</label>
+                        <div className="relative">
+                          <User size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+                          <input type="text" value={proxyConfig.username} onChange={(e) => setProxyConfig({ ...proxyConfig, username: e.target.value })} placeholder="user" className="w-full bg-background border border-border rounded-lg pl-9 p-2 text-foreground focus:border-primary focus:ring-1 focus:ring-primary outline-none transition-all" />
+                        </div>
+                      </div>
+                      <div>
+                        <label className="block text-xs uppercase text-muted-foreground mb-1">{t('settings.passwordOptional')}</label>
+                        <div className="relative">
+                          <Lock size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+                          <input type="password" value={proxyConfig.password} onChange={(e) => setProxyConfig({ ...proxyConfig, password: e.target.value })} placeholder="••••" className="w-full bg-background border border-border rounded-lg pl-9 p-2 text-foreground focus:border-primary focus:ring-1 focus:ring-primary outline-none transition-all" />
+                        </div>
+                      </div>
+                    </div>
+                    <div className="flex justify-end pt-2">
+                      <button onClick={handleTestProxy} className="px-6 py-2 bg-secondary text-foreground hover:bg-secondary/80 rounded-lg border border-border/50 hover:border-primary transition-all">
+                        {t('settings.testProxy')}
+                      </button>
+                    </div>
                   </div>
                 </div>
               </section>

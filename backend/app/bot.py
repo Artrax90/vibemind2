@@ -259,20 +259,27 @@ async def parse_commands_llm(user_id: int, text: str, notes: list[dict] = None) 
                 kwargs = {"api_key": k}
                 if base_url:
                     kwargs["base_url"] = base_url
+                
+                http_client = None
                 if proxy_url:
                     import httpx
-                    kwargs["http_client"] = httpx.AsyncClient(proxy=proxy_url)
+                    http_client = httpx.AsyncClient(proxy=proxy_url)
+                    kwargs["http_client"] = http_client
                 
-                client = AsyncOpenAI(**kwargs)
-                response = await client.chat.completions.create(
-                    model=m,
-                    messages=[
-                        {"role": "system", "content": SYSTEM_PROMPT},
-                        {"role": "user", "content": user_content}
-                    ],
-                    temperature=0.0
-                )
-                return response.choices[0].message.content.strip()
+                try:
+                    async with AsyncOpenAI(**kwargs) as client:
+                        response = await client.chat.completions.create(
+                            model=m,
+                            messages=[
+                                {"role": "system", "content": SYSTEM_PROMPT},
+                                {"role": "user", "content": user_content}
+                            ],
+                            temperature=0.0
+                        )
+                        return response.choices[0].message.content.strip()
+                finally:
+                    if http_client:
+                        await http_client.aclose()
 
         try:
             final_proxy_url = None

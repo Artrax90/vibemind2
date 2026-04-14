@@ -140,8 +140,18 @@ export default function SyncManager({ onSyncComplete }: SyncManagerProps) {
 
     performSync();
 
+    const handleForceSync = () => {
+      log('Force sync requested');
+      performSync();
+    };
+
+    window.addEventListener('force-sync', handleForceSync);
+
     const interval = setInterval(performSync, 5 * 60 * 1000);
-    return () => clearInterval(interval);
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener('force-sync', handleForceSync);
+    };
   }, [isElectron, performSync]);
 
   return null;

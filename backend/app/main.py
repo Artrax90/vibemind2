@@ -1,6 +1,7 @@
 from fastapi import FastAPI, Depends, HTTPException, status, File, UploadFile, BackgroundTasks
 from fastapi.security import OAuth2PasswordBearer
 from fastapi.staticfiles import StaticFiles
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, EmailStr
 from sqlalchemy.orm import Session
@@ -86,6 +87,15 @@ except Exception as e:
     logger.warning(f"Migration error: {e}")
 
 app = FastAPI(title="VibeMind Backend")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="api/auth/login")
 
 starting_up = False
@@ -788,14 +798,14 @@ async def test_integration(data: dict, current_user: User = Depends(get_current_
             if base_url:
                 kwargs["base_url"] = base_url
             
-            client = AsyncOpenAI(**kwargs)
-            # Minimal request to test connection
-            await client.chat.completions.create(
-                model=model_name or "gpt-4o-mini",
-                messages=[{"role": "user", "content": "ping"}],
-                max_tokens=1
-            )
-            return {"status": "success", "message": "Connection successful"}
+            async with AsyncOpenAI(**kwargs) as client:
+                # Minimal request to test connection
+                await client.chat.completions.create(
+                    model=model_name or "gpt-4o-mini",
+                    messages=[{"role": "user", "content": "ping"}],
+                    max_tokens=1
+                )
+                return {"status": "success", "message": "Connection successful"}
         
         elif provider == "gemini":
             if not api_key:
@@ -958,13 +968,13 @@ async def chat_with_notes(req: ChatRequest, db: Session = Depends(get_db), curre
             base_url = config.base_url
             if config.llm_provider == "openrouter" and not base_url:
                 base_url = "https://openrouter.ai/api/v1"
-            client = AsyncOpenAI(api_key=config.api_key or "dummy", base_url=base_url)
-            resp = await client.chat.completions.create(
-                model=config.model_name or "gpt-4o-mini",
-                messages=[{"role": "user", "content": expansion_prompt}],
-                max_tokens=50
-            )
-            expanded_text = resp.choices[0].message.content
+            async with AsyncOpenAI(api_key=config.api_key or "dummy", base_url=base_url) as client:
+                resp = await client.chat.completions.create(
+                    model=config.model_name or "gpt-4o-mini",
+                    messages=[{"role": "user", "content": expansion_prompt}],
+                    max_tokens=50
+                )
+                expanded_text = resp.choices[0].message.content
         elif config.llm_provider == "gemini":
             api_key = config.api_key
             model = config.model_name or "gemini-1.5-flash"
@@ -1068,12 +1078,12 @@ async def chat_with_notes(req: ChatRequest, db: Session = Depends(get_db), curre
             base_url = config.base_url
             if config.llm_provider == "openrouter" and not base_url:
                 base_url = "https://openrouter.ai/api/v1"
-            client = AsyncOpenAI(api_key=config.api_key or "dummy", base_url=base_url)
-            response = await client.chat.completions.create(
-                model=config.model_name or "gpt-4o-mini",
-                messages=[{"role": "user", "content": prompt}]
-            )
-            answer = response.choices[0].message.content
+            async with AsyncOpenAI(api_key=config.api_key or "dummy", base_url=base_url) as client:
+                response = await client.chat.completions.create(
+                    model=config.model_name or "gpt-4o-mini",
+                    messages=[{"role": "user", "content": prompt}]
+                )
+                answer = response.choices[0].message.content
         elif config.llm_provider == "gemini":
             api_key = config.api_key
             model = config.model_name or "gemini-1.5-flash"
@@ -1144,12 +1154,12 @@ async def summarize_content(req: dict, db: Session = Depends(get_db), current_us
             base_url = config.base_url
             if config.llm_provider == "openrouter" and not base_url:
                 base_url = "https://openrouter.ai/api/v1"
-            client = AsyncOpenAI(api_key=config.api_key or "dummy", base_url=base_url)
-            response = await client.chat.completions.create(
-                model=config.model_name or "gpt-4o-mini",
-                messages=[{"role": "user", "content": prompt}]
-            )
-            summary = response.choices[0].message.content
+            async with AsyncOpenAI(api_key=config.api_key or "dummy", base_url=base_url) as client:
+                response = await client.chat.completions.create(
+                    model=config.model_name or "gpt-4o-mini",
+                    messages=[{"role": "user", "content": prompt}]
+                )
+                summary = response.choices[0].message.content
         elif config.llm_provider == "gemini":
             api_key = config.api_key
             model = config.model_name or "gemini-1.5-flash"
