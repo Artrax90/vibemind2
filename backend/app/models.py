@@ -35,6 +35,7 @@ class Folder(Base):
     name = Column(String, nullable=False)
     parentId = Column(String, nullable=True)
     user_id = Column(Integer, index=True)
+    updated_at = Column(String, nullable=True)
 
 class Note(Base):
     __tablename__ = "notes"
@@ -45,6 +46,7 @@ class Note(Base):
     user_id = Column(Integer, index=True)
     embedding = Column(Vector(384), nullable=True)
     isPinned = Column(Integer, default=0)
+    updated_at = Column(String, nullable=True)
 
 class Share(Base):
     __tablename__ = "shares"

@@ -82,6 +82,16 @@ try:
                 else:
                     conn.execute(text('ALTER TABLE notes ADD COLUMN "isPinned" INTEGER DEFAULT 0;'))
                     logger.info("Added isPinned to notes")
+            if 'updated_at' not in actual_columns:
+                conn.execute(text('ALTER TABLE notes ADD COLUMN updated_at TEXT;'))
+                logger.info("Added updated_at to notes")
+            conn.commit()
+    if 'folders' in inspector.get_table_names():
+        actual_columns = [c['name'] for c in inspector.get_columns('folders')]
+        with engine.connect() as conn:
+            if 'updated_at' not in actual_columns:
+                conn.execute(text('ALTER TABLE folders ADD COLUMN updated_at TEXT;'))
+                logger.info("Added updated_at to folders")
             conn.commit()
 except Exception as e:
     logger.warning(f"Migration error: {e}")
@@ -197,6 +207,7 @@ class NoteCreate(BaseModel):
     content: str | None = None
     folderId: str | None = None
     isPinned: bool | None = False
+    updated_at: str | None = None
 
 class NoteUpdate(BaseModel):
     id: str | None = None
@@ -204,15 +215,18 @@ class NoteUpdate(BaseModel):
     content: str | None = None
     folderId: str | None = None
     isPinned: bool | None = None
+    updated_at: str | None = None
 
 class FolderCreate(BaseModel):
     id: str
     name: str
     parentId: str | None = None
+    updated_at: str | None = None
 
 class FolderUpdate(BaseModel):
     name: str | None = None
     parentId: str | None = None
+    updated_at: str | None = None
 
 class ShareCreate(BaseModel):
     target_username: str | None = None
@@ -292,7 +306,8 @@ async def get_notes(db: Session = Depends(get_db), current_user: User = Depends(
         res.append({
             "id": n.id, "title": n.title, "content": n.content, "folderId": n.folderId,
             "isPinned": bool(n.isPinned), "isShared": is_shared, "ownerUsername": owner_name, 
-            "permission": permission, "isSharedByMe": is_shared_by_me
+            "permission": permission, "isSharedByMe": is_shared_by_me,
+            "updated_at": n.updated_at
         })
     return res
 
@@ -314,8 +329,17 @@ async def create_note(note: NoteCreate, background_tasks: BackgroundTasks, db: S
         db_note.content = note.content
         db_note.folderId = note.folderId
         db_note.isPinned = 1 if note.isPinned else 0
+        db_note.updated_at = note.updated_at or datetime.utcnow().isoformat()
     else:
-        db_note = Note(id=note.id, title=note.title, content=note.content, folderId=note.folderId, user_id=current_user.id, isPinned=1 if note.isPinned else 0)
+        db_note = Note(
+            id=note.id, 
+            title=note.title, 
+            content=note.content, 
+            folderId=note.folderId, 
+            user_id=current_user.id, 
+            isPinned=1 if note.isPinned else 0,
+            updated_at=note.updated_at or datetime.utcnow().isoformat()
+        )
         db.add(db_note)
     db.commit()
     
@@ -411,6 +435,7 @@ async def patch_note(note_id: str, update: NoteUpdate, background_tasks: Backgro
     if update.content is not None: n.content = update.content
     if update.folderId is not None: n.folderId = update.folderId if update.folderId else None
     if update.isPinned is not None: n.isPinned = 1 if update.isPinned else 0
+    n.updated_at = update.updated_at or datetime.utcnow().isoformat()
     
     db.commit()
 
@@ -517,7 +542,8 @@ async def get_folders(db: Session = Depends(get_db), current_user: User = Depend
         res.append({
             "id": f.id, "name": f.name, "parentId": f.parentId,
             "isShared": is_shared, "ownerUsername": owner_name, 
-            "permission": permission, "isSharedByMe": is_shared_by_me
+            "permission": permission, "isSharedByMe": is_shared_by_me,
+            "updated_at": f.updated_at
         })
     return res
 
@@ -529,19 +555,20 @@ async def create_folder(f: FolderCreate, db: Session = Depends(get_db), current_
         if existing.user_id == current_user.id:
             existing.name = f.name
             existing.parentId = f.parentId
+            existing.updated_at = f.updated_at or datetime.utcnow().isoformat()
             db.commit()
             return f
         else:
             # ID collision with another user's folder - should be rare with UUIDs but possible with frontend timestamps
             # Generate a new ID if collision
             new_id = f"f{int(datetime.now().timestamp() * 1000)}"
-            db_f = Folder(id=new_id, name=f.name, parentId=f.parentId, user_id=current_user.id)
+            db_f = Folder(id=new_id, name=f.name, parentId=f.parentId, user_id=current_user.id, updated_at=f.updated_at or datetime.utcnow().isoformat())
             db.add(db_f)
             db.commit()
             f.id = new_id
             return f
             
-    db_f = Folder(id=f.id, name=f.name, parentId=f.parentId, user_id=current_user.id)
+    db_f = Folder(id=f.id, name=f.name, parentId=f.parentId, user_id=current_user.id, updated_at=f.updated_at or datetime.utcnow().isoformat())
     db.add(db_f)
     db.commit()
     return f
@@ -552,6 +579,7 @@ async def patch_folder(id: str, u: FolderUpdate, db: Session = Depends(get_db), 
     if not f: raise HTTPException(status_code=404)
     if u.name is not None: f.name = u.name
     if u.parentId is not None: f.parentId = u.parentId if u.parentId else None
+    f.updated_at = u.updated_at or datetime.utcnow().isoformat()
     db.commit()
     return {"status": "success"}
 

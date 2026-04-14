@@ -18,12 +18,19 @@ export const SyncProvider = ({ children }: { children: ReactNode }) => {
   const [lastSync, setLastSync] = useState<Date | null>(null);
   const [progress, setProgressState] = useState({ total: 0, current: 0 });
 
-  const setProgress = (total: number, current: number) => {
+  const setProgress = React.useCallback((total: number, current: number) => {
     setProgressState({ total, current });
-  };
+  }, []);
 
   return (
-    <SyncContext.Provider value={{ status, setStatus, lastSync, setLastSync, progress, setProgress }}>
+    <SyncContext.Provider value={{ 
+      status, 
+      setStatus, 
+      lastSync, 
+      setLastSync: React.useCallback((date: Date) => setLastSync(date), []), 
+      progress, 
+      setProgress 
+    }}>
       {children}
     </SyncContext.Provider>
   );
