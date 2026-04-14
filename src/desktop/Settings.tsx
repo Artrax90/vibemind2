@@ -231,8 +231,43 @@ export default function Settings({ onClose, theme, setTheme }: SettingsProps) {
       }
       
       if (!url) {
-        alert(t('settings.enterUrl') || 'Please enter a server URL first.');
-        setTestingProviderId(null);
+        // Direct test if no server URL
+        try {
+          if (provider.provider === 'openai' || provider.provider === 'openrouter' || provider.provider === 'ollama') {
+            const baseUrl = provider.baseUrl || (provider.provider === 'openai' ? 'https://api.openai.com/v1' : 'https://openrouter.ai/api/v1');
+            const res = await fetch(`${baseUrl}/chat/completions`, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${provider.apiKey}`
+              },
+              body: JSON.stringify({
+                model: provider.modelName,
+                messages: [{ role: 'user', content: 'ping' }],
+                max_tokens: 1
+              })
+            });
+            if (res.ok) {
+              setProviders(providers.map(p => p.id === provider.id ? { ...p, status: 'connected' } : p));
+              alert(t('settings.connSuccess'));
+              return;
+            }
+          } else if (provider.provider === 'gemini') {
+            const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${provider.modelName}:generateContent?key=${provider.apiKey}`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ contents: [{ parts: [{ text: 'ping' }] }] })
+            });
+            if (res.ok) {
+              setProviders(providers.map(p => p.id === provider.id ? { ...p, status: 'connected' } : p));
+              alert(t('settings.connSuccess'));
+              return;
+            }
+          }
+        } catch (e) {}
+        
+        setProviders(providers.map(p => p.id === provider.id ? { ...p, status: 'error' } : p));
+        alert(t('settings.connFailed'));
         return;
       }
 
@@ -247,9 +282,6 @@ export default function Settings({ onClose, theme, setTheme }: SettingsProps) {
       if (loginRes.ok) {
         const data = await loginRes.json();
         token = data.access_token;
-      } else {
-        const data = await loginRes.json().catch(() => ({}));
-        console.warn('Auth failed for test, proceeding without token:', data.detail);
       }
 
       const response = await fetch(`${url}/api/integrations/test`, {
@@ -294,8 +326,19 @@ export default function Settings({ onClose, theme, setTheme }: SettingsProps) {
       }
       
       if (!url) {
-        alert(t('settings.enterUrl'));
-        setIsTesting(false);
+        // Direct test for Telegram Bot
+        try {
+          const res = await fetch(`https://api.telegram.org/bot${botToken}/getMe`);
+          if (res.ok) {
+            const data = await res.json();
+            setBotStatus({ status: 'connected' });
+            alert(`✅ Connected as @${data.result.username}`);
+            return;
+          }
+        } catch (e) {}
+        
+        setBotStatus({ status: 'error' });
+        alert(t('settings.connFailed'));
         return;
       }
 
@@ -351,7 +394,8 @@ export default function Settings({ onClose, theme, setTheme }: SettingsProps) {
       }
       
       if (!url) {
-        alert(t('settings.enterUrl'));
+        // Cannot test proxy directly from browser easily due to CORS/Protocol limits
+        alert('Proxy testing requires a server connection.');
         setIsTesting(false);
         return;
       }
