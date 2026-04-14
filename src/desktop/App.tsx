@@ -71,8 +71,8 @@ export default function App() {
   }, []);
 
   const handleLogout = async () => {
-    if (confirm('Are you sure you want to logout? This will clear your sync settings.')) {
-      await api.updateSettings({ server_url: '', username: '', password: '' });
+    if (confirm('Are you sure you want to logout? This will clear all local data and sync settings.')) {
+      await api.clearLocalData();
       setNotes([]);
       setFolders([]);
       setActiveNoteId(null);
@@ -117,7 +117,11 @@ export default function App() {
 
   const handleSyncComplete = useCallback(() => {
     loadData();
-  }, []);
+    // Force editor refresh if active note was updated
+    if (activeNoteId) {
+      setActiveNoteId(prev => prev);
+    }
+  }, [loadData, activeNoteId]);
 
   const handleNoteSelect = (id: string, mode: 'edit' | 'preview' = 'preview') => {
     setActiveNoteId(id);

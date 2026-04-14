@@ -59,7 +59,8 @@ export default function App() {
   const [shareResource, setShareResource] = useState<{ id: string, type: 'note' | 'folder', name: string } | null>(null);
 
   // Check for shared note in URL
-  const sharedNoteId = new URLSearchParams(window.location.search).get('share');
+  const sharedNoteId = new URLSearchParams(window.location.search).get('share') || 
+                       window.location.pathname.match(/\/shared\/(.+)/)?.[1];
 
   const handleSetTheme = (newTheme: 'light' | 'dark') => {
     setTheme(newTheme);

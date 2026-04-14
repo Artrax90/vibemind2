@@ -341,5 +341,11 @@ export const api = {
     });
     if (!res.ok) throw new Error('Failed to delete share');
     return true;
+  },
+
+  async clearLocalData() {
+    if (isElectron) {
+      await (window as any).electronAPI.clearData();
+    }
   }
 };

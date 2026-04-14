@@ -10,6 +10,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   searchNotes: (query) => ipcRenderer.invoke('db-search-notes', query),
   getSyncConfig: () => ipcRenderer.invoke('get-sync-config'),
   saveSyncConfig: (config) => ipcRenderer.invoke('save-sync-config', config),
+  clearData: () => ipcRenderer.invoke('db-clear-data'),
   quitApp: () => ipcRenderer.invoke('quit-app'),
   isElectron: true
 });

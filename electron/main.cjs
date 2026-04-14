@@ -18,6 +18,10 @@ function initDb() {
       id TEXT PRIMARY KEY,
       name TEXT NOT NULL,
       parentId TEXT,
+      permission TEXT,
+      isShared INTEGER DEFAULT 0,
+      isSharedByMe INTEGER DEFAULT 0,
+      ownerUsername TEXT,
       is_dirty INTEGER DEFAULT 0,
       updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
     );
@@ -28,6 +32,10 @@ function initDb() {
       content TEXT,
       folderId TEXT,
       isPinned INTEGER DEFAULT 0,
+      permission TEXT,
+      isShared INTEGER DEFAULT 0,
+      isSharedByMe INTEGER DEFAULT 0,
+      ownerUsername TEXT,
       is_dirty INTEGER DEFAULT 0,
       updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       FOREIGN KEY(folderId) REFERENCES folders(id)
@@ -38,10 +46,39 @@ function initDb() {
       value TEXT
     );
   `);
+
+  // Migration: Add missing columns if they don't exist
+  try {
+    const noteColumns = db.prepare("PRAGMA table_info(notes)").all();
+    if (!noteColumns.find(c => c.name === 'permission')) {
+      db.exec("ALTER TABLE notes ADD COLUMN permission TEXT");
+      db.exec("ALTER TABLE notes ADD COLUMN isShared INTEGER DEFAULT 0");
+      db.exec("ALTER TABLE notes ADD COLUMN isSharedByMe INTEGER DEFAULT 0");
+      db.exec("ALTER TABLE notes ADD COLUMN ownerUsername TEXT");
+    }
+    const folderColumns = db.prepare("PRAGMA table_info(folders)").all();
+    if (!folderColumns.find(c => c.name === 'permission')) {
+      db.exec("ALTER TABLE folders ADD COLUMN permission TEXT");
+      db.exec("ALTER TABLE folders ADD COLUMN isShared INTEGER DEFAULT 0");
+      db.exec("ALTER TABLE folders ADD COLUMN isSharedByMe INTEGER DEFAULT 0");
+      db.exec("ALTER TABLE folders ADD COLUMN ownerUsername TEXT");
+    }
+  } catch (e) {
+    console.error("Migration failed", e);
+  }
 }
 
 function createWindow() {
-  const iconSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><text y=".9em" font-size="90">✨</text></svg>`;
+  const iconSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+    <rect width="100" height="100" rx="20" fill="#1e1e2d"/>
+    <defs>
+      <linearGradient id="grad" x1="0%" y1="0%" x2="0%" y2="100%">
+        <stop offset="0%" style="stop-color:#a5f3fc;stop-opacity:1" />
+        <stop offset="100%" style="stop-color:#38bdf8;stop-opacity:1" />
+      </linearGradient>
+    </defs>
+    <text x="50%" y="65%" font-family="Arial, sans-serif" font-weight="bold" font-size="45" fill="url(#grad)" text-anchor="middle">VM</text>
+  </svg>`;
   const iconDataUrl = `data:image/svg+xml;base64,${Buffer.from(iconSvg).toString('base64')}`;
   const icon = nativeImage.createFromDataURL(iconDataUrl);
 
@@ -95,10 +132,22 @@ ipcMain.handle('db-save-note', async (event, note) => {
   const updatedAt = note.updated_at || new Date().toISOString();
   
   const stmt = db.prepare(`
-    INSERT OR REPLACE INTO notes (id, title, content, folderId, isPinned, is_dirty, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?)
+    INSERT OR REPLACE INTO notes (id, title, content, folderId, isPinned, permission, isShared, isSharedByMe, ownerUsername, is_dirty, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
-  stmt.run(note.id, note.title, note.content, note.folderId, note.isPinned ? 1 : 0, isDirty, updatedAt);
+  stmt.run(
+    note.id, 
+    note.title, 
+    note.content, 
+    note.folderId, 
+    note.isPinned ? 1 : 0, 
+    note.permission || 'owner',
+    note.isShared ? 1 : 0,
+    note.isSharedByMe ? 1 : 0,
+    note.ownerUsername || null,
+    isDirty, 
+    updatedAt
+  );
   return { success: true };
 });
 
@@ -112,15 +161,32 @@ ipcMain.handle('db-save-folder', async (event, folder) => {
   const updatedAt = folder.updated_at || new Date().toISOString();
 
   const stmt = db.prepare(`
-    INSERT OR REPLACE INTO folders (id, name, parentId, is_dirty, updated_at)
-    VALUES (?, ?, ?, ?, ?)
+    INSERT OR REPLACE INTO folders (id, name, parentId, permission, isShared, isSharedByMe, ownerUsername, is_dirty, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
-  stmt.run(folder.id, folder.name, folder.parentId, isDirty, updatedAt);
+  stmt.run(
+    folder.id, 
+    folder.name, 
+    folder.parentId, 
+    folder.permission || 'owner',
+    folder.isShared ? 1 : 0,
+    folder.isSharedByMe ? 1 : 0,
+    folder.ownerUsername || null,
+    isDirty, 
+    updatedAt
+  );
   return { success: true };
 });
 
 ipcMain.handle('db-delete-folder', async (event, id) => {
   db.prepare('DELETE FROM folders WHERE id = ?').run(id);
+  return { success: true };
+});
+
+ipcMain.handle('db-clear-data', async () => {
+  db.prepare('DELETE FROM notes').run();
+  db.prepare('DELETE FROM folders').run();
+  db.prepare('DELETE FROM sync_config').run();
   return { success: true };
 });
 

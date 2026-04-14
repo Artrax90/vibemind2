@@ -158,6 +158,10 @@ export default function SyncManager({ onSyncComplete }: SyncManagerProps) {
             id: remoteFolder.id,
             name: remoteFolder.name,
             parentId: remoteFolder.parentId,
+            permission: remoteFolder.permission,
+            isShared: remoteFolder.isShared ? 1 : 0,
+            isSharedByMe: remoteFolder.isSharedByMe ? 1 : 0,
+            ownerUsername: remoteFolder.ownerUsername,
             is_dirty: 0,
             updated_at: remoteFolder.updated_at || new Date().toISOString()
           });
@@ -182,6 +186,10 @@ export default function SyncManager({ onSyncComplete }: SyncManagerProps) {
             content: remoteNote.content,
             folderId: remoteNote.folderId,
             isPinned: remoteNote.isPinned ? 1 : 0,
+            permission: remoteNote.permission,
+            isShared: remoteNote.isShared ? 1 : 0,
+            isSharedByMe: remoteNote.isSharedByMe ? 1 : 0,
+            ownerUsername: remoteNote.ownerUsername,
             is_dirty: 0,
             updated_at: remoteNote.updated_at || new Date().toISOString()
           });
