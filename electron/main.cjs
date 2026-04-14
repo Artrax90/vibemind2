@@ -71,7 +71,7 @@ function initDb() {
 function createWindow() {
   const iconSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
     <rect width="100" height="100" rx="20" fill="#1e1e2d"/>
-    <text x="50%" y="65%" font-family="Arial, sans-serif" font-weight="bold" font-size="50" fill="#38bdf8" text-anchor="middle">VM</text>
+    <text x="50%" y="72%" font-family="Arial, sans-serif" font-weight="900" font-size="80" fill="#38bdf8" text-anchor="middle">V</text>
   </svg>`;
   const iconDataUrl = `data:image/svg+xml;base64,${Buffer.from(iconSvg).toString('base64')}`;
   const icon = nativeImage.createFromDataURL(iconDataUrl);

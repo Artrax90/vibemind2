@@ -231,7 +231,7 @@ export default function Settings({ onClose, theme, setTheme }: SettingsProps) {
       }
       
       if (!url) {
-        alert('Please enter a server URL first.');
+        alert(t('settings.enterUrl') || 'Please enter a server URL first.');
         setTestingProviderId(null);
         return;
       }
@@ -294,7 +294,7 @@ export default function Settings({ onClose, theme, setTheme }: SettingsProps) {
       }
       
       if (!url) {
-        alert('Please enter a server URL first.');
+        alert(t('settings.enterUrl'));
         setIsTesting(false);
         return;
       }
@@ -351,7 +351,7 @@ export default function Settings({ onClose, theme, setTheme }: SettingsProps) {
       }
       
       if (!url) {
-        alert('Please enter a server URL first.');
+        alert(t('settings.enterUrl'));
         setIsTesting(false);
         return;
       }
@@ -492,20 +492,34 @@ export default function Settings({ onClose, theme, setTheme }: SettingsProps) {
                           if (url && !url.startsWith('http://') && !url.startsWith('https://')) {
                             url = 'http://' + url;
                           }
-                          log(`Testing connection to ${url}...`);
+                          log(`${t('settings.checkServer')} ${url}...`);
+                          
+                          // 1. Try health check first (no auth)
+                          try {
+                            const healthRes = await fetch(`${url}/api/health`, { method: 'GET' }).catch(() => null);
+                            if (healthRes && healthRes.ok) {
+                              log(t('settings.serverReachable'));
+                            }
+                          } catch (e) {}
+
+                          // 2. Try login
                           const res = await fetch(`${url}/api/auth/login`, {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
                             body: JSON.stringify({ username: syncConfig.username, password: syncConfig.password }),
                           });
+                          
                           if (res.ok) {
                             setTestResult('success');
                             log('Connection successful');
                           } else {
                             const data = await res.json().catch(() => ({}));
                             let err = `${res.status} ${data.detail || ''}`;
+                            if (res.status === 401 || res.status === 403) {
+                              err = t('settings.loginFailed');
+                            }
                             if (res.status === 502) {
-                              err += ' (Bad Gateway - check if backend is running or proxy settings)';
+                              err += ' (Bad Gateway)';
                             }
                             setTestResult(`error: ${err}`);
                             log(`Connection failed: ${err}`);
@@ -753,17 +767,17 @@ export default function Settings({ onClose, theme, setTheme }: SettingsProps) {
                   <table className="w-full text-left text-sm">
                     <thead className="bg-secondary/50 text-muted-foreground border-b border-border/50">
                       <tr>
-                        <th className="px-4 py-3 font-medium">Username</th>
-                        <th className="px-4 py-3 font-medium">Email</th>
-                        <th className="px-4 py-3 font-medium">Role</th>
-                        <th className="px-4 py-3 font-medium text-right">Actions</th>
+                        <th className="px-4 py-3 font-medium">{t('settings.username')}</th>
+                        <th className="px-4 py-3 font-medium">{t('settings.email')}</th>
+                        <th className="px-4 py-3 font-medium">{t('settings.role')}</th>
+                        <th className="px-4 py-3 font-medium text-right">{t('settings.actions')}</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-border/50">
                       {isLoadingUsers ? (
-                        <tr><td colSpan={4} className="px-4 py-8 text-center text-muted-foreground">Loading users...</td></tr>
+                        <tr><td colSpan={4} className="px-4 py-8 text-center text-muted-foreground">{t('settings.loadingUsers')}</td></tr>
                       ) : users.length === 0 ? (
-                        <tr><td colSpan={4} className="px-4 py-8 text-center text-muted-foreground">No users found.</td></tr>
+                        <tr><td colSpan={4} className="px-4 py-8 text-center text-muted-foreground">{t('settings.noUsersFound')}</td></tr>
                       ) : (
                         users.map(user => (
                           <tr key={user.id} className="hover:bg-secondary/30 transition-colors">

@@ -360,7 +360,7 @@ export default function Sidebar({ notes, folders, activeNoteId, isLoading = fals
                     <stop offset="100%" style={{ stopColor: '#38bdf8', stopOpacity: 1 }} />
                   </linearGradient>
                 </defs>
-                <text x="50%" y="65%" fontFamily="Arial, sans-serif" fontWeight="bold" fontSize="45" fill="url(#sidebar-grad)" textAnchor="middle">VM</text>
+                <text x="50%" y="72%" fontFamily="Arial, sans-serif" fontWeight="900" fontSize="80" fill="url(#sidebar-grad)" textAnchor="middle">V</text>
               </svg>
             </div>
             <h1 className="text-xl font-bold text-foreground tracking-tight">VibeMind</h1>
