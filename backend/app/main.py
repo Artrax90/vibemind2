@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Depends, HTTPException, status, File, UploadFile
+from fastapi import FastAPI, Depends, HTTPException, status, File, UploadFile, BackgroundTasks
 from fastapi.security import OAuth2PasswordBearer
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
@@ -49,7 +49,13 @@ ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24
 pwd_context = CryptContext(schemes=["pbkdf2_sha256"], deprecated="auto")
 
 SQLALCHEMY_DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:////app/storage/vibemind.db") 
-engine = create_engine(SQLALCHEMY_DATABASE_URL)
+SQL_ARGS = {"check_same_thread": False} if "sqlite" in SQLALCHEMY_DATABASE_URL else {}
+engine = create_engine(
+    SQLALCHEMY_DATABASE_URL, 
+    connect_args=SQL_ARGS,
+    pool_size=20,
+    max_overflow=10
+)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 # Migration and Table Creation
@@ -281,9 +287,7 @@ async def get_notes(db: Session = Depends(get_db), current_user: User = Depends(
     return res
 
 @app.post("/api/notes")
-async def create_note(note: NoteCreate, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
-    from .utils.embeddings import embedding_manager
-    vector = embedding_manager.get_vector(f"{note.title}\n{note.content or ''}")
+async def create_note(note: NoteCreate, background_tasks: BackgroundTasks, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     db_note = db.query(Note).filter(Note.id == note.id).first()
     if db_note:
         if db_note.user_id != current_user.id:
@@ -300,11 +304,13 @@ async def create_note(note: NoteCreate, db: Session = Depends(get_db), current_u
         db_note.content = note.content
         db_note.folderId = note.folderId
         db_note.isPinned = 1 if note.isPinned else 0
-        db_note.embedding = vector
     else:
-        db_note = Note(id=note.id, title=note.title, content=note.content, folderId=note.folderId, user_id=current_user.id, isPinned=1 if note.isPinned else 0, embedding=vector)
+        db_note = Note(id=note.id, title=note.title, content=note.content, folderId=note.folderId, user_id=current_user.id, isPinned=1 if note.isPinned else 0)
         db.add(db_note)
     db.commit()
+    
+    background_tasks.add_task(update_note_embedding, note.id, f"{note.title}\n{note.content or ''}")
+    
     return note
 
 @app.post("/api/notes/import")
@@ -377,8 +383,7 @@ async def get_note(note_id: str, db: Session = Depends(get_db), current_user: Us
     }
 
 @app.patch("/api/notes/{note_id}")
-async def patch_note(note_id: str, update: NoteUpdate, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
-    from .utils.embeddings import embedding_manager
+async def patch_note(note_id: str, update: NoteUpdate, background_tasks: BackgroundTasks, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     n = db.query(Note).filter(Note.id == note_id).first()
     if not n: raise HTTPException(status_code=404)
     if n.user_id != current_user.id:
@@ -397,10 +402,23 @@ async def patch_note(note_id: str, update: NoteUpdate, db: Session = Depends(get
     if update.folderId is not None: n.folderId = update.folderId if update.folderId else None
     if update.isPinned is not None: n.isPinned = 1 if update.isPinned else 0
     
-    if update.title is not None or update.content is not None:
-        n.embedding = embedding_manager.get_vector(f"{n.title}\n{n.content or ''}")
     db.commit()
+
+    if update.title is not None or update.content is not None:
+        background_tasks.add_task(update_note_embedding, note_id, f"{n.title}\n{n.content or ''}")
+    
     return {"status": "success"}
+
+def update_note_embedding(note_id: str, text: str):
+    from .utils.embeddings import embedding_manager
+    db = SessionLocal()
+    try:
+        n = db.query(Note).filter(Note.id == note_id).first()
+        if n:
+            n.embedding = embedding_manager.get_vector(text)
+            db.commit()
+    finally:
+        db.close()
 
 @app.delete("/api/notes/{note_id}")
 async def delete_note(note_id: str, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):

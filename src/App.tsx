@@ -18,21 +18,22 @@ export type Note = {
   title: string;
   content: string;
   folderId?: string;
+  updatedAt?: string;
+  permission?: 'owner' | 'edit' | 'read';
+  isPinned?: boolean;
   isShared?: boolean;
   isSharedByMe?: boolean;
   ownerUsername?: string;
-  permission?: 'read' | 'write' | 'owner';
-  isPinned?: boolean;
 };
 
 export type Folder = {
   id: string;
   name: string;
   parentId?: string;
+  permission?: 'owner' | 'edit' | 'read';
   isShared?: boolean;
   isSharedByMe?: boolean;
   ownerUsername?: string;
-  permission?: 'read' | 'write' | 'owner';
 };
 
 export default function App() {
@@ -40,41 +41,29 @@ export default function App() {
   const [token, setToken] = useState<string | null>(localStorage.getItem('access_token'));
   const [notes, setNotes] = useState<Note[]>([]);
   const [folders, setFolders] = useState<Folder[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  
-  const [activeNoteId, setActiveNoteId] = useState<string | null>('1');
-  const [showSettings, setShowSettings] = useState(false);
+  const [activeNoteId, setActiveNoteId] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<'edit' | 'preview' | 'graph'>('preview');
+  const [showSettings, setShowSettings] = useState(false);
   const [showSearch, setShowSearch] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
-  
-  // Mobile & Focus Mode States
-  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isFocusMode, setIsFocusMode] = useState(false);
-  
-  // Share Modal State
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [theme, setTheme] = useState<'light' | 'dark'>(() => {
+    if (typeof window !== 'undefined') {
+      return localStorage.getItem('theme') as 'light' | 'dark' || 'dark';
+    }
+    return 'dark';
+  });
+  const [isLoading, setIsLoading] = useState(false);
   const [shareModalOpen, setShareModalOpen] = useState(false);
   const [shareResource, setShareResource] = useState<{ id: string, type: 'note' | 'folder', name: string } | null>(null);
-  
-  // Theme State
-  const [theme, setTheme] = useState<'dark' | 'light'>(() => {
-    const saved = localStorage.getItem('app_theme');
-    return (saved as 'dark' | 'light') || 'dark';
-  });
 
-  const [sharedNoteId, setSharedNoteId] = useState<string | null>(null);
+  // Check for shared note in URL
+  const sharedNoteId = new URLSearchParams(window.location.search).get('share');
 
-  useEffect(() => {
-    const path = window.location.pathname;
-    if (path.startsWith('/shared/')) {
-      const id = path.split('/')[2];
-      if (id) setSharedNoteId(id);
-    }
-  }, []);
-
-  const handleSetTheme = (newTheme: 'dark' | 'light') => {
+  const handleSetTheme = (newTheme: 'light' | 'dark') => {
     setTheme(newTheme);
-    localStorage.setItem('app_theme', newTheme);
+    localStorage.setItem('theme', newTheme);
   };
 
   useEffect(() => {
@@ -235,10 +224,7 @@ export default function App() {
           onSelectNote={handleNoteSelect}
           onOpenSettings={() => { setShowSettings(true); setIsMobileMenuOpen(false); }}
           onOpenSearch={() => { setShowSearch(true); setIsMobileMenuOpen(false); }}
-          onLogout={() => {
-            localStorage.removeItem('access_token');
-            setToken(null);
-          }}
+          onLogout={handleLogout}
           onNotesChange={setNotes}
           onFoldersChange={setFolders}
           onAddNote={addNote}

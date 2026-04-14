@@ -29,6 +29,7 @@ type SidebarProps = {
   onDeleteFolder: (id: string) => void;
   onRenameFolder: (id: string, newName: string) => void;
   onShare: (type: 'note' | 'folder', id: string) => void;
+  onQuit?: () => void;
   onClose?: () => void;
 };
 
@@ -149,7 +150,7 @@ function DroppableFolder({ folder, isExpanded, isSelected, isRenaming, renameVal
   );
 }
 
-export default function Sidebar({ notes, folders, activeNoteId, isLoading = false, onSelectNote, onOpenSettings, onOpenSearch, onLogout, onNotesChange, onFoldersChange, onAddNote, onAddFolder, onDeleteNote, onDeleteFolder, onRenameFolder, onShare, onClose }: SidebarProps) {
+export default function Sidebar({ notes, folders, activeNoteId, isLoading = false, onSelectNote, onOpenSettings, onOpenSearch, onLogout, onNotesChange, onFoldersChange, onAddNote, onAddFolder, onDeleteNote, onDeleteFolder, onRenameFolder, onShare, onQuit, onClose }: SidebarProps) {
   const { t } = useLanguage();
   const [isCreateFolderOpen, setIsCreateFolderOpen] = useState(false);
   const [plusMenuOpen, setPlusMenuOpen] = useState(false);
@@ -420,6 +421,15 @@ export default function Sidebar({ notes, folders, activeNoteId, isLoading = fals
             <LogOut size={18} className="mr-2" />
             <span className="text-sm">{t('sidebar.logout') || 'Logout'}</span>
           </button>
+          {onQuit && (
+            <button 
+              onClick={onQuit}
+              className="flex items-center w-full px-2 py-2 text-muted-foreground hover:text-destructive hover:bg-destructive/10 rounded-lg transition-colors"
+            >
+              <X size={18} className="mr-2" />
+              <span className="text-sm">{t('sidebar.quit') || 'Quit App'}</span>
+            </button>
+          )}
         </div>
         
         {/* Context Menu */}

@@ -737,284 +737,165 @@ export default function Settings({ onClose, theme, setTheme }: SettingsProps) {
             )}
 
             {activeTab === 'bots' && (
-              <div className="space-y-6">
-                <h3 className="text-lg font-semibold text-foreground">{t('settings.botConfig')}</h3>
-                <div className="bg-card p-6 rounded-lg border border-border/50 space-y-6">
+              <section className="space-y-6">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-lg font-semibold text-foreground">{t('settings.telegramBot')}</h3>
+                  <div className="flex items-center space-x-2">
+                    <span className={`w-2 h-2 rounded-full ${botStatus.status === 'connected' ? 'bg-accent' : 'bg-destructive'}`} />
+                    <span className="text-sm text-muted-foreground">{botStatus.status === 'connected' ? t('settings.live') : t('settings.offline')}</span>
+                  </div>
+                </div>
+
+                <div className="bg-card p-6 rounded-lg border border-border/50 space-y-4">
                   <div>
                     <label className="block text-sm text-muted-foreground mb-1">{t('settings.botToken')}</label>
-                    <input type="password" value={botToken} onChange={(e) => setBotToken(e.target.value)} placeholder="123456789:ABCdefGHIjklMNOpqrSTUvwxYZ" className="w-full bg-background border border-border rounded-lg p-2 text-foreground focus:border-primary focus:ring-1 focus:ring-primary outline-none transition-all" />
+                    <input type="password" value={botToken} onChange={(e) => setBotToken(e.target.value)} placeholder="123456789:ABCDEF..." className="w-full bg-background border border-border rounded-lg p-2 text-foreground focus:border-primary focus:ring-1 focus:ring-primary outline-none transition-all" />
                   </div>
                   <div>
                     <label className="block text-sm text-muted-foreground mb-1">{t('settings.adminId')}</label>
-                    <input type="text" value={adminId} onChange={(e) => setAdminId(e.target.value)} placeholder={t('settings.phAdminId')} className="w-full bg-background border border-border rounded-lg p-2 text-foreground focus:border-primary focus:ring-1 focus:ring-primary outline-none transition-all" />
-                    <p className="text-xs text-muted-foreground mt-1">{t('settings.adminIdDesc')}</p>
+                    <input type="text" value={adminId} onChange={(e) => setAdminId(e.target.value)} placeholder="123456789" className="w-full bg-background border border-border rounded-lg p-2 text-foreground focus:border-primary focus:ring-1 focus:ring-primary outline-none transition-all" />
                   </div>
                   
-                  <div className="pt-4 border-t border-border/50 flex items-center justify-between">
-                    <div className="flex items-center space-x-2">
-                      <span className="text-sm text-muted-foreground">{t('settings.status')}</span>
-                      {botStatus.status === 'connected' && (
-                        <span className="flex items-center text-accent text-sm">
-                          <CheckCircle size={16} className="mr-1" /> 
-                          {botStatus.username ? `@${botStatus.username}` : t('settings.live')}
-                        </span>
-                      )}
-                      {botStatus.status === 'error' && <span className="flex items-center text-destructive text-sm"><AlertCircle size={16} className="mr-1" /> {t('settings.error')}</span>}
-                      {botStatus.status === 'disconnected' && <span className="text-muted-foreground text-sm">{t('settings.disconnected')}</span>}
+                  <div className="pt-4 border-t border-border/50">
+                    <h4 className="text-sm font-medium text-foreground mb-3">{t('settings.proxySettings')}</h4>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-sm text-muted-foreground mb-1">{t('settings.proxyHost')}</label>
+                        <input type="text" value={proxyConfig.host} onChange={(e) => setProxyConfig({ ...proxyConfig, host: e.target.value })} placeholder="1.2.3.4" className="w-full bg-background border border-border rounded-lg p-2 text-foreground focus:border-primary focus:ring-1 focus:ring-primary outline-none transition-all" />
+                      </div>
+                      <div>
+                        <label className="block text-sm text-muted-foreground mb-1">{t('settings.proxyPort')}</label>
+                        <input type="text" value={proxyConfig.port} onChange={(e) => setProxyConfig({ ...proxyConfig, port: e.target.value })} placeholder="8080" className="w-full bg-background border border-border rounded-lg p-2 text-foreground focus:border-primary focus:ring-1 focus:ring-primary outline-none transition-all" />
+                      </div>
                     </div>
-                    <button onClick={handleTestBot} disabled={isTesting} className="px-4 py-2 bg-secondary text-foreground hover:bg-secondary/80 rounded-lg border border-border/50 hover:border-primary transition-all disabled:opacity-50">
-                      {isTesting ? t('settings.testing') : t('settings.testConnection')}
+                  </div>
+
+                  <div className="flex space-x-4 pt-2">
+                    <button onClick={handleTestBot} disabled={isTesting} className="flex-1 px-4 py-2 bg-secondary text-foreground hover:bg-secondary/80 rounded-lg border border-border/50 hover:border-primary transition-all flex items-center justify-center">
+                      {isTesting ? t('settings.testing') : t('settings.testBot')}
+                    </button>
+                    <button onClick={handleTestProxy} className="flex-1 px-4 py-2 bg-secondary text-foreground hover:bg-secondary/80 rounded-lg border border-border/50 hover:border-primary transition-all">
+                      {t('settings.testProxy')}
                     </button>
                   </div>
                 </div>
-
-                {currentUser?.role === 'admin' && allBots.length > 0 && (
-                  <section className="space-y-4">
-                    <h3 className="text-lg font-semibold text-foreground">{t('settings.allBots') || 'All User Bots'}</h3>
-                    <div className="space-y-3">
-                      {allBots.map((bot, idx) => (
-                        <div key={idx} className="bg-card p-4 rounded-lg border border-border/50 flex items-center justify-between">
-                          <div className="flex items-center space-x-3">
-                            <div className={`p-2 rounded-lg ${bot.is_running ? 'bg-accent/10' : 'bg-secondary'}`}>
-                              <MessageSquare className={`${bot.is_running ? 'text-accent' : 'text-muted-foreground'} w-5 h-5`} />
-                            </div>
-                            <div>
-                              <div className="text-foreground font-medium">{bot.username}</div>
-                              <div className="text-xs text-muted-foreground">
-                                {bot.is_running ? (
-                                  <span className="text-accent">Running: {bot.bot_info?.username ? `@${bot.bot_info.username}` : 'Active'}</span>
-                                ) : bot.is_configured ? (
-                                  <span>Configured (Stopped)</span>
-                                ) : (
-                                  <span className="opacity-50">Not configured</span>
-                                )}
-                              </div>
-                            </div>
-                          </div>
-                          {bot.is_running && (
-                            <div className="flex items-center text-accent text-xs">
-                              <CheckCircle size={14} className="mr-1" /> Online
-                            </div>
-                          )}
-                        </div>
-                      ))}
-                    </div>
-                  </section>
-                )}
-
-                <section className="space-y-4">
-                  <h3 className="text-lg font-semibold text-foreground">{t('settings.proxy')}</h3>
-                  <div className="bg-card p-6 rounded-lg border border-border/50 space-y-6">
-                    <div className="grid grid-cols-2 gap-4">
-                      <div>
-                        <label className="block text-xs font-mono uppercase tracking-wider text-muted-foreground mb-2">{t('settings.protocol')}</label>
-                        <select 
-                          value={proxyConfig.protocol} 
-                          onChange={(e) => setProxyConfig({...proxyConfig, protocol: e.target.value})} 
-                          className="w-full bg-background border border-border rounded-lg p-2.5 text-foreground focus:border-primary focus:ring-1 focus:ring-primary outline-none transition-all"
-                        >
-                          <option value="HTTP">HTTP</option>
-                          <option value="SOCKS4">SOCKS4</option>
-                          <option value="SOCKS5">SOCKS5</option>
-                        </select>
-                      </div>
-                      <div className="grid grid-cols-3 gap-2">
-                        <div className="col-span-2">
-                          <label className="block text-xs font-mono uppercase tracking-wider text-muted-foreground mb-2">{t('settings.host')}</label>
-                          <input 
-                            type="text" 
-                            placeholder="127.0.0.1" 
-                            value={proxyConfig.host}
-                            onChange={(e) => setProxyConfig({...proxyConfig, host: e.target.value})}
-                            className="w-full bg-background border border-border rounded-lg p-2 text-foreground focus:border-primary focus:ring-1 focus:ring-primary outline-none transition-all" 
-                          />
-                        </div>
-                        <div>
-                          <label className="block text-xs font-mono uppercase tracking-wider text-muted-foreground mb-2">{t('settings.port')}</label>
-                          <input 
-                            type="text" 
-                            placeholder="8080" 
-                            value={proxyConfig.port}
-                            onChange={(e) => setProxyConfig({...proxyConfig, port: e.target.value})}
-                            className="w-full bg-background border border-border rounded-lg p-2 text-foreground focus:border-primary focus:ring-1 focus:ring-primary outline-none transition-all" 
-                          />
-                        </div>
-                      </div>
-                    </div>
-                    <div className="grid grid-cols-2 gap-4">
-                      <div>
-                        <label className="block text-xs font-mono uppercase tracking-wider text-muted-foreground mb-2">{t('settings.usernameOptional')}</label>
-                        <div className="relative">
-                          <User className="absolute left-3 top-2.5 w-4 h-4 text-muted-foreground" />
-                          <input 
-                            type="text" 
-                            placeholder="user" 
-                            value={proxyConfig.username}
-                            onChange={(e) => setProxyConfig({...proxyConfig, username: e.target.value})}
-                            className="w-full bg-background border border-border rounded-lg p-2 pl-10 text-foreground focus:border-primary focus:ring-1 focus:ring-primary outline-none transition-all" 
-                          />
-                        </div>
-                      </div>
-                      <div>
-                        <label className="block text-xs font-mono uppercase tracking-wider text-muted-foreground mb-2">{t('settings.passwordOptional')}</label>
-                        <div className="relative">
-                          <Lock className="absolute left-3 top-2.5 w-4 h-4 text-muted-foreground" />
-                          <input 
-                            type="password" 
-                            placeholder="••••" 
-                            value={proxyConfig.password}
-                            onChange={(e) => setProxyConfig({...proxyConfig, password: e.target.value})}
-                            className="w-full bg-background border border-border rounded-lg p-2 pl-10 text-foreground focus:border-primary focus:ring-1 focus:ring-primary outline-none transition-all" 
-                          />
-                        </div>
-                      </div>
-                    </div>
-                    <div className="mt-4 flex justify-end">
-                      <button 
-                        onClick={handleTestProxy}
-                        className="px-4 py-2 bg-secondary text-secondary-foreground rounded-lg hover:bg-secondary/80 transition-colors"
-                      >
-                        {t('settings.testProxy')}
-                      </button>
-                    </div>
-                  </div>
-                </section>
-              </div>
+              </section>
             )}
 
             {activeTab === 'profile' && (
-              <div className="space-y-6">
-                <h3 className="text-lg font-semibold text-foreground">{t('settings.profile') || 'Profile'}</h3>
+              <section className="space-y-6">
+                <h3 className="text-lg font-semibold text-foreground">{t('settings.profile')}</h3>
                 <div className="bg-card p-6 rounded-lg border border-border/50 space-y-4">
-                  <div>
-                    <label className="block text-sm text-muted-foreground mb-1">{t('settings.username') || 'Username'}</label>
-                    <input type="text" value={currentUser?.username || ''} disabled className="w-full bg-secondary/50 border border-border rounded-lg p-2 text-muted-foreground outline-none cursor-not-allowed" />
-                  </div>
-                  <div>
-                    <label className="block text-sm text-muted-foreground mb-1">{t('settings.newPassword') || 'New Password'}</label>
-                    <div className="relative">
-                      <Key className="absolute left-3 top-2.5 w-4 h-4 text-muted-foreground" />
-                      <input 
-                        type="password" 
-                        placeholder="••••••••" 
-                        value={newPassword}
-                        onChange={(e) => setNewPassword(e.target.value)}
-                        className="w-full bg-background border border-border rounded-lg p-2 pl-10 text-foreground focus:border-primary focus:ring-1 focus:ring-primary outline-none transition-all" 
-                      />
+                  <div className="flex items-center space-x-4 mb-6">
+                    <div className="w-16 h-16 rounded-full bg-primary/20 flex items-center justify-center text-primary text-2xl font-bold">
+                      {currentUser?.username?.[0]?.toUpperCase() || 'U'}
+                    </div>
+                    <div>
+                      <div className="text-xl font-bold text-foreground">{currentUser?.username}</div>
+                      <div className="text-sm text-muted-foreground">{currentUser?.role === 'admin' ? t('settings.admin') : t('settings.user')}</div>
                     </div>
                   </div>
-                  <div className="pt-4 flex justify-end">
-                    <button 
-                      onClick={async () => {
-                        if (!newPassword) return;
-                        try {
-                          await api.updateUser(currentUser.id, { password: newPassword });
-                          alert(t('settings.passwordUpdated') || 'Password updated successfully');
-                          setNewPassword('');
-                        } catch (e) {
-                          console.error(e);
-                          alert(t('settings.passwordUpdateFailed') || 'Failed to update password');
-                        }
-                      }}
-                      className="px-4 py-2 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors"
-                    >
-                      {t('settings.updatePassword') || 'Update Password'}
-                    </button>
+                  
+                  <div>
+                    <label className="block text-sm text-muted-foreground mb-1">{t('settings.newPassword')}</label>
+                    <input 
+                      type="password" 
+                      value={newPassword} 
+                      onChange={(e) => setNewPassword(e.target.value)} 
+                      placeholder="••••••••" 
+                      className="w-full bg-background border border-border rounded-lg p-2 text-foreground focus:border-primary focus:ring-1 focus:ring-primary outline-none transition-all" 
+                    />
                   </div>
-                </div>
-              </div>
-            )}
-
-            {activeTab === 'logs' && currentUser?.role === 'admin' && (
-              <div className="space-y-6 flex flex-col h-full">
-                <div className="flex items-center justify-between">
-                  <h3 className="text-lg font-semibold text-foreground">{t('settings.logs') || 'Logs'}</h3>
                   <button 
-                    onClick={fetchLogs}
-                    disabled={isLoadingLogs}
-                    className="p-2 text-muted-foreground hover:text-foreground rounded-lg hover:bg-secondary transition-colors"
+                    onClick={async () => {
+                      if (!newPassword) return;
+                      try {
+                        await api.updateUser(currentUser.id, { password: newPassword });
+                        alert(t('settings.passwordUpdated'));
+                        setNewPassword('');
+                      } catch (e) {
+                        alert(t('settings.passwordUpdateFailed'));
+                      }
+                    }}
+                    className="px-4 py-2 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors"
                   >
-                    <RefreshCw size={18} className={isLoadingLogs ? 'animate-spin' : ''} />
+                    {t('settings.updatePassword')}
                   </button>
                 </div>
-                <div className="flex-1 bg-black/50 rounded-lg border border-border/50 p-4 font-mono text-xs overflow-auto scrollbar-thin max-h-[500px]">
-                  {logs ? (
-                    <pre className="text-green-500/80 whitespace-pre-wrap">{logs}</pre>
-                  ) : (
-                    <div className="text-muted-foreground italic">{t('settings.noLogs') || 'No logs available'}</div>
-                  )}
-                </div>
-              </div>
+              </section>
             )}
 
             {activeTab === 'users' && (
-              <div className="space-y-6">
+              <section className="space-y-6">
                 <div className="flex items-center justify-between">
                   <h3 className="text-lg font-semibold text-foreground">{t('settings.userManagement')}</h3>
                   <button onClick={() => { setEditingUser(null); setIsCreateUserOpen(true); }} className="flex items-center px-3 py-1.5 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors">
                     <Plus size={16} className="mr-2" /> {t('settings.addUser')}
                   </button>
                 </div>
-
                 <div className="bg-card rounded-lg border border-border/50 overflow-hidden">
-                  <table className="w-full text-left text-sm text-muted-foreground">
-                    <thead className="bg-secondary/50 text-foreground uppercase text-xs">
+                  <table className="w-full text-left">
+                    <thead className="bg-secondary/50 text-muted-foreground text-sm">
                       <tr>
-                        <th className="px-6 py-3">{t('settings.username')}</th>
-                        <th className="px-6 py-3">{t('settings.email')}</th>
-                        <th className="px-6 py-3">Роль</th>
-                        <th className="px-6 py-3">{t('settings.status')}</th>
-                        <th className="px-6 py-3">{t('settings.action')}</th>
+                        <th className="px-6 py-3 font-medium">{t('settings.username')}</th>
+                        <th className="px-6 py-3 font-medium">{t('settings.role')}</th>
+                        <th className="px-6 py-3 font-medium text-right">{t('settings.actions')}</th>
                       </tr>
                     </thead>
-                    <tbody>
-                      {users.length === 0 ? (
-                        <tr className="border-t border-border/50">
-                          <td colSpan={5} className="px-6 py-4 text-center text-muted-foreground">{t('settings.noUsers')}</td>
+                    <tbody className="divide-y divide-border/50">
+                      {users.map(user => (
+                        <tr key={user.id} className="hover:bg-secondary/30 transition-colors">
+                          <td className="px-6 py-4 text-foreground">{user.username}</td>
+                          <td className="px-6 py-4">
+                            <span className={`px-2 py-1 rounded-full text-xs ${user.role === 'admin' ? 'bg-primary/20 text-primary' : 'bg-secondary text-muted-foreground'}`}>
+                              {user.role}
+                            </span>
+                          </td>
+                          <td className="px-6 py-4 text-right space-x-2">
+                            <button onClick={() => { setEditingUser(user); setIsCreateUserOpen(true); }} className="p-1.5 text-muted-foreground hover:text-primary transition-colors">
+                              <Edit2 size={16} />
+                            </button>
+                            <button 
+                              onClick={async () => {
+                                if (user.id === currentUser.id) return alert(t('settings.cannotDeleteSelf'));
+                                if (confirm(t('settings.confirmDeleteUser'))) {
+                                  await api.deleteUser(user.id);
+                                  setUsers(users.filter(u => u.id !== user.id));
+                                }
+                              }}
+                              className="p-1.5 text-muted-foreground hover:text-destructive transition-colors"
+                            >
+                              <Trash2 size={16} />
+                            </button>
+                          </td>
                         </tr>
-                      ) : (
-                        users.map((u, i) => (
-                          <tr key={i} className="border-t border-border/50 hover:bg-secondary/50 transition-colors">
-                            <td className="px-6 py-4 font-medium text-foreground">{u.username}</td>
-                            <td className="px-6 py-4">{u.email}</td>
-                            <td className="px-6 py-4">
-                              <span className={`px-2 py-1 rounded text-xs ${u.role === 'admin' ? 'bg-primary/20 text-primary' : 'bg-secondary text-muted-foreground'}`}>
-                                {u.role === 'admin' ? 'Admin' : 'User'}
-                              </span>
-                            </td>
-                            <td className="px-6 py-4"><span className="px-2 py-1 bg-accent/10 text-accent rounded text-xs">{t('settings.active')}</span></td>
-                            <td className="px-6 py-4 flex space-x-3">
-                              <button 
-                                onClick={() => { setEditingUser(u); setIsCreateUserOpen(true); }}
-                                className="text-primary hover:text-primary/80 transition-colors"
-                              >
-                                <Edit2 size={16} />
-                              </button>
-                              <button 
-                                onClick={async () => {
-                                  try {
-                                    await api.deleteUser(u.id);
-                                    setUsers(users.filter(user => user.id !== u.id));
-                                  } catch (e) {
-                                    console.error('Failed to delete user', e);
-                                  }
-                                }}
-                                className="text-destructive hover:text-destructive/80 transition-colors"
-                              >
-                                <Trash2 size={16} />
-                              </button>
-                            </td>
-                          </tr>
-                        ))
-                      )}
+                      ))}
                     </tbody>
                   </table>
                 </div>
+              </section>
+            )}
 
-                <div className="pt-8 flex justify-end">
-                  {/* Logout button removed as requested by reverting design */}
+            {activeTab === 'logs' && (
+              <section className="space-y-4 h-full flex flex-col">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-lg font-semibold text-foreground">{t('settings.systemLogs')}</h3>
+                  <button 
+                    onClick={fetchLogs}
+                    disabled={isLoadingLogs}
+                    className="p-2 text-muted-foreground hover:text-primary rounded-lg hover:bg-secondary transition-colors disabled:opacity-50"
+                  >
+                    <RefreshCw size={18} className={isLoadingLogs ? 'animate-spin' : ''} />
+                  </button>
                 </div>
-              </div>
+                <div className="flex-1 bg-black rounded-lg p-4 font-mono text-xs text-green-500 overflow-auto border border-border/50 min-h-[400px] scrollbar-thin">
+                  {logs ? (
+                    <pre className="whitespace-pre-wrap">{logs}</pre>
+                  ) : (
+                    <div className="text-muted-foreground italic">{isLoadingLogs ? 'Loading logs...' : 'No logs available'}</div>
+                  )}
+                </div>
+              </section>
             )}
 
           </div>
@@ -1024,7 +905,7 @@ export default function Settings({ onClose, theme, setTheme }: SettingsProps) {
       <CreateUserModal 
         isOpen={isCreateUserOpen} 
         onClose={() => { setIsCreateUserOpen(false); setEditingUser(null); }} 
-        onCreate={handleCreateUser} 
+        onCreate={handleCreateUser}
         initialData={editingUser}
       />
 

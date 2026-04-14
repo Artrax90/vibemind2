@@ -1,4 +1,5 @@
 const BASE_URL = ''; // Relative to current host
+const isElectron = !!(window as any).electronAPI;
 
 // Helper to get token
 const getAuthHeaders = () => {
@@ -11,7 +12,6 @@ async function handleResponse(res: Response, mockData: any) {
   if (res.status === 401) {
     console.warn('Unauthorized, clearing token');
     localStorage.removeItem('access_token');
-    // We don't reload here to avoid infinite loops, but the app should react to token change
   }
   if (!res.ok) {
     console.warn(`API call failed (${res.status}), returning mock data`);
@@ -19,7 +19,6 @@ async function handleResponse(res: Response, mockData: any) {
   }
   try {
     const text = await res.text();
-    // If Vite returns index.html for a missing API route
     if (text.trim().startsWith('<')) {
       console.warn('API route not found (received HTML), returning mock data');
       return mockData;
@@ -371,6 +370,10 @@ export const api = {
   },
 
   async chat(message: string) {
+    if (isElectron) {
+      const { api: desktopApi } = await import('../desktop/client');
+      return await desktopApi.chat(message);
+    }
     try {
       const res = await fetch(`${BASE_URL}/api/chat`, {
         method: 'POST',
@@ -387,6 +390,10 @@ export const api = {
   },
   
   async uploadFile(formData: FormData) {
+    if (isElectron) {
+      const { api: desktopApi } = await import('../desktop/client');
+      return await desktopApi.uploadFile(formData);
+    }
     try {
       const res = await fetch(`${BASE_URL}/api/upload`, {
         method: 'POST',
@@ -401,6 +408,10 @@ export const api = {
   },
   
   async importNotes(formData: FormData) {
+    if (isElectron) {
+      const { api: desktopApi } = await import('../desktop/client');
+      return await desktopApi.importNotes(formData);
+    }
     try {
       const res = await fetch(`${BASE_URL}/api/notes/import`, {
         method: 'POST',
@@ -415,6 +426,10 @@ export const api = {
   },
 
   async summarize(content: string) {
+    if (isElectron) {
+      const { api: desktopApi } = await import('../desktop/client');
+      return await desktopApi.summarize(content);
+    }
     try {
       const res = await fetch(`${BASE_URL}/api/ai/summarize`, {
         method: 'POST',
