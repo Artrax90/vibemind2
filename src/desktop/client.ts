@@ -7,11 +7,7 @@ const TOKEN_EXPIRY = 1000 * 60 * 60; // 1 hour
 export const api = {
   async getSettings() {
     const config = await (window as any).electronAPI.getSyncConfig();
-    return { 
-      server_url: config.server_url || '',
-      username: config.username || '',
-      password: config.password || ''
-    };
+    return config;
   },
   
   async updateSettings(settings: any) {
@@ -110,10 +106,56 @@ export const api = {
     }
   },
 
+  async getActiveProvider() {
+    const config = await this.getSettings();
+    if (config.providers) {
+      try {
+        const providers = JSON.parse(config.providers);
+        return providers.find((p: any) => p.isActive);
+      } catch (e) {}
+    }
+    return null;
+  },
+
   async chat(message: string) {
     const baseUrl = await this.getNormalizedUrl();
     const token = await this.getServerToken();
-    if (!token || !baseUrl) return { answer: 'Server not connected or AI not configured.', citations: [] };
+    
+    if (!token || !baseUrl) {
+      const provider = await this.getActiveProvider();
+      if (!provider) return { answer: 'AI not configured. Please set up an AI provider in Settings.', citations: [] };
+      
+      try {
+        if (provider.provider === 'openai' || provider.provider === 'openrouter' || provider.provider === 'ollama') {
+          const apiUrl = provider.baseUrl || (provider.provider === 'openai' ? 'https://api.openai.com/v1' : 'https://openrouter.ai/api/v1');
+          const res = await fetch(`${apiUrl}/chat/completions`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${provider.apiKey}`
+            },
+            body: JSON.stringify({
+              model: provider.modelName,
+              messages: [{ role: 'user', content: message }]
+            })
+          });
+          if (!res.ok) throw new Error('API Error');
+          const data = await res.json();
+          return { answer: data.choices[0].message.content, citations: [] };
+        } else if (provider.provider === 'gemini') {
+          const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${provider.modelName}:generateContent?key=${provider.apiKey}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ contents: [{ parts: [{ text: message }] }] })
+          });
+          if (!res.ok) throw new Error('API Error');
+          const data = await res.json();
+          return { answer: data.candidates[0].content.parts[0].text, citations: [] };
+        }
+      } catch (e) {
+        return { answer: 'Local AI request failed. Check your API key and settings.', citations: [] };
+      }
+    }
 
     try {
       const res = await fetch(`${baseUrl}/api/chat`, {
@@ -134,7 +176,43 @@ export const api = {
   async summarize(content: string) {
     const baseUrl = await this.getNormalizedUrl();
     const token = await this.getServerToken();
-    if (!token || !baseUrl) return { summary: 'Server not connected.' };
+    
+    if (!token || !baseUrl) {
+      const provider = await this.getActiveProvider();
+      if (!provider) return { summary: 'AI not configured.' };
+      
+      const prompt = `Summarize the following text:\n\n${content}`;
+      try {
+        if (provider.provider === 'openai' || provider.provider === 'openrouter' || provider.provider === 'ollama') {
+          const apiUrl = provider.baseUrl || (provider.provider === 'openai' ? 'https://api.openai.com/v1' : 'https://openrouter.ai/api/v1');
+          const res = await fetch(`${apiUrl}/chat/completions`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${provider.apiKey}`
+            },
+            body: JSON.stringify({
+              model: provider.modelName,
+              messages: [{ role: 'user', content: prompt }]
+            })
+          });
+          if (!res.ok) throw new Error('API Error');
+          const data = await res.json();
+          return { summary: data.choices[0].message.content };
+        } else if (provider.provider === 'gemini') {
+          const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${provider.modelName}:generateContent?key=${provider.apiKey}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] })
+          });
+          if (!res.ok) throw new Error('API Error');
+          const data = await res.json();
+          return { summary: data.candidates[0].content.parts[0].text };
+        }
+      } catch (e) {
+        return { summary: 'Local AI request failed.' };
+      }
+    }
 
     try {
       const res = await fetch(`${baseUrl}/api/ai/summarize`, {
