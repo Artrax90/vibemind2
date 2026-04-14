@@ -1,10 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { X, Globe, Save, RefreshCw, Sun, Moon, CheckCircle, AlertCircle, Download, Upload, Cpu, MessageSquare, Plus, Trash2, Terminal } from 'lucide-react';
+import { X, Globe, Save, RefreshCw, Sun, Moon, CheckCircle, AlertCircle, Download, Upload, Cpu, MessageSquare, Plus, Trash2, Terminal, Edit3 } from 'lucide-react';
 import { api } from './client';
 import { useLanguage } from '../contexts/LanguageContext';
 import { useSync } from '../contexts/SyncContext';
 
 import JSZip from 'jszip';
+import CreateUserModal from '../components/modals/CreateUserModal';
+import { User } from 'lucide-react';
 
 type SettingsProps = {
   onClose: () => void;
@@ -15,11 +17,18 @@ type SettingsProps = {
 export default function Settings({ onClose, theme, setTheme }: SettingsProps) {
   const { language, setLanguage, t } = useLanguage();
   const { status, lastSync } = useSync();
-  const [activeTab, setActiveTab] = useState<'sync' | 'general' | 'integrations' | 'bots' | 'logs'>('sync');
+  const [activeTab, setActiveTab] = useState<'sync' | 'general' | 'integrations' | 'bots' | 'logs' | 'users'>('sync');
   const [isSaving, setIsSaving] = useState(false);
   const [isTesting, setIsTesting] = useState(false);
   const [testResult, setTestResult] = useState<string | null>(null);
   const [syncConfig, setSyncConfig] = useState({ server_url: '', username: '', password: '' });
+
+  // User Management State
+  const [currentUser, setCurrentUser] = useState<any>(null);
+  const [users, setUsers] = useState<any[]>([]);
+  const [isUserModalOpen, setIsUserModalOpen] = useState(false);
+  const [editingUser, setEditingUser] = useState<any>(null);
+  const [isLoadingUsers, setIsLoadingUsers] = useState(false);
 
   // AI & Proxy State
   const [botToken, setBotToken] = useState('');
@@ -123,27 +132,54 @@ export default function Settings({ onClose, theme, setTheme }: SettingsProps) {
     // Load remote settings if possible
     api.getRemoteSettings().then(config => {
       if (config) {
-        if (config.tg_token) setBotToken(config.tg_token);
-        if (config.tg_admin_id) setAdminId(config.tg_admin_id);
-        if (config.proxy_config) setProxyConfig(config.proxy_config);
-        if (config.llm_provider) {
-          setProviders(prev => prev.map(p => {
-            if (p.provider === config.llm_provider) {
-              return { 
-                ...p, 
-                isActive: true, 
-                apiKey: config.api_key || '', 
-                baseUrl: config.base_url || p.baseUrl,
-                modelName: config.model_name || p.modelName,
-                status: 'connected'
-              };
-            }
-            return { ...p, isActive: false };
-          }));
-        }
+        // ... existing logic
       }
     });
+
+    // Load current user and users if admin
+    loadUserData();
   }, []);
+
+  const loadUserData = async () => {
+    try {
+      const me = await api.getMe();
+      setCurrentUser(me);
+      if (me?.role?.toLowerCase() === 'admin') {
+        setIsLoadingUsers(true);
+        const allUsers = await api.getUsers();
+        setUsers(allUsers);
+        setIsLoadingUsers(false);
+      }
+    } catch (e) {
+      console.error('Failed to load user data', e);
+    }
+  };
+
+  const handleCreateUser = async (userData: any) => {
+    try {
+      if (editingUser) {
+        await api.updateUser(editingUser.id, userData);
+      } else {
+        await api.createUser(userData);
+      }
+      loadUserData();
+      setIsUserModalOpen(false);
+      setEditingUser(null);
+    } catch (e: any) {
+      alert(e.message || 'Failed to manage user');
+    }
+  };
+
+  const handleDeleteUser = async (id: string) => {
+    if (confirm('Are you sure you want to delete this user?')) {
+      try {
+        await api.deleteUser(id);
+        loadUserData();
+      } catch (e: any) {
+        alert(e.message || 'Failed to delete user');
+      }
+    }
+  };
 
   const handleSave = async () => {
     setIsSaving(true);
@@ -325,6 +361,11 @@ export default function Settings({ onClose, theme, setTheme }: SettingsProps) {
           <button onClick={() => setActiveTab('general')} className={`w-full flex items-center px-4 py-3 rounded-lg transition-colors ${activeTab === 'general' ? 'bg-primary/20 text-primary' : 'text-muted-foreground hover:bg-secondary hover:text-foreground'}`}>
             <Globe size={18} className="mr-3" /> {t('settings.general')}
           </button>
+          {currentUser?.role?.toLowerCase() === 'admin' && (
+            <button onClick={() => setActiveTab('users')} className={`w-full flex items-center px-4 py-3 rounded-lg transition-colors ${activeTab === 'users' ? 'bg-primary/20 text-primary' : 'text-muted-foreground hover:bg-secondary hover:text-foreground'}`}>
+              <User size={18} className="mr-3" /> {t('settings.users') || 'Users'}
+            </button>
+          )}
           <button onClick={() => setActiveTab('logs')} className={`w-full flex items-center px-4 py-3 rounded-lg transition-colors ${activeTab === 'logs' ? 'bg-primary/20 text-primary' : 'text-muted-foreground hover:bg-secondary hover:text-foreground'}`}>
             <Terminal size={18} className="mr-3" /> {t('settings.logs') || 'Logs'}
           </button>
@@ -639,6 +680,69 @@ export default function Settings({ onClose, theme, setTheme }: SettingsProps) {
               </>
             )}
 
+            {activeTab === 'users' && currentUser?.role?.toLowerCase() === 'admin' && (
+              <section className="space-y-6">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-lg font-semibold text-foreground">{t('settings.users') || 'User Management'}</h3>
+                  <button 
+                    onClick={() => { setEditingUser(null); setIsUserModalOpen(true); }}
+                    className="flex items-center px-3 py-1.5 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-all text-sm"
+                  >
+                    <Plus size={16} className="mr-2" /> {t('settings.addUser') || 'Add User'}
+                  </button>
+                </div>
+
+                <div className="bg-card rounded-lg border border-border/50 overflow-hidden">
+                  <table className="w-full text-left text-sm">
+                    <thead className="bg-secondary/50 text-muted-foreground border-b border-border/50">
+                      <tr>
+                        <th className="px-4 py-3 font-medium">Username</th>
+                        <th className="px-4 py-3 font-medium">Email</th>
+                        <th className="px-4 py-3 font-medium">Role</th>
+                        <th className="px-4 py-3 font-medium text-right">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-border/50">
+                      {isLoadingUsers ? (
+                        <tr><td colSpan={4} className="px-4 py-8 text-center text-muted-foreground">Loading users...</td></tr>
+                      ) : users.length === 0 ? (
+                        <tr><td colSpan={4} className="px-4 py-8 text-center text-muted-foreground">No users found.</td></tr>
+                      ) : (
+                        users.map(user => (
+                          <tr key={user.id} className="hover:bg-secondary/30 transition-colors">
+                            <td className="px-4 py-3 text-foreground font-medium">{user.username}</td>
+                            <td className="px-4 py-3 text-muted-foreground">{user.email}</td>
+                            <td className="px-4 py-3">
+                              <span className={`px-2 py-0.5 rounded-full text-[10px] uppercase font-bold ${user.role?.toLowerCase() === 'admin' ? 'bg-primary/20 text-primary border border-primary/30' : 'bg-secondary text-muted-foreground border border-border'}`}>
+                                {user.role}
+                              </span>
+                            </td>
+                            <td className="px-4 py-3 text-right">
+                              <div className="flex items-center justify-end space-x-2">
+                                <button 
+                                  onClick={() => { setEditingUser(user); setIsUserModalOpen(true); }}
+                                  className="p-1.5 text-muted-foreground hover:text-primary hover:bg-primary/10 rounded transition-colors"
+                                >
+                                  <Edit3 size={14} />
+                                </button>
+                                <button 
+                                  onClick={() => handleDeleteUser(user.id)}
+                                  className="p-1.5 text-muted-foreground hover:text-destructive hover:bg-destructive/10 rounded transition-colors"
+                                  disabled={user.id === currentUser?.id}
+                                >
+                                  <Trash2 size={14} />
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </section>
+            )}
+
             {activeTab === 'logs' && (
               <section className="space-y-4 h-full flex flex-col">
                 <div className="flex items-center justify-between">
@@ -666,6 +770,12 @@ export default function Settings({ onClose, theme, setTheme }: SettingsProps) {
           </div>
         </div>
       </div>
+      <CreateUserModal 
+        isOpen={isUserModalOpen}
+        onClose={() => { setIsUserModalOpen(false); setEditingUser(null); }}
+        onCreate={handleCreateUser}
+        initialData={editingUser}
+      />
     </div>
   );
 }

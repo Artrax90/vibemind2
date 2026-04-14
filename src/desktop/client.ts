@@ -21,7 +21,13 @@ export const api = {
   },
 
   async getNotes() {
-    return await (window as any).electronAPI.getNotes();
+    const notes = await (window as any).electronAPI.getNotes();
+    return notes.map((n: any) => ({
+      ...n,
+      isPinned: !!n.isPinned,
+      isShared: !!n.isShared,
+      isSharedByMe: !!n.isSharedByMe
+    }));
   },
   
   async deleteNote(id: string) {
@@ -43,7 +49,12 @@ export const api = {
   },
   
   async getFolders() {
-    return await (window as any).electronAPI.getFolders();
+    const folders = await (window as any).electronAPI.getFolders();
+    return folders.map((f: any) => ({
+      ...f,
+      isShared: !!f.isShared,
+      isSharedByMe: !!f.isSharedByMe
+    }));
   },
   
   async deleteFolder(id: string) {
@@ -198,5 +209,137 @@ export const api = {
     
     if (!res.ok) throw new Error('Import failed');
     return await res.json();
+  },
+  
+  async getMe() {
+    const baseUrl = await this.getNormalizedUrl();
+    const token = await this.getServerToken();
+    if (!token || !baseUrl) return null;
+    try {
+      const res = await fetch(`${baseUrl}/api/users/me`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      if (!res.ok) return null;
+      return await res.json();
+    } catch (e) {
+      return null;
+    }
+  },
+
+  async getUsers() {
+    const baseUrl = await this.getNormalizedUrl();
+    const token = await this.getServerToken();
+    if (!token || !baseUrl) return [];
+    try {
+      const res = await fetch(`${baseUrl}/api/users`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      if (!res.ok) return [];
+      return await res.json();
+    } catch (e) {
+      return [];
+    }
+  },
+
+  async createUser(user: any) {
+    const baseUrl = await this.getNormalizedUrl();
+    const token = await this.getServerToken();
+    if (!token || !baseUrl) throw new Error('Server not connected');
+    const res = await fetch(`${baseUrl}/api/users`, {
+      method: 'POST',
+      headers: { 
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
+      },
+      body: JSON.stringify(user)
+    });
+    if (!res.ok) throw new Error('Failed to create user');
+    return await res.json();
+  },
+
+  async updateUser(id: string, user: any) {
+    const baseUrl = await this.getNormalizedUrl();
+    const token = await this.getServerToken();
+    if (!token || !baseUrl) throw new Error('Server not connected');
+    const res = await fetch(`${baseUrl}/api/users/${id}`, {
+      method: 'PATCH',
+      headers: { 
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
+      },
+      body: JSON.stringify(user)
+    });
+    if (!res.ok) throw new Error('Failed to update user');
+    return await res.json();
+  },
+
+  async deleteUser(id: string) {
+    const baseUrl = await this.getNormalizedUrl();
+    const token = await this.getServerToken();
+    if (!token || !baseUrl) throw new Error('Server not connected');
+    const res = await fetch(`${baseUrl}/api/users/${id}`, {
+      method: 'DELETE',
+      headers: { 'Authorization': `Bearer ${token}` }
+    });
+    if (!res.ok) throw new Error('Failed to delete user');
+    return true;
+  },
+
+  async getLogs() {
+    const baseUrl = await this.getNormalizedUrl();
+    const token = await this.getServerToken();
+    if (!token || !baseUrl) return { logs: 'Server not connected' };
+    try {
+      const res = await fetch(`${baseUrl}/api/logs`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      if (!res.ok) return { logs: 'Failed to fetch logs' };
+      return await res.json();
+    } catch (e) {
+      return { logs: 'Network error' };
+    }
+  },
+
+  async getShares(resourceType: string, resourceId: string) {
+    const baseUrl = await this.getNormalizedUrl();
+    const token = await this.getServerToken();
+    if (!token || !baseUrl) return [];
+    try {
+      const res = await fetch(`${baseUrl}/api/shares/${resourceType}/${resourceId}`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      if (!res.ok) return [];
+      return await res.json();
+    } catch (e) {
+      return [];
+    }
+  },
+
+  async createShare(resourceType: string, resourceId: string, shareData: any) {
+    const baseUrl = await this.getNormalizedUrl();
+    const token = await this.getServerToken();
+    if (!token || !baseUrl) throw new Error('Server not connected');
+    const res = await fetch(`${baseUrl}/api/shares/${resourceType}/${resourceId}`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
+      },
+      body: JSON.stringify(shareData)
+    });
+    if (!res.ok) throw new Error('Failed to create share');
+    return await res.json();
+  },
+
+  async deleteShare(shareId: string) {
+    const baseUrl = await this.getNormalizedUrl();
+    const token = await this.getServerToken();
+    if (!token || !baseUrl) throw new Error('Server not connected');
+    const res = await fetch(`${baseUrl}/api/shares/${shareId}`, {
+      method: 'DELETE',
+      headers: { 'Authorization': `Bearer ${token}` }
+    });
+    if (!res.ok) throw new Error('Failed to delete share');
+    return true;
   }
 };

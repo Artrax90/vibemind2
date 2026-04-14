@@ -17,9 +17,10 @@ type ShareModalProps = {
   resourceId: string | null;
   resourceType: 'note' | 'folder' | null;
   resourceName: string | null;
+  baseUrl?: string;
 };
 
-export default function ShareModal({ isOpen, onClose, resourceId, resourceType, resourceName }: ShareModalProps) {
+export default function ShareModal({ isOpen, onClose, resourceId, resourceType, resourceName, baseUrl }: ShareModalProps) {
   const { t } = useLanguage();
   const [username, setUsername] = useState('');
   const [permission, setPermission] = useState<'read' | 'write'>('read');
@@ -28,6 +29,8 @@ export default function ShareModal({ isOpen, onClose, resourceId, resourceType, 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [copiedId, setCopiedId] = useState<string | null>(null);
+
+  const effectiveBaseUrl = baseUrl || window.location.origin;
 
   useEffect(() => {
     if (isOpen && resourceId && resourceType) {
@@ -84,7 +87,7 @@ export default function ShareModal({ isOpen, onClose, resourceId, resourceType, 
   };
 
   const copyLink = async (shareId: string) => {
-    const url = `${window.location.origin}/shared/${shareId}`;
+    const url = `${effectiveBaseUrl}/shared/${shareId}`;
     try {
       if (navigator.clipboard && window.isSecureContext) {
         await navigator.clipboard.writeText(url);
@@ -220,7 +223,7 @@ export default function ShareModal({ isOpen, onClose, resourceId, resourceType, 
                     </div>
                     {share.is_public === 1 && (
                       <div className="text-[10px] text-muted-foreground truncate mt-1 select-all">
-                        {`${window.location.origin}/shared/${share.id}`}
+                        {`${effectiveBaseUrl}/shared/${share.id}`}
                       </div>
                     )}
                   </div>

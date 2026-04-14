@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain } = require('electron');
+const { app, BrowserWindow, ipcMain, nativeImage } = require('electron');
 const path = require('path');
 const Database = require('better-sqlite3');
 const fs = require('fs');
@@ -41,6 +41,10 @@ function initDb() {
 }
 
 function createWindow() {
+  const iconSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><text y=".9em" font-size="90">✨</text></svg>`;
+  const iconDataUrl = `data:image/svg+xml;base64,${Buffer.from(iconSvg).toString('base64')}`;
+  const icon = nativeImage.createFromDataURL(iconDataUrl);
+
   mainWindow = new BrowserWindow({
     width: 1200,
     height: 800,
@@ -50,7 +54,8 @@ function createWindow() {
       nodeIntegration: false,
     },
     title: "VibeMind Desktop",
-    autoHideMenuBar: true
+    autoHideMenuBar: true,
+    icon: icon
   });
 
   // In development, load from vite server

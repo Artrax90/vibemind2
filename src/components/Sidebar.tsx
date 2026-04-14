@@ -39,7 +39,12 @@ function SortableNoteItem({ note, activeNoteId, onSelectNote, onContextMenu, t }
     id: note.id,
     data: { type: 'note', note }
   });
-  const style = { transform: CSS.Transform.toString(transform), transition };
+  const style = { 
+    transform: CSS.Translate.toString(transform), 
+    transition,
+    zIndex: attributes['aria-pressed'] ? 999 : undefined,
+    opacity: attributes['aria-pressed'] ? 0.8 : 1
+  };
 
   return (
     <div 
@@ -51,12 +56,12 @@ function SortableNoteItem({ note, activeNoteId, onSelectNote, onContextMenu, t }
       <div className="flex items-center overflow-hidden flex-1">
         <div className="flex items-center flex-shrink-0 mr-2 ml-[18px]">
           <FileText size={14} className={`opacity-70 ${activeNoteId === note.id ? 'text-primary' : 'text-muted-foreground'}`} />
-          {note.isPinned && <Pin size={10} className="ml-1 text-primary fill-primary" />}
+          {!!note.isPinned && <Pin size={10} className="ml-1 text-primary fill-primary" />}
         </div>
         <div className="flex flex-col min-w-0">
           <div className="flex items-center">
             <span className="text-sm truncate">{note.title}</span>
-            {note.isSharedByMe && <Share2 size={10} className="ml-1 text-primary opacity-70" />}
+            {!!note.isSharedByMe && <Share2 size={10} className="ml-1 text-primary opacity-70" />}
           </div>
           {note.isShared && (
             <span className="text-[10px] text-muted-foreground/60 truncate flex items-center">
@@ -106,7 +111,7 @@ function DroppableFolder({ folder, isExpanded, isSelected, isRenaming, renameVal
             <div className="flex flex-col min-w-0">
               <div className="flex items-center">
                 <span className="text-sm truncate">{folder.name}</span>
-                {folder.isSharedByMe && <Share2 size={10} className="ml-1 text-primary opacity-70" />}
+                {!!folder.isSharedByMe && <Share2 size={10} className="ml-1 text-primary opacity-70" />}
               </div>
               {folder.isShared && (
                 <span className="text-[10px] text-muted-foreground/60 truncate flex items-center">

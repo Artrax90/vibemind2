@@ -115,13 +115,14 @@ export default function SyncManager({ onSyncComplete }: SyncManagerProps) {
       // 4. Push dirty notes
       for (const note of dirtyNotes) {
         try {
-          const res = await fetch(`${baseUrl}/api/notes/${note.id}`, {
-            method: 'PATCH',
+          const res = await fetch(`${baseUrl}/api/notes`, {
+            method: 'POST',
             headers: {
               'Content-Type': 'application/json',
               'Authorization': `Bearer ${access_token}`
             },
             body: JSON.stringify({
+              id: note.id,
               title: note.title,
               content: note.content,
               folderId: note.folderId,

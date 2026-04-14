@@ -4,6 +4,7 @@ import Editor from './Editor';
 import Settings from './Settings';
 import GraphView from '../components/GraphView';
 import Chat from '../components/Chat';
+import ShareModal from '../components/ShareModal';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Network, Edit3, Eye, Search, X, Menu, RefreshCw, MessageSquare } from 'lucide-react';
 import { useLanguage } from '../contexts/LanguageContext';
@@ -18,11 +19,20 @@ export type Note = {
   folderId?: string;
   updatedAt?: string;
   permission?: 'owner' | 'edit' | 'read';
+  isPinned?: boolean;
+  isShared?: boolean;
+  isSharedByMe?: boolean;
+  ownerUsername?: string;
 };
 
 export type Folder = {
   id: string;
   name: string;
+  parentId?: string;
+  permission?: 'owner' | 'edit' | 'read';
+  isShared?: boolean;
+  isSharedByMe?: boolean;
+  ownerUsername?: string;
 };
 
 export default function App() {
@@ -40,10 +50,25 @@ export default function App() {
   });
   const [isLoading, setIsLoading] = useState(false);
   const [showChat, setShowChat] = useState(false);
+  const [baseUrl, setBaseUrl] = useState<string>('');
+
+  // Share Modal State
+  const [shareModal, setShareModal] = useState<{
+    isOpen: boolean;
+    type: 'note' | 'folder' | null;
+    id: string | null;
+    name: string | null;
+  }>({ isOpen: false, type: null, id: null, name: null });
 
   const { status, progress } = useSync();
 
   const syncProgress = progress.total > 0 ? (progress.current / progress.total) * 100 : 0;
+
+  useEffect(() => {
+    api.getNormalizedUrl().then(url => {
+      if (url) setBaseUrl(url);
+    });
+  }, []);
 
   const handleLogout = async () => {
     if (confirm('Are you sure you want to logout? This will clear your sync settings.')) {
@@ -53,6 +78,13 @@ export default function App() {
       setActiveNoteId(null);
       window.location.reload();
     }
+  };
+
+  const handleShare = (type: 'note' | 'folder', id: string) => {
+    const name = type === 'note' 
+      ? notes.find(n => n.id === id)?.title || '' 
+      : folders.find(f => f.id === id)?.name || '';
+    setShareModal({ isOpen: true, type, id, name });
   };
 
   useEffect(() => {
@@ -161,7 +193,7 @@ export default function App() {
           onDeleteNote={deleteNote}
           onDeleteFolder={deleteFolder}
           onRenameFolder={renameFolder}
-          onShare={() => {}} // No sharing in desktop
+          onShare={handleShare}
           onQuit={() => (window as any).electronAPI.quitApp()}
           onClose={() => setIsMobileMenuOpen(false)}
         />
@@ -230,6 +262,15 @@ export default function App() {
           )}
         </AnimatePresence>
       </main>
+
+      <ShareModal 
+        isOpen={shareModal.isOpen}
+        onClose={() => setShareModal({ ...shareModal, isOpen: false })}
+        resourceId={shareModal.id}
+        resourceType={shareModal.type}
+        resourceName={shareModal.name}
+        baseUrl={baseUrl}
+      />
 
       <AnimatePresence>
         {showChat && (

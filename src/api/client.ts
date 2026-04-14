@@ -65,6 +65,10 @@ export const api = {
   },
   
   async createUser(user: any) {
+    if (isElectron) {
+      const { api: desktopApi } = await import('../desktop/client');
+      return await desktopApi.createUser(user);
+    }
     try {
       const res = await fetch(`${BASE_URL}/api/users`, {
         method: 'POST',
@@ -81,6 +85,10 @@ export const api = {
   },
   
   async updateUser(id: string, user: any) {
+    if (isElectron) {
+      const { api: desktopApi } = await import('../desktop/client');
+      return await desktopApi.updateUser(id, user);
+    }
     try {
       const res = await fetch(`${BASE_URL}/api/users/${id}`, {
         method: 'PATCH',
@@ -97,6 +105,10 @@ export const api = {
   },
 
   async deleteUser(id: string) {
+    if (isElectron) {
+      const { api: desktopApi } = await import('../desktop/client');
+      return await desktopApi.deleteUser(id);
+    }
     try {
       const res = await fetch(`${BASE_URL}/api/users/${id}`, {
         method: 'DELETE',
@@ -110,6 +122,10 @@ export const api = {
   },
 
   async getMe() {
+    if (isElectron) {
+      const { api: desktopApi } = await import('../desktop/client');
+      return await desktopApi.getMe();
+    }
     try {
       const res = await fetch(`${BASE_URL}/api/users/me`, {
         headers: getAuthHeaders()
@@ -122,6 +138,10 @@ export const api = {
   },
 
   async getUsers() {
+    if (isElectron) {
+      const { api: desktopApi } = await import('../desktop/client');
+      return await desktopApi.getUsers();
+    }
     try {
       const res = await fetch(`${BASE_URL}/api/users`, {
         headers: getAuthHeaders()
@@ -135,6 +155,10 @@ export const api = {
   },
 
   async getLogs() {
+    if (isElectron) {
+      const { api: desktopApi } = await import('../desktop/client');
+      return await desktopApi.getLogs();
+    }
     try {
       const res = await fetch(`${BASE_URL}/api/logs`, {
         headers: getAuthHeaders()
@@ -212,6 +236,10 @@ export const api = {
   },
   
   async getShares(resourceType: string, resourceId: string) {
+    if (isElectron) {
+      const { api: desktopApi } = await import('../desktop/client');
+      return await desktopApi.getShares(resourceType, resourceId);
+    }
     try {
       const res = await fetch(`${BASE_URL}/api/shares/${resourceType}/${resourceId}`, {
         headers: getAuthHeaders()
@@ -223,6 +251,10 @@ export const api = {
   },
 
   async createShare(resourceType: string, resourceId: string, shareData: any) {
+    if (isElectron) {
+      const { api: desktopApi } = await import('../desktop/client');
+      return await desktopApi.createShare(resourceType, resourceId, shareData);
+    }
     try {
       const res = await fetch(`${BASE_URL}/api/shares/${resourceType}/${resourceId}`, {
         method: 'POST',
@@ -239,6 +271,10 @@ export const api = {
   },
 
   async deleteShare(shareId: string) {
+    if (isElectron) {
+      const { api: desktopApi } = await import('../desktop/client');
+      return await desktopApi.deleteShare(shareId);
+    }
     try {
       const res = await fetch(`${BASE_URL}/api/shares/${shareId}`, {
         method: 'DELETE',
