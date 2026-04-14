@@ -30,7 +30,10 @@ export default function SyncManager({ onSyncComplete }: SyncManagerProps) {
         return;
       }
 
-      const baseUrl = config.server_url.replace(/\/$/, ''); // Remove trailing slash
+      let baseUrl = config.server_url.trim().replace(/\/$/, '');
+      if (baseUrl && !baseUrl.startsWith('http://') && !baseUrl.startsWith('https://')) {
+        baseUrl = 'http://' + baseUrl;
+      }
       setStatus('syncing');
       setProgress(0, 0);
       log(`Authenticating for sync at ${baseUrl}...`);

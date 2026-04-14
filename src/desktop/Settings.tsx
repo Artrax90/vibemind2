@@ -18,7 +18,7 @@ export default function Settings({ onClose, theme, setTheme }: SettingsProps) {
   const [activeTab, setActiveTab] = useState<'sync' | 'general' | 'integrations' | 'bots' | 'logs'>('sync');
   const [isSaving, setIsSaving] = useState(false);
   const [isTesting, setIsTesting] = useState(false);
-  const [testResult, setTestResult] = useState<'success' | 'error' | null>(null);
+  const [testResult, setTestResult] = useState<string | null>(null);
   const [syncConfig, setSyncConfig] = useState({ server_url: '', username: '', password: '' });
 
   // AI & Proxy State
@@ -341,7 +341,7 @@ export default function Settings({ onClose, theme, setTheme }: SettingsProps) {
                       onClick={() => window.dispatchEvent(new CustomEvent('force-sync'))}
                       className="flex items-center px-3 py-1.5 bg-secondary text-foreground hover:bg-secondary/80 rounded-lg border border-border/50 hover:border-primary transition-all text-xs"
                     >
-                      <RefreshCw size={14} className="mr-2" /> {t('settings.reindex') || 'Sync Now'}
+                      <RefreshCw size={14} className="mr-2" /> {t('settings.syncNow') || 'Sync Now'}
                     </button>
                     <div className="flex items-center space-x-2 text-sm">
                       <span className="text-muted-foreground">{t('settings.syncStatus')}:</span>
@@ -372,22 +372,47 @@ export default function Settings({ onClose, theme, setTheme }: SettingsProps) {
                   <div className="pt-4 flex items-center justify-between border-t border-border/50">
                     <div className="flex items-center space-x-2">
                       {testResult === 'success' && <span className="text-xs text-accent flex items-center"><CheckCircle size={12} className="mr-1" /> {t('settings.connSuccess')}</span>}
-                      {testResult === 'error' && <span className="text-xs text-destructive flex items-center"><AlertCircle size={12} className="mr-1" /> {t('settings.connFailed')}</span>}
+                      {testResult && testResult.startsWith('error') && (
+                        <span className="text-xs text-destructive flex items-center">
+                          <AlertCircle size={12} className="mr-1" /> 
+                          {testResult.replace('error: ', '') || t('settings.connFailed')}
+                        </span>
+                      )}
                     </div>
                     <button 
                       onClick={async () => {
                         setIsTesting(true);
                         setTestResult(null);
+                        const log = (msg: string) => {
+                          const timestamp = new Date().toLocaleTimeString();
+                          const formattedMsg = `[${timestamp}] [TestConn] ${msg}`;
+                          if (!(window as any).syncLogs) (window as any).syncLogs = [];
+                          (window as any).syncLogs.push(formattedMsg);
+                        };
                         try {
-                          const baseUrl = syncConfig.server_url.replace(/\/$/, '');
-                          const res = await fetch(`${baseUrl}/api/auth/login`, {
+                          let url = syncConfig.server_url.trim().replace(/\/$/, '');
+                          if (url && !url.startsWith('http://') && !url.startsWith('https://')) {
+                            url = 'http://' + url;
+                          }
+                          log(`Testing connection to ${url}...`);
+                          const res = await fetch(`${url}/api/auth/login`, {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
                             body: JSON.stringify({ username: syncConfig.username, password: syncConfig.password }),
                           });
-                          setTestResult(res.ok ? 'success' : 'error');
-                        } catch (e) {
-                          setTestResult('error');
+                          if (res.ok) {
+                            setTestResult('success');
+                            log('Connection successful');
+                          } else {
+                            const data = await res.json().catch(() => ({}));
+                            const err = `${res.status} ${data.detail || ''}`;
+                            setTestResult(`error: ${err}`);
+                            log(`Connection failed: ${err}`);
+                          }
+                        } catch (e: any) {
+                          const err = e.message || 'Network Error';
+                          setTestResult(`error: ${err}`);
+                          log(`Connection error: ${err}`);
                         } finally {
                           setIsTesting(false);
                         }

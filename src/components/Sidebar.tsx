@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
-import { Folder, FileText, Settings as SettingsIcon, Plus, MoreVertical, Search, ChevronRight, ChevronDown, FilePlus, FolderPlus, Edit2, Trash2, Share2, FolderInput, Sparkles, X, LogOut, Pin, PinOff } from 'lucide-react';
+import { Folder, FileText, Settings as SettingsIcon, Plus, MoreVertical, Search, ChevronRight, ChevronDown, FilePlus, FolderPlus, Edit2, Trash2, Share2, FolderInput, Sparkles, X, LogOut, Pin, PinOff, RefreshCw } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Note, Folder as FolderType } from '../App';
 import CreateFolderModal from './modals/CreateFolderModal';
@@ -414,6 +414,15 @@ export default function Sidebar({ notes, folders, activeNoteId, isLoading = fals
             <SettingsIcon size={18} className="mr-2" />
             <span className="text-sm">{t('sidebar.settings')}</span>
           </button>
+          {((import.meta as any).env.VITE_APP_TARGET === 'desktop') && (
+            <button 
+              onClick={() => window.dispatchEvent(new CustomEvent('force-sync'))}
+              className="flex items-center w-full px-2 py-2 text-muted-foreground hover:text-primary hover:bg-primary/10 rounded-lg transition-colors"
+            >
+              <RefreshCw size={18} className="mr-2" />
+              <span className="text-sm">{t('settings.syncNow') || 'Sync Now'}</span>
+            </button>
+          )}
           <button 
             onClick={onLogout}
             className="flex items-center w-full px-2 py-2 text-muted-foreground hover:text-destructive hover:bg-destructive/10 rounded-lg transition-colors"

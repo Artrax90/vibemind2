@@ -818,12 +818,15 @@ async def start_bot(user_id: int, username: str, token: str, proxy_url: str = No
         
         # Use float for timeout to avoid math errors in aiogram (+ buffer)
         session = AiohttpSession(proxy=final_proxy_url, timeout=60.0) if final_proxy_url else AiohttpSession(timeout=60.0)
-        async with Bot(token=token, session=session) as bot:
-            current_bots[user_id] = bot
-            logger.info(f"Запуск бота для {username}. Прокси: {final_proxy_url or 'Direct'}")
-            # Удаляем вебхук перед запуском поллинга, чтобы избежать ConflictError
-            await bot.delete_webhook(drop_pending_updates=True)
-            await dp.start_polling(bot, user_id=user_id, admin_id=admin_id, handle_signals=False)
+        try:
+            async with Bot(token=token, session=session) as bot:
+                current_bots[user_id] = bot
+                logger.info(f"Запуск бота для {username}. Прокси: {final_proxy_url or 'Direct'}")
+                # Удаляем вебхук перед запуском поллинга, чтобы избежать ConflictError
+                await bot.delete_webhook(drop_pending_updates=True)
+                await dp.start_polling(bot, user_id=user_id, admin_id=admin_id, handle_signals=False)
+        finally:
+            await session.close()
     except Exception as e:
         logger.error(f"Ошибка бота {user_id}: {e}")
 
@@ -895,9 +898,12 @@ async def test_bot_connection(token: str, admin_id: str = None, proxy_url: str =
             final_proxy_url = f"{p.get('protocol', 'http')}://{p.get('username')}:{p.get('password')}@{p['host']}:{p['port']}" if p.get('username') else f"{p.get('protocol', 'http')}://{p['host']}:{p['port']}"
         
         session = AiohttpSession(proxy=final_proxy_url, timeout=60.0) if final_proxy_url else AiohttpSession(timeout=60.0)
-        async with Bot(token=token, session=session) as test_bot:
-            me = await asyncio.wait_for(test_bot.get_me(), timeout=30.0)
-            if admin_id: await test_bot.send_message(chat_id=admin_id, text="✅ VibeMind: Connection Successful!")
-            return True, f"✅ Успешно: @{me.username}"
+        try:
+            async with Bot(token=token, session=session) as test_bot:
+                me = await asyncio.wait_for(test_bot.get_me(), timeout=30.0)
+                if admin_id: await test_bot.send_message(chat_id=admin_id, text="✅ VibeMind: Connection Successful!")
+                return True, f"✅ Успешно: @{me.username}"
+        finally:
+            await session.close()
     except Exception as e:
         return False, f"❌ Ошибка: {str(e)}"

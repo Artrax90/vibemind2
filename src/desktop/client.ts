@@ -62,7 +62,11 @@ export const api = {
   async getNormalizedUrl() {
     const config = await (window as any).electronAPI.getSyncConfig();
     if (!config.server_url) return null;
-    return config.server_url.replace(/\/$/, '');
+    let url = config.server_url.trim().replace(/\/$/, '');
+    if (url && !url.startsWith('http://') && !url.startsWith('https://')) {
+      url = 'http://' + url;
+    }
+    return url;
   },
 
   async getServerToken() {
