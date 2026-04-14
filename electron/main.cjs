@@ -71,13 +71,7 @@ function initDb() {
 function createWindow() {
   const iconSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
     <rect width="100" height="100" rx="20" fill="#1e1e2d"/>
-    <defs>
-      <linearGradient id="grad" x1="0%" y1="0%" x2="0%" y2="100%">
-        <stop offset="0%" style="stop-color:#a5f3fc;stop-opacity:1" />
-        <stop offset="100%" style="stop-color:#38bdf8;stop-opacity:1" />
-      </linearGradient>
-    </defs>
-    <text x="50%" y="65%" font-family="Arial, sans-serif" font-weight="bold" font-size="45" fill="url(#grad)" text-anchor="middle">VM</text>
+    <text x="50%" y="65%" font-family="Arial, sans-serif" font-weight="bold" font-size="50" fill="#38bdf8" text-anchor="middle">VM</text>
   </svg>`;
   const iconDataUrl = `data:image/svg+xml;base64,${Buffer.from(iconSvg).toString('base64')}`;
   const icon = nativeImage.createFromDataURL(iconDataUrl);

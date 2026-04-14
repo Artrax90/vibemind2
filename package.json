@@ -17,21 +17,21 @@
   },
   "build": {
     "appId": "com.vibemind.app",
-    "productName": "vibeMind",
+    "productName": "VibeMind",
     "directories": {
       "output": "dist-electron"
     },
     "win": {
       "target": "nsis",
-      "icon": "electron/icon.ico",
+      "icon": "build/icon.ico",
       "artifactName": "${productName} Setup ${version}.${ext}"
     },
     "nsis": {
       "oneClick": false,
       "allowToChangeInstallationDirectory": true,
       "include": "electron/installer.nsh",
-      "shortcutName": "vibeMind",
-      "uninstallDisplayName": "vibeMind"
+      "shortcutName": "VibeMind",
+      "uninstallDisplayName": "VibeMind"
     },
     "win": {
       "target": "nsis",

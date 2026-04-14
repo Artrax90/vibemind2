@@ -230,28 +230,33 @@ export default function Settings({ onClose, theme, setTheme }: SettingsProps) {
         url = 'http://' + url;
       }
       
-      if (!url || !syncConfig.username || !syncConfig.password) {
-        alert('Please enter server URL and credentials first.');
+      if (!url) {
+        alert('Please enter a server URL first.');
+        setTestingProviderId(null);
         return;
       }
 
-      // Get token using current state
+      // Get token using current state - allow empty credentials
       const loginRes = await fetch(`${url}/api/auth/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ username: syncConfig.username, password: syncConfig.password })
       });
-      if (!loginRes.ok) {
-        alert('Authentication failed. Check your server credentials.');
-        return;
+      
+      let token = '';
+      if (loginRes.ok) {
+        const data = await loginRes.json();
+        token = data.access_token;
+      } else {
+        const data = await loginRes.json().catch(() => ({}));
+        console.warn('Auth failed for test, proceeding without token:', data.detail);
       }
-      const { access_token } = await loginRes.json();
 
       const response = await fetch(`${url}/api/integrations/test`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${access_token}`
+          'Authorization': token ? `Bearer ${token}` : ''
         },
         body: JSON.stringify({
           provider: provider.provider,
@@ -288,8 +293,9 @@ export default function Settings({ onClose, theme, setTheme }: SettingsProps) {
         url = 'http://' + url;
       }
       
-      if (!url || !syncConfig.username || !syncConfig.password) {
-        alert('Please enter server URL and credentials first.');
+      if (!url) {
+        alert('Please enter a server URL first.');
+        setIsTesting(false);
         return;
       }
 
@@ -299,17 +305,18 @@ export default function Settings({ onClose, theme, setTheme }: SettingsProps) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ username: syncConfig.username, password: syncConfig.password })
       });
-      if (!loginRes.ok) {
-        alert('Authentication failed. Check your server credentials.');
-        return;
+      
+      let token = '';
+      if (loginRes.ok) {
+        const data = await loginRes.json();
+        token = data.access_token;
       }
-      const { access_token } = await loginRes.json();
 
       const response = await fetch(`${url}/api/bot/test`, {
         method: 'POST',
         headers: { 
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${access_token}`
+          'Authorization': token ? `Bearer ${token}` : ''
         },
         body: JSON.stringify({ tg_token: botToken, proxy_config: proxyConfig })
       });
@@ -336,14 +343,16 @@ export default function Settings({ onClose, theme, setTheme }: SettingsProps) {
       alert(t('settings.proxyHostReq'));
       return;
     }
+    setIsTesting(true);
     try {
       let url = syncConfig.server_url.trim().replace(/\/$/, '');
       if (url && !url.startsWith('http://') && !url.startsWith('https://')) {
         url = 'http://' + url;
       }
       
-      if (!url || !syncConfig.username || !syncConfig.password) {
-        alert('Please enter server URL and credentials first.');
+      if (!url) {
+        alert('Please enter a server URL first.');
+        setIsTesting(false);
         return;
       }
 
@@ -353,17 +362,18 @@ export default function Settings({ onClose, theme, setTheme }: SettingsProps) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ username: syncConfig.username, password: syncConfig.password })
       });
-      if (!loginRes.ok) {
-        alert('Authentication failed. Check your server credentials.');
-        return;
+      
+      let token = '';
+      if (loginRes.ok) {
+        const data = await loginRes.json();
+        token = data.access_token;
       }
-      const { access_token } = await loginRes.json();
 
       const response = await fetch(`${url}/api/proxy/test`, {
         method: 'POST',
         headers: { 
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${access_token}`
+          'Authorization': token ? `Bearer ${token}` : ''
         },
         body: JSON.stringify({ proxy_config: proxyConfig })
       });
@@ -375,6 +385,8 @@ export default function Settings({ onClose, theme, setTheme }: SettingsProps) {
       }
     } catch (e) {
       alert(t('settings.proxyReqFailed'));
+    } finally {
+      setIsTesting(false);
     }
   };
 
@@ -421,7 +433,7 @@ export default function Settings({ onClose, theme, setTheme }: SettingsProps) {
             {activeTab === 'connection' && (
               <section className="space-y-6">
                 <div className="flex items-center justify-between">
-                  <h3 className="text-lg font-semibold text-foreground">{t('settings.connection') || 'Server Connection'}</h3>
+                  <h3 className="text-lg font-semibold text-foreground">{t('settings.connection')}</h3>
                   <div className="flex items-center space-x-4">
                     <button 
                       onClick={() => window.dispatchEvent(new CustomEvent('force-sync'))}
