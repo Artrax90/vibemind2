@@ -1,5 +1,9 @@
 const isElectron = !!(window as any).electronAPI;
 
+let cachedToken: string | null = null;
+let lastTokenFetch = 0;
+const TOKEN_EXPIRY = 1000 * 60 * 60; // 1 hour
+
 export const api = {
   async getSettings() {
     const config = await (window as any).electronAPI.getSyncConfig();
@@ -12,6 +16,7 @@ export const api = {
   
   async updateSettings(settings: any) {
     await (window as any).electronAPI.saveSyncConfig(settings);
+    cachedToken = null; // Clear token on settings change
     return { success: true, settings };
   },
 
@@ -81,6 +86,10 @@ export const api = {
   },
 
   async getServerToken() {
+    if (cachedToken && (Date.now() - lastTokenFetch < TOKEN_EXPIRY)) {
+      return cachedToken;
+    }
+
     const baseUrl = await this.getNormalizedUrl();
     const config = await (window as any).electronAPI.getSyncConfig();
     if (!baseUrl || !config.username || !config.password) return null;
@@ -93,6 +102,8 @@ export const api = {
       });
       if (!loginRes.ok) return null;
       const { access_token } = await loginRes.json();
+      cachedToken = access_token;
+      lastTokenFetch = Date.now();
       return access_token;
     } catch (e) {
       return null;

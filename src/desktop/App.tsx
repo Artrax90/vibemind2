@@ -177,6 +177,13 @@ export default function App() {
     }
   };
 
+  const handleCloseSettings = () => {
+    setShowSettings(false);
+    api.getNormalizedUrl().then(url => {
+      if (url) setBaseUrl(url);
+    });
+  };
+
   return (
     <div className="flex h-screen w-full font-sans overflow-hidden bg-background text-foreground">
       <SyncManager onSyncComplete={loadData} />
@@ -244,7 +251,7 @@ export default function App() {
         <AnimatePresence mode="wait">
           {showSettings ? (
             <motion.div key="settings" className="h-full w-full">
-              <Settings onClose={() => setShowSettings(false)} theme={theme} setTheme={(t) => { setTheme(t); localStorage.setItem('theme', t); }} />
+              <Settings onClose={handleCloseSettings} theme={theme} setTheme={(t) => { setTheme(t); localStorage.setItem('theme', t); }} />
             </motion.div>
           ) : viewMode === 'graph' ? (
             <motion.div key="graph" className="h-full w-full">

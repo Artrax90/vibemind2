@@ -17,7 +17,7 @@ type SettingsProps = {
 export default function Settings({ onClose, theme, setTheme }: SettingsProps) {
   const { language, setLanguage, t } = useLanguage();
   const { status, lastSync } = useSync();
-  const [activeTab, setActiveTab] = useState<'sync' | 'general' | 'integrations' | 'bots' | 'logs' | 'users'>('sync');
+  const [activeTab, setActiveTab] = useState<'connection' | 'general' | 'integrations' | 'bots' | 'logs' | 'users'>('connection');
   const [isSaving, setIsSaving] = useState(false);
   const [isTesting, setIsTesting] = useState(false);
   const [testResult, setTestResult] = useState<string | null>(null);
@@ -225,18 +225,33 @@ export default function Settings({ onClose, theme, setTheme }: SettingsProps) {
   const handleTestProvider = async (provider: any) => {
     setTestingProviderId(provider.id);
     try {
-      const config = await (window as any).electronAPI.getSyncConfig();
-      const token = await api.getServerToken();
-      if (!token || !config.server_url) {
-        alert('Please connect to a server first.');
+      let url = syncConfig.server_url.trim().replace(/\/$/, '');
+      if (url && !url.startsWith('http://') && !url.startsWith('https://')) {
+        url = 'http://' + url;
+      }
+      
+      if (!url || !syncConfig.username || !syncConfig.password) {
+        alert('Please enter server URL and credentials first.');
         return;
       }
 
-      const response = await fetch(`${config.server_url.replace(/\/$/, '')}/api/integrations/test`, {
+      // Get token using current state
+      const loginRes = await fetch(`${url}/api/auth/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username: syncConfig.username, password: syncConfig.password })
+      });
+      if (!loginRes.ok) {
+        alert('Authentication failed. Check your server credentials.');
+        return;
+      }
+      const { access_token } = await loginRes.json();
+
+      const response = await fetch(`${url}/api/integrations/test`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
+          'Authorization': `Bearer ${access_token}`
         },
         body: JSON.stringify({
           provider: provider.provider,
@@ -268,18 +283,33 @@ export default function Settings({ onClose, theme, setTheme }: SettingsProps) {
     }
     setIsTesting(true);
     try {
-      const config = await (window as any).electronAPI.getSyncConfig();
-      const token = await api.getServerToken();
-      if (!token || !config.server_url) {
-        alert('Please connect to a server first.');
+      let url = syncConfig.server_url.trim().replace(/\/$/, '');
+      if (url && !url.startsWith('http://') && !url.startsWith('https://')) {
+        url = 'http://' + url;
+      }
+      
+      if (!url || !syncConfig.username || !syncConfig.password) {
+        alert('Please enter server URL and credentials first.');
         return;
       }
 
-      const response = await fetch(`${config.server_url.replace(/\/$/, '')}/api/bot/test`, {
+      // Get token using current state
+      const loginRes = await fetch(`${url}/api/auth/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username: syncConfig.username, password: syncConfig.password })
+      });
+      if (!loginRes.ok) {
+        alert('Authentication failed. Check your server credentials.');
+        return;
+      }
+      const { access_token } = await loginRes.json();
+
+      const response = await fetch(`${url}/api/bot/test`, {
         method: 'POST',
         headers: { 
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
+          'Authorization': `Bearer ${access_token}`
         },
         body: JSON.stringify({ tg_token: botToken, proxy_config: proxyConfig })
       });
@@ -307,18 +337,33 @@ export default function Settings({ onClose, theme, setTheme }: SettingsProps) {
       return;
     }
     try {
-      const config = await (window as any).electronAPI.getSyncConfig();
-      const token = await api.getServerToken();
-      if (!token || !config.server_url) {
-        alert('Please connect to a server first.');
+      let url = syncConfig.server_url.trim().replace(/\/$/, '');
+      if (url && !url.startsWith('http://') && !url.startsWith('https://')) {
+        url = 'http://' + url;
+      }
+      
+      if (!url || !syncConfig.username || !syncConfig.password) {
+        alert('Please enter server URL and credentials first.');
         return;
       }
 
-      const response = await fetch(`${config.server_url.replace(/\/$/, '')}/api/proxy/test`, {
+      // Get token using current state
+      const loginRes = await fetch(`${url}/api/auth/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username: syncConfig.username, password: syncConfig.password })
+      });
+      if (!loginRes.ok) {
+        alert('Authentication failed. Check your server credentials.');
+        return;
+      }
+      const { access_token } = await loginRes.json();
+
+      const response = await fetch(`${url}/api/proxy/test`, {
         method: 'POST',
         headers: { 
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
+          'Authorization': `Bearer ${access_token}`
         },
         body: JSON.stringify({ proxy_config: proxyConfig })
       });
@@ -349,8 +394,8 @@ export default function Settings({ onClose, theme, setTheme }: SettingsProps) {
 
       <div className="flex flex-1 overflow-hidden">
         <div className="w-64 border-r border-border/50 p-4 space-y-2">
-          <button onClick={() => setActiveTab('sync')} className={`w-full flex items-center px-4 py-3 rounded-lg transition-colors ${activeTab === 'sync' ? 'bg-primary/20 text-primary' : 'text-muted-foreground hover:bg-secondary hover:text-foreground'}`}>
-            <RefreshCw size={18} className="mr-3" /> {t('settings.sync')}
+          <button onClick={() => setActiveTab('connection')} className={`w-full flex items-center px-4 py-3 rounded-lg transition-colors ${activeTab === 'connection' ? 'bg-primary/20 text-primary' : 'text-muted-foreground hover:bg-secondary hover:text-foreground'}`}>
+            <Globe size={18} className="mr-3" /> {t('settings.connection') || 'Connection'}
           </button>
           <button onClick={() => setActiveTab('integrations')} className={`w-full flex items-center px-4 py-3 rounded-lg transition-colors ${activeTab === 'integrations' ? 'bg-primary/20 text-primary' : 'text-muted-foreground hover:bg-secondary hover:text-foreground'}`}>
             <Cpu size={18} className="mr-3" /> {t('settings.integrations')}
@@ -373,10 +418,10 @@ export default function Settings({ onClose, theme, setTheme }: SettingsProps) {
 
         <div className="flex-1 overflow-y-auto p-8">
           <div className="max-w-3xl mx-auto space-y-8">
-            {activeTab === 'sync' && (
+            {activeTab === 'connection' && (
               <section className="space-y-6">
                 <div className="flex items-center justify-between">
-                  <h3 className="text-lg font-semibold text-foreground">{t('settings.sync')}</h3>
+                  <h3 className="text-lg font-semibold text-foreground">{t('settings.connection') || 'Server Connection'}</h3>
                   <div className="flex items-center space-x-4">
                     <button 
                       onClick={() => window.dispatchEvent(new CustomEvent('force-sync'))}
