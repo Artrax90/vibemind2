@@ -24,6 +24,7 @@ export default function Editor({ note, onUpdate, onWikilinkClick, onTagClick, is
   const [content, setContent] = useState(note.content);
   const [title, setTitle] = useState(note.title);
   const [isSaving, setIsSaving] = useState(false);
+  const [isSummarizing, setIsSummarizing] = useState(false);
   const [serverUrl, setServerUrl] = useState('');
   const [showCodeDropdown, setShowCodeDropdown] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -140,6 +141,23 @@ export default function Editor({ note, onUpdate, onWikilinkClick, onTagClick, is
       setShowAutocomplete(true);
     } else {
       setShowAutocomplete(false);
+    }
+  };
+
+  const handleSummarize = async () => {
+    if (!content.trim()) return;
+    setIsSummarizing(true);
+    try {
+      const res = await api.summarize(content);
+      if (res && res.summary) {
+        const newContent = content + '\n\n---\n**AI Summary:**\n' + res.summary;
+        setContent(newContent);
+        onUpdate(note.id, { content: newContent });
+      }
+    } catch (e) {
+      console.error('Summarize failed', e);
+    } finally {
+      setIsSummarizing(false);
     }
   };
 
@@ -287,6 +305,16 @@ export default function Editor({ note, onUpdate, onWikilinkClick, onTagClick, is
         </div>
         
         <div className="flex items-center space-x-4">
+          {!isReadOnly && (
+            <button 
+              onClick={handleSummarize}
+              disabled={isSummarizing}
+              className="p-2 text-primary hover:bg-primary/10 rounded-lg transition-all hover:scale-110 active:scale-95 disabled:opacity-50"
+              title={t('editor.summarize')}
+            >
+              <Wand2 size={20} className={isSummarizing ? 'animate-spin' : ''} />
+            </button>
+          )}
           {!isReadOnly && (
             <div className="flex items-center space-x-1 text-xs font-mono">
               {isSaving ? (

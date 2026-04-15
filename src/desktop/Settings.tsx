@@ -19,6 +19,7 @@ export default function Settings({ onClose, theme, setTheme }: SettingsProps) {
   const { status, lastSync } = useSync();
   const [activeTab, setActiveTab] = useState<'connection' | 'general' | 'integrations' | 'bots' | 'logs' | 'users'>('connection');
   const [isSaving, setIsSaving] = useState(false);
+  const [saveSuccess, setSaveSuccess] = useState(false);
   const [isTesting, setIsTesting] = useState(false);
   const [testResult, setTestResult] = useState<string | null>(null);
   const [syncConfig, setSyncConfig] = useState({ server_url: '', username: '', password: '' });
@@ -42,6 +43,13 @@ export default function Settings({ onClose, theme, setTheme }: SettingsProps) {
     { id: 'ollama', label: 'Ollama', provider: 'ollama', apiKey: '', baseUrl: 'http://localhost:11434/v1', modelName: 'llama3', isActive: false, status: 'idle' }
   ]);
   const [testingProviderId, setTestingProviderId] = useState<string | null>(null);
+  
+  const [toast, setToast] = useState<{message: string, type: 'success'|'error'} | null>(null);
+  
+  const showToast = (message: string, type: 'success'|'error' = 'success') => {
+    setToast({ message, type });
+    setTimeout(() => setToast(null), 3000);
+  };
 
   const handleExport = async () => {
     try {
@@ -62,7 +70,7 @@ export default function Settings({ onClose, theme, setTheme }: SettingsProps) {
       URL.revokeObjectURL(url);
     } catch (e) {
       console.error('Export failed', e);
-      alert(t('settings.exportFailed'));
+      showToast(t('settings.exportFailed'), 'error');
     }
   };
 
@@ -112,11 +120,11 @@ export default function Settings({ onClose, theme, setTheme }: SettingsProps) {
         });
       }
       
-      alert(t('settings.importSuccess'));
-      window.location.reload();
+      showToast(t('settings.importSuccess'), 'success');
+      setTimeout(() => window.location.reload(), 1500);
     } catch (err) {
       console.error('Import failed', err);
-      alert(t('settings.importFailed'));
+      showToast(t('settings.importFailed'), 'error');
     }
   };
 
@@ -171,8 +179,9 @@ export default function Settings({ onClose, theme, setTheme }: SettingsProps) {
       loadUserData();
       setIsUserModalOpen(false);
       setEditingUser(null);
+      showToast('User saved successfully', 'success');
     } catch (e: any) {
-      alert(e.message || 'Failed to manage user');
+      showToast(e.message || 'Failed to manage user', 'error');
     }
   };
 
@@ -181,8 +190,9 @@ export default function Settings({ onClose, theme, setTheme }: SettingsProps) {
       try {
         await api.deleteUser(id);
         loadUserData();
+        showToast('User deleted', 'success');
       } catch (e: any) {
-        alert(e.message || 'Failed to delete user');
+        showToast(e.message || 'Failed to delete user', 'error');
       }
     }
   };
@@ -211,9 +221,11 @@ export default function Settings({ onClose, theme, setTheme }: SettingsProps) {
         });
       } catch (e) {} // Ignore remote save errors if offline
 
-      alert(t('settings.saved'));
+      setSaveSuccess(true);
+      showToast(t('settings.saved'), 'success');
+      setTimeout(() => setSaveSuccess(false), 3000);
     } catch (e) {
-      alert(t('settings.saveFailed'));
+      showToast(t('settings.saveFailed'), 'error');
     } finally {
       setIsSaving(false);
     }
@@ -263,7 +275,7 @@ export default function Settings({ onClose, theme, setTheme }: SettingsProps) {
             });
             if (res.ok) {
               setProviders(providers.map(p => p.id === provider.id ? { ...p, status: 'connected' } : p));
-              alert(t('settings.connSuccess'));
+              showToast(t('settings.connSuccess'), 'success');
               return;
             }
           } else if (provider.provider === 'gemini') {
@@ -274,14 +286,14 @@ export default function Settings({ onClose, theme, setTheme }: SettingsProps) {
             });
             if (res.ok) {
               setProviders(providers.map(p => p.id === provider.id ? { ...p, status: 'connected' } : p));
-              alert(t('settings.connSuccess'));
+              showToast(t('settings.connSuccess'), 'success');
               return;
             }
           }
         } catch (e) {}
         
         setProviders(providers.map(p => p.id === provider.id ? { ...p, status: 'error' } : p));
-        alert(t('settings.connFailed'));
+        showToast(t('settings.connFailed'), 'error');
         return;
       }
 
@@ -314,14 +326,14 @@ export default function Settings({ onClose, theme, setTheme }: SettingsProps) {
       const data = await response.json();
       if (response.ok && data.status === 'success') {
         setProviders(providers.map(p => p.id === provider.id ? { ...p, status: 'connected' } : p));
-        alert(t('settings.connSuccess'));
+        showToast(t('settings.connSuccess'), 'success');
       } else {
         setProviders(providers.map(p => p.id === provider.id ? { ...p, status: 'error' } : p));
-        alert(`${t('settings.connFailed')}${data.detail || data.message || 'Unknown error'}`);
+        showToast(`${t('settings.connFailed')}${data.detail || data.message || 'Unknown error'}`, 'error');
       }
     } catch (error) {
       setProviders(providers.map(p => p.id === provider.id ? { ...p, status: 'error' } : p));
-      alert(t('settings.connFailed'));
+      showToast(t('settings.connFailed'), 'error');
     } finally {
       setTestingProviderId(null);
     }
@@ -329,7 +341,7 @@ export default function Settings({ onClose, theme, setTheme }: SettingsProps) {
 
   const handleTestBot = async () => {
     if (!botToken) {
-      alert('Bot token is required');
+      showToast('Bot token is required', 'error');
       return;
     }
     setIsTesting(true);
@@ -346,13 +358,13 @@ export default function Settings({ onClose, theme, setTheme }: SettingsProps) {
           if (res.ok) {
             const data = await res.json();
             setBotStatus({ status: 'connected' });
-            alert(`✅ Connected as @${data.result.username}`);
+            showToast(`✅ Connected as @${data.result.username}`, 'success');
             return;
           }
         } catch (e) {}
         
         setBotStatus({ status: 'error' });
-        alert(t('settings.connFailed'));
+        showToast(t('settings.connFailed'), 'error');
         return;
       }
 
@@ -381,15 +393,15 @@ export default function Settings({ onClose, theme, setTheme }: SettingsProps) {
       const data = await response.json();
       if (response.ok) {
         setBotStatus({ status: 'connected' });
-        alert(data.message || t('settings.connSuccess'));
+        showToast(data.message || t('settings.connSuccess'), 'success');
       } else {
         setBotStatus({ status: 'error' });
-        alert(`${t('settings.connFailed')}${data.detail || 'Unknown error'}`);
+        showToast(`${t('settings.connFailed')}${data.detail || 'Unknown error'}`, 'error');
       }
     } catch (error) {
       console.error('Network Error:', error);
       setBotStatus({ status: 'error' });
-      alert(t('settings.apiFailed'));
+      showToast(t('settings.apiFailed'), 'error');
     } finally {
       setIsTesting(false);
     }
@@ -397,7 +409,7 @@ export default function Settings({ onClose, theme, setTheme }: SettingsProps) {
 
   const handleTestProxy = async () => {
     if (!proxyConfig.host) {
-      alert(t('settings.proxyHostReq'));
+      showToast(t('settings.proxyHostReq'), 'error');
       return;
     }
     setIsTesting(true);
@@ -410,7 +422,7 @@ export default function Settings({ onClose, theme, setTheme }: SettingsProps) {
       if (!url) {
         // Offline mode: just simulate success since we can't test SOCKS5 directly from browser
         await new Promise(resolve => setTimeout(resolve, 500));
-        alert(t('settings.proxySuccess') || '✅ Proxy connection successful!');
+        showToast(t('settings.proxySuccess') || '✅ Proxy connection successful!', 'success');
         setIsTesting(false);
         return;
       }
@@ -438,24 +450,31 @@ export default function Settings({ onClose, theme, setTheme }: SettingsProps) {
       });
       const data = await response.json();
       if (response.ok && data.status === 'success') {
-        alert(t('settings.proxySuccess'));
+        showToast(t('settings.proxySuccess'), 'success');
       } else {
-        alert(`${t('settings.proxyFailed')}${data.detail || 'Unknown error'}`);
+        showToast(`${t('settings.proxyFailed')}${data.detail || 'Unknown error'}`, 'error');
       }
     } catch (e) {
-      alert(t('settings.proxyReqFailed'));
+      showToast(t('settings.proxyReqFailed'), 'error');
     } finally {
       setIsTesting(false);
     }
   };
 
   return (
-    <div className="flex-1 flex flex-col h-full bg-background">
+    <div className="flex-1 flex flex-col h-full bg-background relative">
+      {toast && (
+        <div className={`absolute top-4 right-4 px-4 py-3 rounded-lg shadow-lg z-[100] flex items-center space-x-2 text-white ${toast.type === 'success' ? 'bg-emerald-500' : 'bg-destructive'}`}>
+          {toast.type === 'success' ? <CheckCircle size={18} /> : <AlertCircle size={18} />}
+          <span>{toast.message}</span>
+        </div>
+      )}
       <div className="px-8 py-6 border-b border-border/50 flex items-center justify-between">
         <h2 className="text-2xl font-bold text-foreground">{t('settings.title')}</h2>
         <div className="flex items-center space-x-4">
           <button onClick={handleSave} disabled={isSaving} className="flex items-center px-4 py-2 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors disabled:opacity-50">
-            <Save size={16} className={`mr-2 ${isSaving ? 'animate-spin' : ''}`} /> {isSaving ? t('settings.saving') : t('settings.save')}
+            <Save size={16} className={`mr-2 ${isSaving ? 'animate-spin' : ''}`} /> 
+            {isSaving ? t('settings.saving') : saveSuccess ? t('settings.saved') : t('settings.save')}
           </button>
           <button onClick={onClose} className="p-2 text-muted-foreground hover:text-foreground rounded-lg hover:bg-secondary transition-colors">
             <X size={20} />
