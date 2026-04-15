@@ -3,15 +3,15 @@ import { Send, Bot, Link as LinkIcon, FileText, Loader2 } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { Note } from '../App';
 import { useLanguage } from '../contexts/LanguageContext';
-import { api } from '../api/client';
 
 type ChatProps = {
   notes: Note[];
   activeNoteId: string | null;
   onNoteClick: (id: string) => void;
+  api: any;
 };
 
-export default function Chat({ notes, activeNoteId, onNoteClick }: ChatProps) {
+export default function Chat({ notes, activeNoteId, onNoteClick, api }: ChatProps) {
   const { t } = useLanguage();
   const [messages, setMessages] = useState([
     { 
@@ -40,7 +40,7 @@ export default function Chat({ notes, activeNoteId, onNoteClick }: ChatProps) {
     setIsTyping(true);
     
     try {
-      const response = await api.chat(userMessage);
+      const response = await api.chat(userMessage, notes);
       setMessages(prev => [...prev, { 
         role: 'assistant', 
         content: response.answer,
@@ -85,7 +85,7 @@ export default function Chat({ notes, activeNoteId, onNoteClick }: ChatProps) {
   }, [notes, activeNoteId]);
 
   return (
-    <div className="w-80 bg-background flex flex-col border-l border-border/50">
+    <div className="w-80 h-full bg-background flex flex-col border-l border-border/50">
       <div className="p-4 border-b border-border/50">
         <h3 className="text-sm font-semibold text-primary flex items-center">
           <Bot size={16} className="mr-2" />
@@ -99,6 +99,7 @@ export default function Chat({ notes, activeNoteId, onNoteClick }: ChatProps) {
       >
         {messages.map((msg, i) => (
             <motion.div 
+              key={i}
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
               className={`flex flex-col ${msg.role === 'user' ? 'items-end' : 'items-start'}`}

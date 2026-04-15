@@ -291,7 +291,7 @@ export default function App() {
             exit={{ x: 320 }}
             className="fixed right-0 top-0 bottom-0 z-40 shadow-2xl"
           >
-            <Chat notes={notes} activeNoteId={activeNoteId} onNoteClick={handleNoteSelect} />
+            <Chat notes={notes} activeNoteId={activeNoteId} onNoteClick={handleNoteSelect} api={api} />
           </motion.div>
         )}
       </AnimatePresence>

@@ -117,13 +117,35 @@ export const api = {
     return null;
   },
 
-  async chat(message: string) {
+  async chat(message: string, notes?: any[]) {
     const baseUrl = await this.getNormalizedUrl();
     const token = await this.getServerToken();
     
     if (!token || !baseUrl) {
       const provider = await this.getActiveProvider();
       if (!provider) return { answer: 'AI not configured. Please set up an AI provider in Settings.', citations: [] };
+      
+      let prompt = message;
+      let citations: any[] = [];
+      
+      if (notes && notes.length > 0) {
+        // Simple offline RAG: keyword search
+        const keywords = message.toLowerCase().split(' ').filter(w => w.length > 3);
+        const scoredNotes = notes.map(note => {
+          let score = 0;
+          const text = (note.title + ' ' + note.content).toLowerCase();
+          keywords.forEach(kw => {
+            if (text.includes(kw)) score++;
+          });
+          return { ...note, score };
+        }).filter(n => n.score > 0).sort((a, b) => b.score - a.score).slice(0, 3);
+        
+        if (scoredNotes.length > 0) {
+          const context = scoredNotes.map(n => `Title: ${n.title}\nContent: ${n.content}`).join('\n\n');
+          prompt = `Context information is below.\n---------------------\n${context}\n---------------------\nGiven the context information and not prior knowledge, answer the query.\nQuery: ${message}`;
+          citations = scoredNotes.map(n => ({ id: n.id, title: n.title, snippet: n.content.substring(0, 100) + '...' }));
+        }
+      }
       
       try {
         if (provider.provider === 'openai' || provider.provider === 'openrouter' || provider.provider === 'ollama') {
@@ -136,21 +158,21 @@ export const api = {
             },
             body: JSON.stringify({
               model: provider.modelName,
-              messages: [{ role: 'user', content: message }]
+              messages: [{ role: 'user', content: prompt }]
             })
           });
           if (!res.ok) throw new Error('API Error');
           const data = await res.json();
-          return { answer: data.choices[0].message.content, citations: [] };
+          return { answer: data.choices[0].message.content, citations };
         } else if (provider.provider === 'gemini') {
           const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${provider.modelName}:generateContent?key=${provider.apiKey}`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ contents: [{ parts: [{ text: message }] }] })
+            body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] })
           });
           if (!res.ok) throw new Error('API Error');
           const data = await res.json();
-          return { answer: data.candidates[0].content.parts[0].text, citations: [] };
+          return { answer: data.candidates[0].content.parts[0].text, citations };
         }
       } catch (e) {
         return { answer: 'Local AI request failed. Check your API key and settings.', citations: [] };
@@ -181,7 +203,7 @@ export const api = {
       const provider = await this.getActiveProvider();
       if (!provider) return { summary: 'AI not configured.' };
       
-      const prompt = `Summarize the following text:\n\n${content}`;
+      const prompt = `Summarize the following text. Reply in the same language as the text:\n\n${content}`;
       try {
         if (provider.provider === 'openai' || provider.provider === 'openrouter' || provider.provider === 'ollama') {
           const apiUrl = provider.baseUrl || (provider.provider === 'openai' ? 'https://api.openai.com/v1' : 'https://openrouter.ai/api/v1');

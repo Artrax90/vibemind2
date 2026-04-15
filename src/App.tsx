@@ -325,7 +325,7 @@ export default function App() {
 
       {/* Chat - Hidden in Focus Mode and on Mobile (unless toggled) */}
       <div className={`${isFocusMode ? 'hidden' : 'hidden lg:flex'}`}>
-        <Chat notes={notes} activeNoteId={activeNoteId} onNoteClick={handleNoteSelect} />
+        <Chat notes={notes} activeNoteId={activeNoteId} onNoteClick={handleNoteSelect} api={api} />
       </div>
 
       {/* Global Search Modal */}

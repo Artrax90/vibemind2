@@ -405,10 +405,10 @@ export const api = {
     }
   },
 
-  async chat(message: string) {
+  async chat(message: string, notes?: any[]) {
     if (isElectron) {
       const { api: desktopApi } = await import('../desktop/client');
-      return await desktopApi.chat(message);
+      return await desktopApi.chat(message, notes);
     }
     try {
       const res = await fetch(`${BASE_URL}/api/chat`, {
