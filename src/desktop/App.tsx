@@ -194,7 +194,7 @@ export default function App() {
           folders={folders} 
           activeNoteId={activeNoteId} 
           onSelectNote={handleNoteSelect}
-          onOpenSettings={() => setShowSettings(true)}
+          onOpenSettings={() => { setShowSettings(true); setShowChat(false); }}
           onOpenSearch={() => setShowSearch(true)}
           onLogout={handleLogout}
           onNotesChange={setNotes}

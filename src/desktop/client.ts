@@ -121,7 +121,7 @@ export const api = {
     const baseUrl = await this.getNormalizedUrl();
     const token = await this.getServerToken();
     
-    if (!token || !baseUrl) {
+    const runLocalRag = async () => {
       const provider = await this.getActiveProvider();
       if (!provider) return { answer: 'AI not configured. Please set up an AI provider in Settings.', citations: [] };
       
@@ -130,7 +130,34 @@ export const api = {
       
       if (notes && notes.length > 0) {
         // Simple offline RAG: keyword search
-        const keywords = message.toLowerCase().split(' ').filter(w => w.length > 3);
+        const cleanMessage = message.toLowerCase().replace(/[^\w\sа-яё]/gi, ' ');
+        const stopWords = new Set(['как', 'что', 'это', 'где', 'когда', 'почему', 'зачем', 'про', 'для', 'или', 'под', 'над', 'the', 'and', 'for', 'with', 'about', 'есть', 'нет', 'мне', 'нам', 'вам', 'какие', 'какой', 'какая', 'какого', 'каких', 'все', 'тут', 'там']);
+        
+        // Simple transliteration map for common tech terms
+        const translit: Record<string, string> = {
+          'докер': 'docker',
+          'докера': 'docker',
+          'питон': 'python',
+          'джава': 'java',
+          'рект': 'react',
+          'реакт': 'react',
+          'нода': 'node'
+        };
+
+        const getStem = (w: string) => {
+          if (w.match(/^[a-z]+$/)) {
+            if (w.length > 4) return w.replace(/(es|s|ing|ed)$/i, '');
+            return w;
+          }
+          if (w.length <= 4) return w;
+          return w.replace(/(ами|ями|ах|ях|ов|ев|ей|ой|ий|ый|ые|ие|ую|юю|его|ого|им|ым|их|ых|ом|ем|ам|ям|а|я|о|е|и|ы|у|ю)$/i, '');
+        };
+        
+        const keywords = cleanMessage.split(/\s+/)
+          .filter(w => w.length > 2 && !stopWords.has(w))
+          .map(w => translit[w] || w)
+          .map(getStem);
+        
         const scoredNotes = notes.map(note => {
           let score = 0;
           const text = (note.title + ' ' + note.content).toLowerCase();
@@ -142,8 +169,10 @@ export const api = {
         
         if (scoredNotes.length > 0) {
           const context = scoredNotes.map(n => `Title: ${n.title}\nContent: ${n.content}`).join('\n\n');
-          prompt = `Context information is below.\n---------------------\n${context}\n---------------------\nGiven the context information and not prior knowledge, answer the query.\nQuery: ${message}`;
+          prompt = `Context information is below.\n---------------------\n${context}\n---------------------\nGiven the context information and not prior knowledge, answer the query. Answer strictly in the language of the user's query. If the query is in Russian, answer in Russian (Русский), NOT Ukrainian.\nQuery: ${message}`;
           citations = scoredNotes.map(n => ({ id: n.id, title: n.title, snippet: n.content.substring(0, 100) + '...' }));
+        } else {
+          prompt = `The user is asking a question about their notes, but no relevant notes were found for the query: "${message}". Please politely inform the user that you couldn't find any notes matching their request, but you can still try to answer from your general knowledge if they want. Answer strictly in the language of the user's query. If the query is in Russian, answer in Russian (Русский), NOT Ukrainian.`;
         }
       }
       
@@ -177,6 +206,11 @@ export const api = {
       } catch (e) {
         return { answer: 'Local AI request failed. Check your API key and settings.', citations: [] };
       }
+      return { answer: 'Unknown AI provider.', citations: [] };
+    };
+    
+    if (!token || !baseUrl) {
+      return await runLocalRag();
     }
 
     try {
@@ -188,10 +222,11 @@ export const api = {
         },
         body: JSON.stringify({ message })
       });
-      if (!res.ok) return { answer: 'AI request failed.', citations: [] };
+      if (!res.ok) throw new Error('API Error');
       return await res.json();
     } catch (e) {
-      return { answer: 'Network error.', citations: [] };
+      // Fallback to local RAG if network fails
+      return await runLocalRag();
     }
   },
 

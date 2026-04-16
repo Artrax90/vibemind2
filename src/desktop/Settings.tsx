@@ -464,7 +464,7 @@ export default function Settings({ onClose, theme, setTheme }: SettingsProps) {
   return (
     <div className="flex-1 flex flex-col h-full bg-background relative">
       {toast && (
-        <div className={`absolute top-4 right-4 px-4 py-3 rounded-lg shadow-lg z-[100] flex items-center space-x-2 text-white ${toast.type === 'success' ? 'bg-emerald-500' : 'bg-destructive'}`}>
+        <div className={`absolute bottom-4 right-4 px-4 py-3 rounded-lg shadow-lg z-[100] flex items-center space-x-2 text-white ${toast.type === 'success' ? 'bg-emerald-500' : 'bg-destructive'}`}>
           {toast.type === 'success' ? <CheckCircle size={18} /> : <AlertCircle size={18} />}
           <span>{toast.message}</span>
         </div>
@@ -474,7 +474,7 @@ export default function Settings({ onClose, theme, setTheme }: SettingsProps) {
         <div className="flex items-center space-x-4">
           <button onClick={handleSave} disabled={isSaving} className="flex items-center px-4 py-2 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors disabled:opacity-50">
             <Save size={16} className={`mr-2 ${isSaving ? 'animate-spin' : ''}`} /> 
-            {isSaving ? t('settings.saving') : saveSuccess ? t('settings.saved') : t('settings.save')}
+            {isSaving ? t('settings.saving') : saveSuccess ? t('editor.saved') : t('settings.save')}
           </button>
           <button onClick={onClose} className="p-2 text-muted-foreground hover:text-foreground rounded-lg hover:bg-secondary transition-colors">
             <X size={20} />
