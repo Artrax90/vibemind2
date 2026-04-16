@@ -9,6 +9,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Network, Edit3, Eye, Search, X, Menu, RefreshCw, MessageSquare } from 'lucide-react';
 import { useLanguage } from '../contexts/LanguageContext';
 import { useSync } from '../contexts/SyncContext';
+import { Capacitor } from '@capacitor/core';
 import { dbApi } from '../lib/db';
 import { api } from './client';
 import SyncManager from '../components/SyncManager';
@@ -206,7 +207,7 @@ export default function App() {
           onDeleteFolder={deleteFolder}
           onRenameFolder={renameFolder}
           onShare={handleShare}
-          onQuit={() => dbApi.quitApp()}
+          onQuit={!Capacitor.isNativePlatform() ? () => dbApi.quitApp() : undefined}
           onClose={() => setIsMobileMenuOpen(false)}
         />
       </div>

@@ -11,6 +11,7 @@ import { SortableContext, verticalListSortingStrategy, useSortable } from '@dnd-
 import { CSS } from '@dnd-kit/utilities';
 
 import { useLanguage } from '../contexts/LanguageContext';
+import { useLongPress } from '../hooks/useLongPress';
 
 type SidebarProps = {
   notes: Note[];
@@ -46,10 +47,15 @@ function SortableNoteItem({ note, activeNoteId, onSelectNote, onContextMenu, t }
     opacity: attributes['aria-pressed'] ? 0.8 : 1
   };
 
+  const longPressProps = useLongPress(
+    (e) => onContextMenu(e, 'note', note.id),
+    () => onSelectNote(note.id)
+  );
+
   return (
     <div 
       ref={setNodeRef} style={style} {...attributes} {...listeners}
-      onClick={() => onSelectNote(note.id)}
+      {...longPressProps}
       onContextMenu={(e) => onContextMenu(e, 'note', note.id)}
       className={`flex items-center justify-between px-2 py-1.5 rounded-md cursor-pointer group transition-colors duration-200 ${activeNoteId === note.id ? 'bg-primary/10 text-primary font-medium' : 'text-muted-foreground hover:bg-secondary/60 hover:text-foreground'}`}
     >
@@ -87,10 +93,15 @@ function DroppableFolder({ folder, isExpanded, isSelected, isRenaming, renameVal
     data: { type: 'folder', folder }
   });
 
+  const longPressProps = useLongPress(
+    (e) => handleContextMenu(e, 'folder', folder.id),
+    (e) => toggleFolder(folder.id, e)
+  );
+
   return (
     <div ref={setNodeRef}>
       <div 
-        onClick={(e) => toggleFolder(folder.id, e)}
+        {...longPressProps}
         onContextMenu={(e) => handleContextMenu(e, 'folder', folder.id)}
         className={`flex items-center justify-between px-2 py-1.5 rounded-md cursor-pointer group transition-colors duration-200 ${isOver ? 'bg-primary/20 ring-1 ring-primary' : isSelected ? 'bg-primary/10 text-primary font-medium' : 'text-muted-foreground hover:bg-secondary/60 hover:text-foreground'}`}
       >
@@ -443,6 +454,15 @@ export default function Sidebar({ notes, folders, activeNoteId, isLoading = fals
             <LogOut size={18} className="mr-2" />
             <span className="text-sm">{t('sidebar.logout') || 'Logout'}</span>
           </button>
+          {onQuit && (
+            <button 
+              onClick={onQuit}
+              className="flex items-center w-full px-2 py-2 text-muted-foreground hover:text-destructive hover:bg-destructive/10 rounded-lg transition-colors"
+            >
+              <LogOut size={18} className="mr-2" />
+              <span className="text-sm">{t('sidebar.quit') || 'Quit App'}</span>
+            </button>
+          )}
         </div>
         
         {/* Context Menu */}
