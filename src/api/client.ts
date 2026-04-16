@@ -1,5 +1,7 @@
+import { Capacitor } from '@capacitor/core';
+
 const BASE_URL = ''; // Relative to current host
-const isElectron = !!(window as any).electronAPI;
+const isLocalApp = !!(window as any).electronAPI || Capacitor.isNativePlatform();
 
 // Helper to get token
 const getAuthHeaders = () => {
@@ -65,7 +67,7 @@ export const api = {
   },
   
   async createUser(user: any) {
-    if (isElectron) {
+    if (isLocalApp) {
       const { api: desktopApi } = await import('../desktop/client');
       return await desktopApi.createUser(user);
     }
@@ -85,7 +87,7 @@ export const api = {
   },
   
   async updateUser(id: string, user: any) {
-    if (isElectron) {
+    if (isLocalApp) {
       const { api: desktopApi } = await import('../desktop/client');
       return await desktopApi.updateUser(id, user);
     }
@@ -105,7 +107,7 @@ export const api = {
   },
 
   async deleteUser(id: string) {
-    if (isElectron) {
+    if (isLocalApp) {
       const { api: desktopApi } = await import('../desktop/client');
       return await desktopApi.deleteUser(id);
     }
@@ -122,7 +124,7 @@ export const api = {
   },
 
   async getMe() {
-    if (isElectron) {
+    if (isLocalApp) {
       const { api: desktopApi } = await import('../desktop/client');
       return await desktopApi.getMe();
     }
@@ -138,7 +140,7 @@ export const api = {
   },
 
   async getUsers() {
-    if (isElectron) {
+    if (isLocalApp) {
       const { api: desktopApi } = await import('../desktop/client');
       return await desktopApi.getUsers();
     }
@@ -155,7 +157,7 @@ export const api = {
   },
 
   async getLogs() {
-    if (isElectron) {
+    if (isLocalApp) {
       const { api: desktopApi } = await import('../desktop/client');
       return await desktopApi.getLogs();
     }
@@ -236,7 +238,7 @@ export const api = {
   },
   
   async getShares(resourceType: string, resourceId: string) {
-    if (isElectron) {
+    if (isLocalApp) {
       const { api: desktopApi } = await import('../desktop/client');
       return await desktopApi.getShares(resourceType, resourceId);
     }
@@ -251,7 +253,7 @@ export const api = {
   },
 
   async createShare(resourceType: string, resourceId: string, shareData: any) {
-    if (isElectron) {
+    if (isLocalApp) {
       const { api: desktopApi } = await import('../desktop/client');
       return await desktopApi.createShare(resourceType, resourceId, shareData);
     }
@@ -271,7 +273,7 @@ export const api = {
   },
 
   async deleteShare(shareId: string) {
-    if (isElectron) {
+    if (isLocalApp) {
       const { api: desktopApi } = await import('../desktop/client');
       return await desktopApi.deleteShare(shareId);
     }
@@ -406,7 +408,7 @@ export const api = {
   },
 
   async chat(message: string, notes?: any[]) {
-    if (isElectron) {
+    if (isLocalApp) {
       const { api: desktopApi } = await import('../desktop/client');
       return await desktopApi.chat(message, notes);
     }
@@ -426,7 +428,7 @@ export const api = {
   },
   
   async uploadFile(formData: FormData) {
-    if (isElectron) {
+    if (isLocalApp) {
       const { api: desktopApi } = await import('../desktop/client');
       return await desktopApi.uploadFile(formData);
     }
@@ -444,7 +446,7 @@ export const api = {
   },
   
   async importNotes(formData: FormData) {
-    if (isElectron) {
+    if (isLocalApp) {
       const { api: desktopApi } = await import('../desktop/client');
       return await desktopApi.importNotes(formData);
     }
@@ -462,7 +464,7 @@ export const api = {
   },
 
   async summarize(content: string) {
-    if (isElectron) {
+    if (isLocalApp) {
       const { api: desktopApi } = await import('../desktop/client');
       return await desktopApi.summarize(content);
     }

@@ -1,0 +1,21 @@
+{
+  "name": "VibeMind",
+  "short_name": "VibeMind",
+  "description": "Cyberpunk AI Note-taking Ecosystem",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0a0a0a",
+  "theme_color": "#3b82f6",
+  "icons": [
+    {
+      "src": "https://picsum.photos/seed/vibemind192/192/192",
+      "type": "image/png",
+      "sizes": "192x192"
+    },
+    {
+      "src": "https://picsum.photos/seed/vibemind512/512/512",
+      "type": "image/png",
+      "sizes": "512x512"
+    }
+  ]
+}

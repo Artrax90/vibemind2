@@ -4,13 +4,16 @@ import App from './App';
 import '../index.css';
 import { LanguageProvider } from '../contexts/LanguageContext';
 import { SyncProvider } from '../contexts/SyncContext';
+import { initDB } from '../lib/db';
 
-ReactDOM.createRoot(document.getElementById('root')!).render(
-  <React.StrictMode>
-    <LanguageProvider>
-      <SyncProvider>
-        <App />
-      </SyncProvider>
-    </LanguageProvider>
-  </React.StrictMode>
-);
+initDB().then(() => {
+  ReactDOM.createRoot(document.getElementById('root')!).render(
+    <React.StrictMode>
+      <LanguageProvider>
+        <SyncProvider>
+          <App />
+        </SyncProvider>
+      </LanguageProvider>
+    </React.StrictMode>
+  );
+});

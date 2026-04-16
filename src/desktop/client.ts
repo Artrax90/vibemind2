@@ -1,4 +1,4 @@
-const isElectron = !!(window as any).electronAPI;
+import { dbApi } from '../lib/db';
 
 let cachedToken: string | null = null;
 let lastTokenFetch = 0;
@@ -6,23 +6,23 @@ const TOKEN_EXPIRY = 1000 * 60 * 60; // 1 hour
 
 export const api = {
   async getSettings() {
-    const config = await (window as any).electronAPI.getSyncConfig();
+    const config = await dbApi.getSyncConfig();
     return config;
   },
   
   async updateSettings(settings: any) {
-    await (window as any).electronAPI.saveSyncConfig(settings);
+    await dbApi.saveSyncConfig(settings);
     cachedToken = null; // Clear token on settings change
     return { success: true, settings };
   },
 
   async createNote(note: any) {
-    await (window as any).electronAPI.saveNote({ ...note, is_dirty: 1 });
+    await dbApi.saveNote({ ...note, is_dirty: 1 });
     return note;
   },
 
   async getNotes() {
-    const notes = await (window as any).electronAPI.getNotes();
+    const notes = await dbApi.getNotes();
     return notes.map((n: any) => ({
       ...n,
       isPinned: !!n.isPinned,
@@ -32,25 +32,25 @@ export const api = {
   },
   
   async deleteNote(id: string) {
-    await (window as any).electronAPI.deleteNote(id);
+    await dbApi.deleteNote(id);
   },
   
   async updateNote(id: string, updates: any) {
-    const notes = await (window as any).electronAPI.getNotes();
+    const notes = await dbApi.getNotes();
     const note = notes.find((n: any) => n.id === id);
     if (note) {
-      await (window as any).electronAPI.saveNote({ ...note, ...updates, is_dirty: 1 });
+      await dbApi.saveNote({ ...note, ...updates, is_dirty: 1 });
     }
     return { success: true, ...updates };
   },
   
   async createFolder(folder: any) {
-    await (window as any).electronAPI.saveFolder(folder);
+    await dbApi.saveFolder(folder);
     return folder;
   },
   
   async getFolders() {
-    const folders = await (window as any).electronAPI.getFolders();
+    const folders = await dbApi.getFolders();
     return folders.map((f: any) => ({
       ...f,
       isShared: !!f.isShared,
@@ -59,20 +59,20 @@ export const api = {
   },
   
   async deleteFolder(id: string) {
-    await (window as any).electronAPI.deleteFolder(id);
+    await dbApi.deleteFolder(id);
   },
   
   async updateFolder(id: string, updates: any) {
-    const folders = await (window as any).electronAPI.getFolders();
+    const folders = await dbApi.getFolders();
     const folder = folders.find((f: any) => f.id === id);
     if (folder) {
-      await (window as any).electronAPI.saveFolder({ ...folder, ...updates });
+      await dbApi.saveFolder({ ...folder, ...updates });
     }
     return { success: true, ...updates };
   },
 
   async getNormalizedUrl() {
-    const config = await (window as any).electronAPI.getSyncConfig();
+    const config = await dbApi.getSyncConfig();
     if (!config.server_url) return null;
     let url = config.server_url.trim().replace(/\/$/, '');
     if (url && !url.startsWith('http://') && !url.startsWith('https://')) {
@@ -87,7 +87,7 @@ export const api = {
     }
 
     const baseUrl = await this.getNormalizedUrl();
-    const config = await (window as any).electronAPI.getSyncConfig();
+    const config = await dbApi.getSyncConfig();
     if (!baseUrl || !config.username || !config.password) return null;
     
     try {
@@ -490,8 +490,6 @@ export const api = {
   },
 
   async clearLocalData() {
-    if (isElectron) {
-      await (window as any).electronAPI.clearData();
-    }
+    await dbApi.clearData();
   }
 };

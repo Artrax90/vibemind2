@@ -1,12 +1,12 @@
 import React, { useEffect, useCallback } from 'react';
 import { useSync } from '../contexts/SyncContext';
+import { dbApi } from '../lib/db';
 
 type SyncManagerProps = {
   onSyncComplete?: () => void;
 };
 
 export default function SyncManager({ onSyncComplete }: SyncManagerProps) {
-  const isElectron = !!(window as any).electronAPI;
   const { setStatus, setLastSync, setProgress } = useSync();
 
   const log = (msg: string, isError = false) => {
@@ -23,11 +23,11 @@ export default function SyncManager({ onSyncComplete }: SyncManagerProps) {
   const isSyncingRef = React.useRef(false);
 
   const performSync = useCallback(async () => {
-    if (!isElectron || isSyncingRef.current) return;
+    if (isSyncingRef.current) return;
 
     try {
       isSyncingRef.current = true;
-      const config = await (window as any).electronAPI.getSyncConfig();
+      const config = await dbApi.getSyncConfig();
       if (!config.server_url || !config.username || !config.password) {
         log('Sync skipped: Missing configuration');
         return;
@@ -59,8 +59,8 @@ export default function SyncManager({ onSyncComplete }: SyncManagerProps) {
       
       // 1. Get local data
       const [localNotes, localFolders] = await Promise.all([
-        (window as any).electronAPI.getNotes(),
-        (window as any).electronAPI.getFolders()
+        dbApi.getNotes(),
+        dbApi.getFolders()
       ]);
       
       const dirtyNotes = localNotes.filter((n: any) => n.is_dirty === 1);
@@ -102,7 +102,7 @@ export default function SyncManager({ onSyncComplete }: SyncManagerProps) {
           });
 
           if (res.ok) {
-            await (window as any).electronAPI.saveFolder({ ...folder, is_dirty: 0 });
+            await dbApi.saveFolder({ ...folder, is_dirty: 0 });
             log(`Pushed folder: ${folder.name}`);
           }
           currentSynced++;
@@ -132,7 +132,7 @@ export default function SyncManager({ onSyncComplete }: SyncManagerProps) {
           });
 
           if (res.ok) {
-            await (window as any).electronAPI.saveNote({ ...note, is_dirty: 0 });
+            await dbApi.saveNote({ ...note, is_dirty: 0 });
             log(`Pushed note: ${note.title}`);
           } else {
             log(`Failed to push note ${note.title}: ${res.status}`, true);
@@ -154,7 +154,7 @@ export default function SyncManager({ onSyncComplete }: SyncManagerProps) {
         const localDate = localFolder?.updated_at ? new Date(localFolder.updated_at) : new Date(0);
 
         if (!localFolder || (remoteDate > localDate && localFolder.is_dirty === 0)) {
-          await (window as any).electronAPI.saveFolder({
+          await dbApi.saveFolder({
             id: remoteFolder.id,
             name: remoteFolder.name,
             parentId: remoteFolder.parentId,
@@ -180,7 +180,7 @@ export default function SyncManager({ onSyncComplete }: SyncManagerProps) {
         const localDate = localNote?.updated_at ? new Date(localNote.updated_at) : new Date(0);
 
         if (!localNote || (remoteDate > localDate && localNote.is_dirty === 0)) {
-          await (window as any).electronAPI.saveNote({
+          await dbApi.saveNote({
             id: remoteNote.id,
             title: remoteNote.title,
             content: remoteNote.content,
@@ -216,11 +216,9 @@ export default function SyncManager({ onSyncComplete }: SyncManagerProps) {
     } finally {
       isSyncingRef.current = false;
     }
-  }, [isElectron, onSyncComplete, setStatus, setLastSync, setProgress]);
+  }, [onSyncComplete, setStatus, setLastSync, setProgress]);
 
   useEffect(() => {
-    if (!isElectron) return;
-
     performSync();
 
     const handleForceSync = () => {
@@ -235,7 +233,7 @@ export default function SyncManager({ onSyncComplete }: SyncManagerProps) {
       clearInterval(interval);
       window.removeEventListener('force-sync', handleForceSync);
     };
-  }, [isElectron, performSync]);
+  }, [performSync]);
 
   return null;
 }
