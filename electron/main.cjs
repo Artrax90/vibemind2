@@ -3,6 +3,9 @@ const path = require('path');
 const Database = require('better-sqlite3');
 const fs = require('fs');
 
+// Force userData to the old path so we don't lose the database after changing productName
+app.setPath('userData', path.join(app.getPath('appData'), 'VibeMind'));
+
 import('electron-context-menu').then(({ default: contextMenu }) => {
   contextMenu({
     showSaveImageAs: true,
