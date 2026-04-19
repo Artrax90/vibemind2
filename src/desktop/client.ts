@@ -280,21 +280,15 @@ Query: ${message}`;
           answer = data.candidates[0].content.parts[0].text;
         }
 
-        // Parse SOURCES
-        let usedIds: string[] = [];
-        if (answer.includes('SOURCES:')) {
-          const parts = answer.split('SOURCES:');
-          answer = parts[0].trim();
-          const idsPart = parts[1].trim();
-          usedIds = idsPart.split(',').map(id => id.trim()).filter(id => id);
-        }
+        // Parse/Strip AI list attempts
+        answer = answer.replace(/^\s*\d+\.\s.*/gm, '').replace(/^\s*-\s.*/gm, '').trim();
 
-        // Filter citations to only those mentioned
-        const finalCitations = usedIds.length > 0 
-          ? citations.filter(c => usedIds.includes(c.id))
-          : citations;
+        // Construct formatted list manually
+        const finalNotesList = citations.map((n, i) => `${i + 1}. ${n.title}\n${n.snippet}`).join('\n\n');
+        
+        const finalAnswer = `${answer}\n\nВот что я нашел по запросу «${message}»:\n\n${finalNotesList}`;
 
-        return { answer, citations: finalCitations };
+        return { answer: finalAnswer, citations: [] };
       } catch (e) {
         return { answer: 'Local AI request failed. Check your API key and settings.', citations: [] };
       }

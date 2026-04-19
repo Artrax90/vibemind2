@@ -1188,27 +1188,18 @@ async def chat_with_notes(req: ChatRequest, db: Session = Depends(get_db), curre
     
     context_text = "\n\n---\n\n".join(context_parts)
     
-    # 7. Финальный запрос к LLM (Telegram-bot style - enforced airy formatting)
-    prompt = f"""Вы — поисковый робот. Твоя задача — вывести результаты поиска по заметкам строго в указанном формате.
- 
+    # 7. Финальный запрос к LLM (Telegram-bot style - minimal AI answer, backend handles formatting)
+    prompt = f"""Ниже представлены релевантные заметки. ОБЯЗАТЕЛЬНО ПРОАНАЛИЗИРУЙ ИХ И ОТВЕТЬ НА ВОПРОС ПОЛЬЗОВАТЕЛЯ.
+    
 ЗАМЕТКИ ИЗ БАЗЫ:
 {context_text}
 
-ИНСТРУКЦИИ:
-1. Начни ответ строго с фразы: "Вот что я нашел по запросу «{req.message}»:"
-2. Выведи список релевантных заметок. МЕЖДУ ПУНКТАМИ СПИСКА ДОЛЖНА БЫТЬ ПУСТАЯ СТРОКА.
-   ФОРМАТ:
-
-   1. [Название заметки]
-   [Краткая цитата ИЛИ "[Содержимое защищено паролем]" если заметка закрыта]
-
-   2. [Название заметки]
-   [Краткая цитата...]
-
-3. Если заметок нет, напиши: "Я не нашел информации по запросу «{req.message}» в ваших заметках."
-4. НИКАКИХ вступлений, пояснений и вежливых фраз.
-5. ОБЯЗАТЕЛЬНО в самом конце добавь строку "SOURCES: ID1, ID2".
-6. Отвечай на языке запроса.
+ИНСТРУКЦИИ (ВЫПОЛНЯТЬ СТРОГО):
+1. Отвечай только на вопрос пользователя основываясь на заметках выше.
+2. КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНО составлять любые списки заметок (с цифрами или без).
+3. КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНО упоминать SOURCES, ID или названия файлов.
+4. Будь краток. Никаких вступлений ("Я помогу", "Вот что я нашел"). Сразу ответ.
+5. Отвечай прямо на языке запроса.
 
 ВОПРОС: {req.message}"""
 
@@ -1246,24 +1237,30 @@ async def chat_with_notes(req: ChatRequest, db: Session = Depends(get_db), curre
             used_ids = [id.strip() for id in ids_part.split(',') if id.strip()]
             answer = answer_text
         
-        # Формируем финальный список цитат
-        final_citations = []
-        for note in final_notes:
-            if note.id in used_ids:
-                snippet = "[Защищено паролем]" if note.folderId in protected_folder_ids else (note.content[:100] + "..." if note.content else "")
-                final_citations.append({
-                    "id": note.id,
-                    "title": note.title,
-                    "snippet": snippet
-                })
+        # Игнорируем попытки ИИ вернуть список, если он это сделает
+        # Удаляем из ответа всё, что похоже на список (строки начинающиеся с "N." или "-")
+        import re
+        answer = re.sub(r'^\s*\d+\.\s.*', '', answer, flags=re.MULTILINE)
+        answer = re.sub(r'^\s*-\s.*', '', answer, flags=re.MULTILINE)
+
+        # Формируем финальный список цитат вручную (программно)
+        final_notes_list = []
+        for i, note in enumerate(final_notes):
+            snippet = "[Содержимое защищено паролем]" if note.folderId in protected_folder_ids else (note.content[:100] + "..." if note.content else "")
+            final_notes_list.append(f"{i+1}. {note.title}\n{snippet}")
         
-        # Если ИИ не нашел ответа, но все же что-то написал, проверяем на "Информации недостаточно"
-        if "информации недостаточно" in answer.lower() and not final_citations:
+        formatted_notes = "\n\n".join(final_notes_list)
+        
+        # Комбинируем ответ ИИ (очищенный) и наш список
+        final_answer = f"{answer.strip()}\n\nВот что я нашел по запросу «{req.message}»:\n\n{formatted_notes}"
+        
+        # Если ИИ сказал, что информации недостаточно, или список пуст
+        if "информации недостаточно" in answer.lower() and not final_notes:
             return {"answer": answer, "citations": []}
 
         return {
-            "answer": answer,
-            "citations": final_citations
+            "answer": final_answer,
+            "citations": [] # Цитаты уже включены прямо в текст
         }
     except Exception as e:
         return {"answer": f"Ошибка: {str(e)}", "citations": []}
