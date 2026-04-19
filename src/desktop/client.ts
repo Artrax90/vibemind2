@@ -230,13 +230,20 @@ Context:
 ${context}
 
 Instructions:
-1. Start with: "Вот что я нашел по запросу «${message}»:"
-2. List notes:
-   1. [Title]
-   [Content slice or "[Содержимое защищено паролем]"]
+1. Start strictly with: "Вот что я нашел по запросу «${message}»:"
+2. Output list in this exact format (with newlines between lines):
+   N. [Title]
+   [Content or "[Содержимое защищено паролем]"]
+
+   Example:
+   1. Blini
+   Recipe for blini...
+   2. Secret Note
+   [Содержимое защищено паролем]
+
 3. If no notes found: "Я не нашел информации по запросу «${message}» в ваших заметках."
-4. Minimal fluff. No introductions.
-5. ОБЯЗАТЕЛЬНО в самом конце добавь строку "SOURCES: ID1, ID2" для всех найденных заметок.
+4. Minimal fluff. No introductions, no explanations.
+5. ОБЯЗАТЕЛЬНО в самом конце добавь строку "SOURCES: ID1, ID2".
 6. Language: same as query.
 
 Query: ${message}`;

@@ -114,7 +114,7 @@ export default function Chat({ notes, folders, unlockedFolders, activeNoteId, on
               animate={{ opacity: 1, y: 0 }}
               className={`flex flex-col ${msg.role === 'user' ? 'items-end' : 'items-start'}`}
             >
-            <div className={`max-w-[85%] rounded-lg p-3 text-sm ${
+            <div className={`max-w-[85%] rounded-lg p-3 text-sm whitespace-pre-wrap ${
               msg.role === 'user' 
                 ? 'bg-primary text-primary-foreground' 
                 : 'bg-secondary text-foreground border border-border/50'
