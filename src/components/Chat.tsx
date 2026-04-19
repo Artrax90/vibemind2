@@ -49,7 +49,8 @@ export default function Chat({ notes, folders, unlockedFolders, activeNoteId, on
     setIsTyping(true);
     
     try {
-      const response = await api.chat(userMessage, notes);
+      const notesWithLockStatus = notes.map(n => ({ ...n, isLocked: isNoteLocked(n.id) }));
+      const response = await api.chat(userMessage, notesWithLockStatus, Array.from(unlockedFolders));
       setMessages(prev => [...prev, { 
         role: 'assistant', 
         content: response.answer,

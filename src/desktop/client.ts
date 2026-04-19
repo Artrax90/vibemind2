@@ -166,7 +166,7 @@ export const api = {
     return null;
   },
 
-  async chat(message: string, notes?: any[]) {
+  async chat(message: string, notes?: any[], unlockedFolderIds?: string[]) {
     const baseUrl = await this.getNormalizedUrl();
     const token = await this.getServerToken();
     
@@ -176,6 +176,7 @@ export const api = {
       
       let prompt = message;
       let citations: any[] = [];
+      const unlockedIdsSet = new Set(unlockedFolderIds || []);
       
       if (notes && notes.length > 0) {
         // Simple offline RAG: keyword search
@@ -217,9 +218,15 @@ export const api = {
         }).filter(n => n.score > 0).sort((a, b) => b.score - a.score).slice(0, 3);
         
         if (scoredNotes.length > 0) {
-          const context = scoredNotes.map(n => `Title: ${n.title || 'Untitled'}\nContent: ${n.content || ''}`).join('\n\n');
+          const context = scoredNotes.map(n => {
+            const isProtected = n.isLocked;
+            const content = isProtected ? 
+              "[Защищено паролем. Я не могу прочитать содержимое этой заметки. Сообщи пользователю, что он может снять блокировку для получения точного ответа.]" : 
+              (n.content || '');
+            return `Title: ${n.title || 'Untitled'}\nContent: ${content}`;
+          }).join('\n\n');
           prompt = `Context information is below.\n---------------------\n${context}\n---------------------\nGiven the context information and not prior knowledge, answer the query. Answer strictly in the language of the user's query. If the query is in Russian, answer in Russian (Русский), NOT Ukrainian.\nQuery: ${message}`;
-          citations = scoredNotes.map(n => ({ id: n.id, title: n.title || 'Untitled', snippet: (n.content || '').substring(0, 100) + '...' }));
+          citations = scoredNotes.map(n => ({ id: n.id, title: n.title || 'Untitled', snippet: n.isLocked ? '[Защищено паролем]' : (n.content || '').substring(0, 100) + '...' }));
         } else {
           prompt = `The user is asking a question about their notes, but no relevant notes were found for the query: "${message}". Please politely inform the user that you couldn't find any notes matching their request, but you can still try to answer from your general knowledge if they want. Answer strictly in the language of the user's query. If the query is in Russian, answer in Russian (Русский), NOT Ukrainian.`;
         }

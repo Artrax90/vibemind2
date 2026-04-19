@@ -1041,6 +1041,7 @@ async def get_upload(name: str):
 
 class ChatRequest(BaseModel):
     message: str
+    unlockedFolderIds: list[str] | None = None
 
 @app.post("/api/chat")
 async def chat_with_notes(req: ChatRequest, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
@@ -1109,6 +1110,15 @@ async def chat_with_notes(req: ChatRequest, db: Session = Depends(get_db), curre
             note.embedding = embedding_manager.get_vector(text_to_embed)
         db.commit()
 
+    # 2.5 Определить защищенные папки (чтобы скрыть их контент, но оставить в поиске)
+    unlocked_ids = req.unlockedFolderIds or []
+    protected_folder_ids = [f.id for f in db.query(Folder.id).filter(
+        Folder.user_id == current_user.id, 
+        Folder.password_hash.is_not(None),
+        Folder.password_hash != "",
+        Folder.id.notin_(unlocked_ids + ['placeholder_to_avoid_empty_in_sql'])
+    ).all()]
+
     base_filters = [Note.user_id == current_user.id]
 
     # 3. Ключевой поиск (Keyword Search) по расширенным словам
@@ -1116,6 +1126,8 @@ async def chat_with_notes(req: ChatRequest, db: Session = Depends(get_db), curre
     unique_words = list(set(search_keywords))
     for word in unique_words:
         keyword_filters.append(Note.title.ilike(f"%{word}%"))
+        
+        # Для контента придется искать везде, но мы отфильтруем контент перед отправкой в LLM
         keyword_filters.append(Note.content.ilike(f"%{word}%"))
     
     keyword_results = []
@@ -1161,7 +1173,11 @@ async def chat_with_notes(req: ChatRequest, db: Session = Depends(get_db), curre
     # 6. Формирование контекста
     context_parts = []
     for i, note in enumerate(final_notes):
-        context_parts.append(f"ЗАМЕТКА [{i+1}]\nID: {note.id}\nЗаголовок: {note.title}\nСодержание: {note.content}")
+        if note.folderId in protected_folder_ids:
+            content = "[Защищено паролем. Я не могу прочитать содержимое этой заметки. Сообщи пользователю, что он может снять блокировку для получения точного ответа.]"
+        else:
+            content = note.content
+        context_parts.append(f"ЗАМЕТКА [{i+1}]\nID: {note.id}\nЗаголовок: {note.title}\nСодержание: {content}")
     
     context_text = "\n\n---\n\n".join(context_parts)
     
@@ -1217,10 +1233,11 @@ async def chat_with_notes(req: ChatRequest, db: Session = Depends(get_db), curre
         final_citations = []
         for note in final_notes:
             if note.id in used_ids:
+                snippet = "[Защищено паролем]" if note.folderId in protected_folder_ids else (note.content[:100] + "..." if note.content else "")
                 final_citations.append({
                     "id": note.id,
                     "title": note.title,
-                    "snippet": note.content[:100] + "..." if note.content else ""
+                    "snippet": snippet
                 })
         
         # Если ИИ не нашел ответа, но все же что-то написал, проверяем на "Информации недостаточно"

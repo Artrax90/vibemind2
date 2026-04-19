@@ -428,7 +428,7 @@ export const api = {
     }
   },
 
-  async chat(message: string, notes?: any[]) {
+  async chat(message: string, notes?: any[], unlockedFolderIds?: string[]) {
     if (isLocalApp && (window as any).desktopApi) {
       return await (window as any).desktopApi.chat(message, notes);
     }
@@ -439,7 +439,7 @@ export const api = {
           'Content-Type': 'application/json',
           ...getAuthHeaders()
         },
-        body: JSON.stringify({ message })
+        body: JSON.stringify({ message, unlockedFolderIds })
       });
       return await handleResponse(res, { answer: 'Error connecting to AI', citations: [] });
     } catch (e) {
