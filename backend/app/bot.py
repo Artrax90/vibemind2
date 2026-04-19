@@ -811,8 +811,12 @@ async def handle_text(message: types.Message, user_id: int, admin_id: str = None
             resp = f"Вот что я нашел по запросу «{html.escape(query)}»:\n\n"
             for i, note in enumerate(results[:5], 1):
                 t_esc = html.escape(note.get('title', 'Без названия'))
-                p_esc = html.escape(note.get('content', '')[:100].replace('\n', ' '))
-                resp += f"{i}. <b>{t_esc}</b>\n<i>{p_esc}</i>\n\n"
+                if note.get('folderIsProtected'):
+                    p_esc = "<i>[Содержимое защищено паролем]</i>"
+                else:
+                    p_esc = html.escape(note.get('content', '')[:100].replace('\n', ' '))
+                    p_esc = f"<i>{p_esc}</i>"
+                resp += f"{i}. <b>{t_esc}</b>\n{p_esc}\n\n"
                 builder.button(text=f"Открыть {i}", callback_data=f"open_note_{note['id']}")
             builder.adjust(1)
             await send_long_message(message, resp, parse_mode="HTML", reply_markup=builder.as_markup())

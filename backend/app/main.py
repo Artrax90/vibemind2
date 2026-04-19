@@ -371,14 +371,28 @@ async def import_notes(file: UploadFile = File(...), db: Session = Depends(get_d
 @app.get("/api/notes/search")
 async def search(query: str, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     notes = db.query(Note).filter(Note.user_id == current_user.id, or_(Note.title.ilike(f"%{query}%"), Note.content.ilike(f"%{query}%"))).limit(10).all()
-    return [{"id": n.id, "title": n.title, "content": n.content} for n in notes]
+    res = []
+    for n in notes:
+        is_protected = False
+        if n.folderId:
+            f = db.query(Folder).filter(Folder.id == n.folderId).first()
+            if f and f.password_hash: is_protected = True
+        res.append({"id": n.id, "title": n.title, "content": n.content, "folderId": n.folderId, "folderIsProtected": is_protected})
+    return res
 
 @app.get("/api/notes/semantic-search")
 async def semantic_search(query: str, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     from .utils.embeddings import embedding_manager
     v = embedding_manager.get_vector(query)
-    res = db.query(Note, Note.embedding.cosine_distance(v).label("d")).filter(Note.user_id == current_user.id, Note.embedding.is_not(None)).order_by("d").limit(5).all()
-    return [{"id": n.Note.id, "title": n.Note.title, "content": n.Note.content, "distance": float(n.d)} for n in res]
+    notes_with_dist = db.query(Note, Note.embedding.cosine_distance(v).label("d")).filter(Note.user_id == current_user.id, Note.embedding.is_not(None)).order_by("d").limit(5).all()
+    res = []
+    for n, dist in notes_with_dist:
+        is_protected = False
+        if n.folderId:
+            f = db.query(Folder).filter(Folder.id == n.folderId).first()
+            if f and f.password_hash: is_protected = True
+        res.append({"id": n.id, "title": n.title, "content": n.content, "distance": float(dist), "folderId": n.folderId, "folderIsProtected": is_protected})
+    return res
 
 @app.post("/api/notes/reindex")
 async def reindex_notes(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):

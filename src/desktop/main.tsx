@@ -6,7 +6,9 @@ import { LanguageProvider } from '../contexts/LanguageContext';
 import { SyncProvider } from '../contexts/SyncContext';
 import { initDB } from '../lib/db';
 
-initDB().then(() => {
+initDB().catch(err => {
+  console.error("Critical: initDB failed", err);
+}).finally(() => {
   ReactDOM.createRoot(document.getElementById('root')!).render(
     <React.StrictMode>
       <LanguageProvider>

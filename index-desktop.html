@@ -8,6 +8,27 @@
   </head>
   <body>
     <div id="root"></div>
+    <script>
+      window.onerror = function(msg, url, line, col, error) {
+        var div = document.createElement('div');
+        div.style.position = 'fixed';
+        div.style.top = '0';
+        div.style.left = '0';
+        div.style.width = '100%';
+        div.style.height = '100%';
+        div.style.backgroundColor = 'white';
+        div.style.color = 'red';
+        div.style.padding = '20px';
+        div.style.zIndex = '99999';
+        div.style.overflow = 'auto';
+        div.innerHTML = '<h1>JS Error Detected</h1>' +
+          '<p><b>Message:</b> ' + msg + '</p>' +
+          '<p><b>URL:</b> ' + url + '</p>' +
+          '<p><b>Line:</b> ' + line + ', <b>Column:</b> ' + col + '</p>' +
+          '<pre>' + (error && error.stack || 'No stack trace') + '</pre>';
+        document.body.appendChild(div);
+      };
+    </script>
     <script type="module" src="/src/desktop/main.tsx"></script>
   </body>
 </html>
