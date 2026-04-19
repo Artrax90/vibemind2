@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { Send, Bot, Link as LinkIcon, FileText, Loader2 } from 'lucide-react';
 import { motion } from 'framer-motion';
-import { Note } from '../App';
+import { Note } from '../types';
 import { useLanguage } from '../contexts/LanguageContext';
 
 type ChatProps = {

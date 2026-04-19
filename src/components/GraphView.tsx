@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import ForceGraph2D from 'react-force-graph-2d';
-import { Note } from '../App';
+import { Note } from '../types';
 
 type GraphViewProps = {
   notes: Note[];

@@ -14,13 +14,17 @@ export default function SharedNoteView({ shareId }: { shareId: string }) {
     const loadShare = async () => {
       try {
         const data = await api.getPublicShare(shareId);
+        if (!data || !data.share) {
+          throw new Error('Invalid share data received');
+        }
         setShareData(data);
-        if (data.share.resource_type === 'note') {
+        if (data.share.resource_type === 'note' && data.note) {
           setActiveNoteId(data.note.id);
-        } else if (data.share.resource_type === 'folder' && data.notes.length > 0) {
+        } else if (data.share.resource_type === 'folder' && data.notes && data.notes.length > 0) {
           setActiveNoteId(data.notes[0].id);
         }
       } catch (e: any) {
+        console.error('SharedNoteView load error:', e);
         setError(e.message || 'Failed to load shared resource');
       } finally {
         setLoading(false);
@@ -71,7 +75,7 @@ export default function SharedNoteView({ shareId }: { shareId: string }) {
 
   const activeNote = shareData.share.resource_type === 'note' 
     ? shareData.note 
-    : shareData.notes.find((n: any) => n.id === activeNoteId);
+    : (shareData.notes || []).find((n: any) => n.id === activeNoteId);
 
   return (
     <div className="flex h-screen w-full bg-background text-foreground overflow-hidden">
@@ -82,7 +86,7 @@ export default function SharedNoteView({ shareId }: { shareId: string }) {
             <h2 className="font-semibold truncate">{shareData.folder.name}</h2>
           </div>
           <div className="flex-1 overflow-y-auto p-2 space-y-1">
-            {shareData.notes.map((note: any) => (
+            {shareData.notes && shareData.notes.map((note: any) => (
               <button
                 key={note.id}
                 onClick={() => setActiveNoteId(note.id)}
@@ -96,7 +100,7 @@ export default function SharedNoteView({ shareId }: { shareId: string }) {
                 <span className="truncate">{note.title}</span>
               </button>
             ))}
-            {shareData.notes.length === 0 && (
+            {(!shareData.notes || shareData.notes.length === 0) && (
               <div className="p-4 text-center text-xs text-muted-foreground italic">
                 No notes in this folder
               </div>

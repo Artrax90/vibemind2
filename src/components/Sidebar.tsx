@@ -395,16 +395,10 @@ export default function Sidebar({ notes, folders, activeNoteId, isLoading = fals
       >
         <div className="p-6 flex items-center justify-between">
           <div className="flex items-center space-x-3">
-            <div className="flex items-center justify-center w-9 h-9 bg-[#1e1e2d] rounded-lg shadow-lg border border-border/50">
-              <svg viewBox="0 0 100 100" className="w-6 h-6">
-                <defs>
-                  <linearGradient id="sidebar-grad" x1="0%" y1="0%" x2="0%" y2="100%">
-                    <stop offset="0%" style={{ stopColor: '#a5f3fc', stopOpacity: 1 }} />
-                    <stop offset="100%" style={{ stopColor: '#38bdf8', stopOpacity: 1 }} />
-                  </linearGradient>
-                </defs>
-                <text x="50%" y="70%" fontFamily="Arial, sans-serif" fontWeight="900" fontSize="70" fill="url(#sidebar-grad)" textAnchor="middle">VM</text>
-              </svg>
+            <div className="flex items-center justify-center w-10 h-10 bg-[#1e1e2d] rounded-xl shadow-lg border border-border/50 overflow-hidden">
+              <span className="text-base font-black tracking-tighter bg-gradient-to-br from-[#a5f3fc] to-[#38bdf8] bg-clip-text text-transparent select-none">
+                VM
+              </span>
             </div>
             <h1 className="text-xl font-bold text-foreground tracking-tight">VibeMind</h1>
           </div>

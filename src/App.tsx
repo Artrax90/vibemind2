@@ -172,7 +172,11 @@ export default function App() {
   };
 
   if (sharedNoteId) {
-    return <SharedNoteView shareId={sharedNoteId} />;
+    return (
+      <div className="h-screen w-full flex flex-col bg-background">
+        <SharedNoteView shareId={sharedNoteId} />
+      </div>
+    );
   }
 
   if (!token) {

@@ -21,8 +21,8 @@ type EditorProps = {
 
 export default function Editor({ note, onUpdate, onWikilinkClick, onTagClick, isPreview = false, onShare, allNotes = [] }: EditorProps) {
   const { t } = useLanguage();
-  const [content, setContent] = useState(note.content);
-  const [title, setTitle] = useState(note.title);
+  const [content, setContent] = useState(note?.content || '');
+  const [title, setTitle] = useState(note?.title || '');
   const [isSaving, setIsSaving] = useState(false);
   const [isSummarizing, setIsSummarizing] = useState(false);
   const [showCodeDropdown, setShowCodeDropdown] = useState(false);
@@ -34,12 +34,12 @@ export default function Editor({ note, onUpdate, onWikilinkClick, onTagClick, is
   const isReadOnly = isPreview || (note && note.permission === 'read');
 
   useEffect(() => {
-    setContent(note.content);
-    setTitle(note.title);
-  }, [note.id, note.content, note.title]);
+    setContent(note?.content || '');
+    setTitle(note?.title || '');
+  }, [note?.id, note?.content, note?.title]);
 
   useEffect(() => {
-    if (isReadOnly || (content === note.content && title === note.title)) return;
+    if (isReadOnly || !note || (content === note.content && title === note.title)) return;
     
     setIsSaving(true);
     const timer = setTimeout(() => {
