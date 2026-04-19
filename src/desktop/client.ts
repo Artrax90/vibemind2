@@ -225,28 +225,24 @@ export const api = {
               (n.content || '');
             return `ID: ${n.id}\nTitle: ${n.title || 'Untitled'}\nContent: ${content}`;
           }).join('\n\n');
-          prompt = `You are a search robot. Task: output search results from context.
-Context:
+          prompt = `Ниже представлены заметки по запросу пользователя. Выбери из них те, которые релевантны.
+
+ЗАМЕТКИ ИЗ БАЗЫ:
 ${context}
 
-Instructions:
-1. Start strictly with: "Вот что я нашел по запросу «${message}»:"
-2. Output list in this exact format (with empty lines between items):
-   1. [Title]
-   [Content or "[Содержимое защищено паролем]"]
-
-   2. [Title]
-   [Content or "[Содержимое защищено паролем]"]
-
-3. If no notes found: "Я не нашел информации по запросу «${message}» в ваших заметках."
-4. Minimal fluff. No introductions, no explanations.
-5. ОБЯЗАТЕЛЬНО в самом конце добавь строку "SOURCES: ID1, ID2".
-6. Language: same as query.
-
-Query: ${message}`;
+ИНСТРУКЦИИ:
+1. Вопрос пользователя: "${message}"
+2. В ответе напиши ТОЛЬКО одно: строку "SOURCES: ID1, ID2, ..." с перечнем включенных в ответ ID.
+3. Если ни одна заметка не содержит ответа на запрос, напиши ровно: "SOURCES: NONE".
+4. Никаких вступлений, никаких рассуждений. Только список ID.`;
           citations = scoredNotes.map(n => ({ id: n.id, title: n.title || 'Untitled', snippet: n.isLocked ? '[Защищено паролем]' : (n.content || '').substring(0, 100) + '...' }));
+          
+          // Full content citations meant for formatting
+          (citations as any).fullContent = scoredNotes;
         } else {
-          prompt = `Inform the user in their language that you found no notes for query: "${message}". Format: "Я не нашел информации по запросу «${message}» в ваших заметках."`;
+          prompt = `Ниже представлены заметки...
+ИНСТРУКЦИИ: 
+Напиши ТОЛЬКО: "SOURCES: NONE"`;
         }
       }
       
@@ -280,15 +276,31 @@ Query: ${message}`;
           answer = data.candidates[0].content.parts[0].text;
         }
 
-        // Parse/Strip AI list attempts
-        answer = answer.replace(/^\s*\d+\.\s.*/gm, '').replace(/^\s*-\s.*/gm, '').trim();
+        // Parse SOURCES
+        let usedIds: string[] = [];
+        if (answer.includes('SOURCES:')) {
+            const parts = answer.split('SOURCES:');
+            const idsPart = parts[1].trim();
+            if (idsPart !== 'NONE') {
+                usedIds = idsPart.split(',').map(id => id.trim()).filter(id => id);
+            }
+        }
 
-        // Construct formatted list manually
-        const finalNotesList = citations.map((n, i) => `${i + 1}. ${n.title}\n${n.snippet}`).join('\n\n');
-        
-        const finalAnswer = `${answer}\n\nВот что я нашел по запросу «${message}»:\n\n${finalNotesList}`;
+        const relevantNotes = citations.filter(c => usedIds.includes(c.id));
+        const fullContentNotes = ((citations as any).fullContent || []).filter((n: any) => usedIds.includes(n.id));
 
-        return { answer: finalAnswer, citations: [] };
+        let finalAnswer = '';
+        if (relevantNotes.length === 0) {
+            finalAnswer = `Я не нашел информации по запросу «${message}» в ваших заметках.`;
+        } else {
+            const finalNotesList = fullContentNotes.map((n: any, i: number) => {
+                const snippet = n.isLocked ? '[Содержимое защищено паролем]' : (n.content && n.content.length > 300 ? n.content.substring(0, 300).trim() + '...' : (n.content || '').trim());
+                return `${i + 1}. ${n.title}\n${snippet}`;
+            }).join('\n\n');
+            finalAnswer = `Вот что я нашел по запросу «${message}»:\n\n${finalNotesList}`;
+        }
+
+        return { answer: finalAnswer, citations: relevantNotes };
       } catch (e) {
         return { answer: 'Local AI request failed. Check your API key and settings.', citations: [] };
       }

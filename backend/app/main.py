@@ -1189,19 +1189,17 @@ async def chat_with_notes(req: ChatRequest, db: Session = Depends(get_db), curre
     context_text = "\n\n---\n\n".join(context_parts)
     
     # 7. Финальный запрос к LLM (Telegram-bot style - minimal AI answer, backend handles formatting)
-    prompt = f"""Ниже представлены релевантные заметки. ОБЯЗАТЕЛЬНО ПРОАНАЛИЗИРУЙ ИХ И ОТВЕТЬ НА ВОПРОС ПОЛЬЗОВАТЕЛЯ.
-    
+    prompt = f"""Ниже представлены заметки по запросу пользователя. Выбери из них те, которые действительно релевантны.
+
 ЗАМЕТКИ ИЗ БАЗЫ:
 {context_text}
 
-ИНСТРУКЦИИ (ВЫПОЛНЯТЬ СТРОГО):
-1. Отвечай только на вопрос пользователя основываясь на заметках выше.
-2. КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНО составлять любые списки заметок (с цифрами или без).
-3. КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНО упоминать SOURCES, ID или названия файлов.
-4. Будь краток. Никаких вступлений ("Я помогу", "Вот что я нашел"). Сразу ответ.
-5. Отвечай прямо на языке запроса.
-
-ВОПРОС: {req.message}"""
+ИНСТРУКЦИИ:
+1. Ознакомься с вопросом пользователя: "{req.message}"
+2. В ответе напиши ТОЛЬКО одно: строку "SOURCES: ID1, ID2, ..." с перечнем включенных в ответ ID.
+3. Если ни одна заметка не содержит ответа на запрос, напиши ровно: "SOURCES: NONE".
+4. Никаких вступлений, никаких рассуждений. Только список ID.
+"""
 
     try:
         answer = ""
@@ -1228,39 +1226,47 @@ async def chat_with_notes(req: ChatRequest, db: Session = Depends(get_db), curre
                 else:
                     answer = f"Ошибка Gemini API: {response.text}"
         
-        # Парсим SOURCES из ответа, чтобы показать только реально использованные цитаты
+        # Parse SOURCES
         used_ids = []
         if "SOURCES:" in answer:
             parts = answer.split("SOURCES:")
-            answer_text = parts[0].strip()
             ids_part = parts[1].strip()
-            used_ids = [id.strip() for id in ids_part.split(',') if id.strip()]
-            answer = answer_text
+            if ids_part != "NONE":
+                used_ids = [id.strip() for id in ids_part.split(',') if id.strip()]
         
-        # Игнорируем попытки ИИ вернуть список, если он это сделает
-        # Удаляем из ответа всё, что похоже на список (строки начинающиеся с "N." или "-")
-        import re
-        answer = re.sub(r'^\s*\d+\.\s.*', '', answer, flags=re.MULTILINE)
-        answer = re.sub(r'^\s*-\s.*', '', answer, flags=re.MULTILINE)
+        # Формируем финальный список релевантных заметок
+        relevant_notes = [note for note in final_notes if note.id in used_ids]
+        
+        final_citations = []
+        for note in relevant_notes:
+            snippet = "[Защищено паролем]" if note.folderId in protected_folder_ids else (note.content[:100] + "..." if note.content else "")
+            final_citations.append({
+                "id": note.id,
+                "title": note.title,
+                "snippet": snippet
+            })
 
-        # Формируем финальный список цитат вручную (программно)
-        final_notes_list = []
-        for i, note in enumerate(final_notes):
-            snippet = "[Содержимое защищено паролем]" if note.folderId in protected_folder_ids else (note.content[:100] + "..." if note.content else "")
-            final_notes_list.append(f"{i+1}. {note.title}\n{snippet}")
-        
-        formatted_notes = "\n\n".join(final_notes_list)
-        
-        # Комбинируем ответ ИИ (очищенный) и наш список
-        final_answer = f"{answer.strip()}\n\nВот что я нашел по запросу «{req.message}»:\n\n{formatted_notes}"
-        
-        # Если ИИ сказал, что информации недостаточно, или список пуст
-        if "информации недостаточно" in answer.lower() and not final_notes:
-            return {"answer": answer, "citations": []}
+        if not relevant_notes:
+            final_answer = f"Я не нашел информации по запросу «{req.message}» в ваших заметках."
+        else:
+            final_notes_list = []
+            for i, note in enumerate(relevant_notes):
+                # Для текста в чате берем бóльший кусок контента
+                if note.folderId in protected_folder_ids:
+                    snippet = "[Содержимое защищено паролем]"
+                else:
+                    snippet = note.content.strip()
+                    if len(snippet) > 300:
+                        snippet = snippet[:300].strip() + "..."
+                
+                final_notes_list.append(f"{i+1}. {note.title}\n{snippet}")
+            
+            formatted_notes = "\n\n".join(final_notes_list)
+            final_answer = f"Вот что я нашел по запросу «{req.message}»:\n\n{formatted_notes}"
 
         return {
             "answer": final_answer,
-            "citations": [] # Цитаты уже включены прямо в текст
+            "citations": final_citations
         }
     except Exception as e:
         return {"answer": f"Ошибка: {str(e)}", "citations": []}
