@@ -15,6 +15,8 @@ import { api } from './client';
 import SyncManager from '../components/SyncManager';
 import { Note, Folder } from '../types';
 
+(window as any).desktopApi = api;
+
 export default function App() {
   const { t } = useLanguage();
   const [notes, setNotes] = useState<Note[]>([]);

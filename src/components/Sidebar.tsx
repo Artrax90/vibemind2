@@ -611,7 +611,7 @@ export default function Sidebar({ notes, folders, activeNoteId, isLoading = fals
                             }}
                             className="w-full flex items-center px-4 py-2 text-sm text-popover-foreground hover:bg-secondary hover:text-foreground transition-colors"
                           >
-                            <Lock size={14} className="mr-2" /> {folder?.isProtected ? t('folder.changePassword') || 'Change Password' : t('folder.setPassword') || 'Set Password'}
+                            <Lock size={14} className="mr-2" /> {folder?.isProtected ? (t('folder.changePassword') || 'Change Password') : (t('folder.setPassword') || 'Set Password')}
                           </button>
                         </>
                       );

@@ -67,9 +67,8 @@ export const api = {
   },
   
   async createUser(user: any) {
-    if (isLocalApp) {
-      const { api: desktopApi } = await import('../desktop/client');
-      return await desktopApi.createUser(user);
+    if (isLocalApp && (window as any).desktopApi) {
+      return await (window as any).desktopApi.createUser(user);
     }
     try {
       const res = await fetch(`${BASE_URL}/api/users`, {
@@ -87,9 +86,8 @@ export const api = {
   },
   
   async updateUser(id: string, user: any) {
-    if (isLocalApp) {
-      const { api: desktopApi } = await import('../desktop/client');
-      return await desktopApi.updateUser(id, user);
+    if (isLocalApp && (window as any).desktopApi) {
+      return await (window as any).desktopApi.updateUser(id, user);
     }
     try {
       const res = await fetch(`${BASE_URL}/api/users/${id}`, {
@@ -107,9 +105,8 @@ export const api = {
   },
 
   async deleteUser(id: string) {
-    if (isLocalApp) {
-      const { api: desktopApi } = await import('../desktop/client');
-      return await desktopApi.deleteUser(id);
+    if (isLocalApp && (window as any).desktopApi) {
+      return await (window as any).desktopApi.deleteUser(id);
     }
     try {
       const res = await fetch(`${BASE_URL}/api/users/${id}`, {
@@ -124,9 +121,8 @@ export const api = {
   },
 
   async getMe() {
-    if (isLocalApp) {
-      const { api: desktopApi } = await import('../desktop/client');
-      return await desktopApi.getMe();
+    if (isLocalApp && (window as any).desktopApi) {
+      return await (window as any).desktopApi.getMe();
     }
     try {
       const res = await fetch(`${BASE_URL}/api/users/me`, {
@@ -140,9 +136,8 @@ export const api = {
   },
 
   async getUsers() {
-    if (isLocalApp) {
-      const { api: desktopApi } = await import('../desktop/client');
-      return await desktopApi.getUsers();
+    if (isLocalApp && (window as any).desktopApi) {
+      return await (window as any).desktopApi.getUsers();
     }
     try {
       const res = await fetch(`${BASE_URL}/api/users`, {
@@ -157,9 +152,8 @@ export const api = {
   },
 
   async getLogs() {
-    if (isLocalApp) {
-      const { api: desktopApi } = await import('../desktop/client');
-      return await desktopApi.getLogs();
+    if (isLocalApp && (window as any).desktopApi) {
+      return await (window as any).desktopApi.getLogs();
     }
     try {
       const res = await fetch(`${BASE_URL}/api/logs`, {
@@ -238,9 +232,8 @@ export const api = {
   },
   
   async getShares(resourceType: string, resourceId: string) {
-    if (isLocalApp) {
-      const { api: desktopApi } = await import('../desktop/client');
-      return await desktopApi.getShares(resourceType, resourceId);
+    if (isLocalApp && (window as any).desktopApi) {
+      return await (window as any).desktopApi.getShares(resourceType, resourceId);
     }
     try {
       const res = await fetch(`${BASE_URL}/api/shares/${resourceType}/${resourceId}`, {
@@ -253,9 +246,8 @@ export const api = {
   },
 
   async createShare(resourceType: string, resourceId: string, shareData: any) {
-    if (isLocalApp) {
-      const { api: desktopApi } = await import('../desktop/client');
-      return await desktopApi.createShare(resourceType, resourceId, shareData);
+    if (isLocalApp && (window as any).desktopApi) {
+      return await (window as any).desktopApi.createShare(resourceType, resourceId, shareData);
     }
     try {
       const res = await fetch(`${BASE_URL}/api/shares/${resourceType}/${resourceId}`, {
@@ -273,9 +265,8 @@ export const api = {
   },
 
   async deleteShare(shareId: string) {
-    if (isLocalApp) {
-      const { api: desktopApi } = await import('../desktop/client');
-      return await desktopApi.deleteShare(shareId);
+    if (isLocalApp && (window as any).desktopApi) {
+      return await (window as any).desktopApi.deleteShare(shareId);
     }
     try {
       const res = await fetch(`${BASE_URL}/api/shares/${shareId}`, {
@@ -352,11 +343,8 @@ export const api = {
   },
   
   async createFolder(folder: any) {
-    if (isLocalApp) {
-      const { api: desktopApi } = await import('../desktop/client');
-      // For creating a folder, we just save it locally first if offline
-      // But we don't have a createFolder in desktopApi yet, let's just use saveFolder
-      await desktopApi.updateFolder(folder.id, folder);
+    if (isLocalApp && (window as any).desktopApi) {
+      await (window as any).desktopApi.updateFolder(folder.id, folder);
       return folder;
     }
     try {
@@ -375,12 +363,8 @@ export const api = {
   },
   
   async getFolders() {
-    if (isLocalApp) {
-      const { api: desktopApi } = await import('../desktop/client');
-      // getFolders is not in desktopApi yet? Wait, I saw getNotes.
-      // Let's check desktop/client.ts again.
-      // Ah, I missed it. I'll add them to desktop/client.ts.
-      return await desktopApi.getFolders();
+    if (isLocalApp && (window as any).desktopApi) {
+      return await (window as any).desktopApi.getFolders();
     }
     try {
       const res = await fetch(`${BASE_URL}/api/folders`, {
@@ -393,9 +377,8 @@ export const api = {
   },
   
   async deleteFolder(id: string) {
-    if (isLocalApp) {
-      const { api: desktopApi } = await import('../desktop/client');
-      return await desktopApi.deleteFolder(id);
+    if (isLocalApp && (window as any).desktopApi) {
+      return await (window as any).desktopApi.deleteFolder(id);
     }
     try {
       await fetch(`${BASE_URL}/api/folders/${id}`, { 
@@ -408,9 +391,8 @@ export const api = {
   },
   
   async updateFolder(id: string, updates: any) {
-    if (isLocalApp) {
-      const { api: desktopApi } = await import('../desktop/client');
-      return await desktopApi.updateFolder(id, updates);
+    if (isLocalApp && (window as any).desktopApi) {
+      return await (window as any).desktopApi.updateFolder(id, updates);
     }
     try {
       const res = await fetch(`${BASE_URL}/api/folders/${id}`, {
@@ -428,9 +410,8 @@ export const api = {
   },
 
   async verifyFolderPassword(id: string, password: string) {
-    if (isLocalApp) {
-      const { api: desktopApi } = await import('../desktop/client');
-      return await desktopApi.verifyFolderPassword(id, password);
+    if (isLocalApp && (window as any).desktopApi) {
+      return await (window as any).desktopApi.verifyFolderPassword(id, password);
     }
     try {
       const res = await fetch(`${BASE_URL}/api/folders/${id}/verify`, {
@@ -448,9 +429,8 @@ export const api = {
   },
 
   async chat(message: string, notes?: any[]) {
-    if (isLocalApp) {
-      const { api: desktopApi } = await import('../desktop/client');
-      return await desktopApi.chat(message, notes);
+    if (isLocalApp && (window as any).desktopApi) {
+      return await (window as any).desktopApi.chat(message, notes);
     }
     try {
       const res = await fetch(`${BASE_URL}/api/chat`, {
@@ -468,9 +448,8 @@ export const api = {
   },
   
   async uploadFile(formData: FormData) {
-    if (isLocalApp) {
-      const { api: desktopApi } = await import('../desktop/client');
-      return await desktopApi.uploadFile(formData);
+    if (isLocalApp && (window as any).desktopApi) {
+      return await (window as any).desktopApi.uploadFile(formData);
     }
     try {
       const res = await fetch(`${BASE_URL}/api/upload`, {
@@ -486,9 +465,8 @@ export const api = {
   },
   
   async importNotes(formData: FormData) {
-    if (isLocalApp) {
-      const { api: desktopApi } = await import('../desktop/client');
-      return await desktopApi.importNotes(formData);
+    if (isLocalApp && (window as any).desktopApi) {
+      return await (window as any).desktopApi.importNotes(formData);
     }
     try {
       const res = await fetch(`${BASE_URL}/api/notes/import`, {
@@ -504,9 +482,8 @@ export const api = {
   },
 
   async summarize(content: string) {
-    if (isLocalApp) {
-      const { api: desktopApi } = await import('../desktop/client');
-      return await desktopApi.summarize(content);
+    if (isLocalApp && (window as any).desktopApi) {
+      return await (window as any).desktopApi.summarize(content);
     }
     try {
       const res = await fetch(`${BASE_URL}/api/ai/summarize`, {
