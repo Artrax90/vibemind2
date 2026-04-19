@@ -63,6 +63,7 @@ export default function App() {
   });
   const [notes, setNotes] = useState<Note[]>([]);
   const [folders, setFolders] = useState<Folder[]>([]);
+  const [unlockedFolders, setUnlockedFolders] = useState<Set<string>>(new Set());
   const [activeNoteId, setActiveNoteId] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<'edit' | 'preview' | 'graph'>('preview');
   const [showSettings, setShowSettings] = useState(false);
@@ -149,7 +150,16 @@ export default function App() {
     setIsMobileMenuOpen(false); // Close mobile menu on select
   };
 
-  const activeNote = notes.find(n => n.id === activeNoteId);
+  const availableNotes = React.useMemo(() => {
+    return notes.filter(n => {
+      if (!n.folderId) return true;
+      const f = folders.find(f => f.id === n.folderId);
+      if (f?.isProtected && !unlockedFolders.has(n.folderId)) return false;
+      return true;
+    });
+  }, [notes, folders, unlockedFolders]);
+
+  const activeNote = availableNotes.find(n => n.id === activeNoteId);
 
   const updateNote = (id: string, updates: Partial<Note>) => {
     setNotes(prev => {
@@ -263,6 +273,8 @@ export default function App() {
         <Sidebar 
           notes={notes} 
           folders={folders} 
+          unlockedFolders={unlockedFolders}
+          setUnlockedFolders={setUnlockedFolders}
           activeNoteId={activeNoteId} 
           onSelectNote={handleNoteSelect}
           onOpenSettings={() => { setShowSettings(true); setIsMobileMenuOpen(false); }}
@@ -337,7 +349,7 @@ export default function App() {
               exit={{ opacity: 0 }}
               className="h-full w-full"
             >
-              <GraphView notes={notes} activeNoteId={activeNoteId} onNodeClick={handleNoteSelect} />
+              <GraphView notes={availableNotes} activeNoteId={activeNoteId} onNodeClick={handleNoteSelect} />
             </motion.div>
           ) : activeNote ? (
             <motion.div 
@@ -349,7 +361,7 @@ export default function App() {
             >
               <Editor 
                 note={activeNote} 
-                allNotes={notes}
+                allNotes={availableNotes}
                 onUpdate={updateNote} 
                 onWikilinkClick={handleWikilinkClick}
                 onTagClick={handleTagClick}
@@ -367,7 +379,7 @@ export default function App() {
 
       {/* Chat - Hidden in Focus Mode and on Mobile (unless toggled) */}
       <div className={`${isFocusMode ? 'hidden' : 'hidden lg:flex'}`}>
-        <Chat notes={notes} activeNoteId={activeNoteId} onNoteClick={handleNoteSelect} api={api} />
+        <Chat notes={availableNotes} activeNoteId={activeNoteId} onNoteClick={handleNoteSelect} api={api} />
       </div>
 
       {/* Global Search Modal */}
@@ -416,7 +428,7 @@ export default function App() {
                 </button>
               </div>
               <div className="max-h-[60vh] overflow-y-auto p-2 scrollbar-thin">
-                {notes.filter(n => n.title.toLowerCase().includes(searchQuery.toLowerCase()) || n.content.toLowerCase().includes(searchQuery.toLowerCase())).map(note => (
+                {availableNotes.filter(n => n.title.toLowerCase().includes(searchQuery.toLowerCase()) || n.content.toLowerCase().includes(searchQuery.toLowerCase())).map(note => (
                   <div 
                     key={note.id}
                     onClick={() => handleNoteSelect(note.id)}

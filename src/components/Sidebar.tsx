@@ -17,6 +17,8 @@ import { useLongPress } from '../hooks/useLongPress';
 type SidebarProps = {
   notes: Note[];
   folders: FolderType[];
+  unlockedFolders: Set<string>;
+  setUnlockedFolders: React.Dispatch<React.SetStateAction<Set<string>>>;
   activeNoteId: string | null;
   isLoading?: boolean;
   onSelectNote: (id: string, mode?: 'edit' | 'preview') => void;
@@ -200,13 +202,12 @@ function DroppableFolder({ folder, isExpanded, isSelected, isRenaming, renameVal
   );
 }
 
-export default function Sidebar({ notes, folders, activeNoteId, isLoading = false, onSelectNote, onOpenSettings, onOpenSearch, onLogout, onNotesChange, onFoldersChange, onAddNote, onAddFolder, onDeleteNote, onDeleteFolder, onRenameFolder, onShare, onQuit, onClose }: SidebarProps) {
+export default function Sidebar({ notes, folders, unlockedFolders, setUnlockedFolders, activeNoteId, isLoading = false, onSelectNote, onOpenSettings, onOpenSearch, onLogout, onNotesChange, onFoldersChange, onAddNote, onAddFolder, onDeleteNote, onDeleteFolder, onRenameFolder, onShare, onQuit, onClose }: SidebarProps) {
   const { t } = useLanguage();
   const [isCreateFolderOpen, setIsCreateFolderOpen] = useState(false);
   const [plusMenuOpen, setPlusMenuOpen] = useState(false);
   const [selectedFolderId, setSelectedFolderId] = useState<string | undefined>(undefined);
   const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set());
-  const [unlockedFolders, setUnlockedFolders] = useState<Set<string>>(new Set());
   const [passModal, setPassModal] = useState<{ isOpen: boolean; folderId: string; folderName: string; mode: 'set' | 'verify' | 'change' } | null>(null);
   
   // Context Menu State

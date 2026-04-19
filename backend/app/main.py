@@ -1109,6 +1109,16 @@ async def chat_with_notes(req: ChatRequest, db: Session = Depends(get_db), curre
             note.embedding = embedding_manager.get_vector(text_to_embed)
         db.commit()
 
+    # 2.5 Найти защищенные папки и исключить их из поиска
+    protected_folder_ids = [f.id for f in db.query(Folder.id).filter(
+        Folder.user_id == current_user.id, 
+        Folder.password.is_not(None)
+    ).all()]
+
+    base_filters = [Note.user_id == current_user.id]
+    if protected_folder_ids:
+        base_filters.append(~Note.folderId.in_(protected_folder_ids))
+
     # 3. Ключевой поиск (Keyword Search) по расширенным словам
     keyword_filters = []
     unique_words = list(set(search_keywords))
@@ -1119,7 +1129,7 @@ async def chat_with_notes(req: ChatRequest, db: Session = Depends(get_db), curre
     keyword_results = []
     if keyword_filters:
         keyword_results = db.query(Note).filter(
-            Note.user_id == current_user.id,
+            *base_filters,
             or_(*keyword_filters)
         ).limit(5).all()
     
@@ -1132,7 +1142,7 @@ async def chat_with_notes(req: ChatRequest, db: Session = Depends(get_db), curre
         Note, 
         Note.embedding.cosine_distance(query_vector).label("distance")
     ).filter(
-        Note.user_id == current_user.id,
+        *base_filters,
         Note.embedding.is_not(None)
     ).filter(
         Note.embedding.cosine_distance(query_vector) <= semantic_threshold
