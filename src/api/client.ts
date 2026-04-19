@@ -352,6 +352,13 @@ export const api = {
   },
   
   async createFolder(folder: any) {
+    if (isLocalApp) {
+      const { api: desktopApi } = await import('../desktop/client');
+      // For creating a folder, we just save it locally first if offline
+      // But we don't have a createFolder in desktopApi yet, let's just use saveFolder
+      await desktopApi.updateFolder(folder.id, folder);
+      return folder;
+    }
     try {
       const res = await fetch(`${BASE_URL}/api/folders`, {
         method: 'POST',
@@ -368,6 +375,13 @@ export const api = {
   },
   
   async getFolders() {
+    if (isLocalApp) {
+      const { api: desktopApi } = await import('../desktop/client');
+      // getFolders is not in desktopApi yet? Wait, I saw getNotes.
+      // Let's check desktop/client.ts again.
+      // Ah, I missed it. I'll add them to desktop/client.ts.
+      return await desktopApi.getFolders();
+    }
     try {
       const res = await fetch(`${BASE_URL}/api/folders`, {
         headers: getAuthHeaders()
@@ -379,6 +393,10 @@ export const api = {
   },
   
   async deleteFolder(id: string) {
+    if (isLocalApp) {
+      const { api: desktopApi } = await import('../desktop/client');
+      return await desktopApi.deleteFolder(id);
+    }
     try {
       await fetch(`${BASE_URL}/api/folders/${id}`, { 
         method: 'DELETE',
@@ -390,6 +408,10 @@ export const api = {
   },
   
   async updateFolder(id: string, updates: any) {
+    if (isLocalApp) {
+      const { api: desktopApi } = await import('../desktop/client');
+      return await desktopApi.updateFolder(id, updates);
+    }
     try {
       const res = await fetch(`${BASE_URL}/api/folders/${id}`, {
         method: 'PATCH',
@@ -402,6 +424,26 @@ export const api = {
       return await handleResponse(res, { success: true, ...updates });
     } catch (e) {
       return { success: true, ...updates };
+    }
+  },
+
+  async verifyFolderPassword(id: string, password: string) {
+    if (isLocalApp) {
+      const { api: desktopApi } = await import('../desktop/client');
+      return await desktopApi.verifyFolderPassword(id, password);
+    }
+    try {
+      const res = await fetch(`${BASE_URL}/api/folders/${id}/verify`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...getAuthHeaders()
+        },
+        body: JSON.stringify({ password })
+      });
+      return await res.json();
+    } catch (e) {
+      return { success: false };
     }
   },
 

@@ -32,6 +32,7 @@ export const initDB = async () => {
           permission TEXT,
           isShared INTEGER DEFAULT 0,
           isSharedByMe INTEGER DEFAULT 0,
+          isProtected INTEGER DEFAULT 0,
           ownerUsername TEXT,
           is_dirty INTEGER DEFAULT 0,
           updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
@@ -143,8 +144,8 @@ export const dbApi = {
       const isDirty = folder.is_dirty !== undefined ? folder.is_dirty : 1;
       const updatedAt = folder.updated_at || new Date().toISOString();
       await db.run(
-        'INSERT OR REPLACE INTO folders (id, name, parentId, permission, isShared, isSharedByMe, ownerUsername, is_dirty, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
-        [folder.id, folder.name, folder.parentId, folder.permission, folder.isShared ? 1 : 0, folder.isSharedByMe ? 1 : 0, folder.ownerUsername, isDirty, updatedAt]
+        'INSERT OR REPLACE INTO folders (id, name, parentId, permission, isShared, isSharedByMe, isProtected, ownerUsername, is_dirty, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+        [folder.id, folder.name, folder.parentId, folder.permission, folder.isShared ? 1 : 0, folder.isSharedByMe ? 1 : 0, folder.isProtected ? 1 : 0, folder.ownerUsername, isDirty, updatedAt]
       );
       return;
     }

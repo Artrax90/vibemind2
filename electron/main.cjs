@@ -36,6 +36,7 @@ function initDb() {
       permission TEXT,
       isShared INTEGER DEFAULT 0,
       isSharedByMe INTEGER DEFAULT 0,
+      isProtected INTEGER DEFAULT 0,
       ownerUsername TEXT,
       is_dirty INTEGER DEFAULT 0,
       updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
@@ -77,6 +78,9 @@ function initDb() {
       db.exec("ALTER TABLE folders ADD COLUMN isShared INTEGER DEFAULT 0");
       db.exec("ALTER TABLE folders ADD COLUMN isSharedByMe INTEGER DEFAULT 0");
       db.exec("ALTER TABLE folders ADD COLUMN ownerUsername TEXT");
+    }
+    if (!folderColumns.find(c => c.name === 'isProtected')) {
+      db.exec("ALTER TABLE folders ADD COLUMN isProtected INTEGER DEFAULT 0");
     }
   } catch (e) {
     console.error("Migration failed", e);
@@ -162,8 +166,8 @@ ipcMain.handle('db-save-folder', async (event, folder) => {
   const updatedAt = folder.updated_at || new Date().toISOString();
 
   const stmt = db.prepare(`
-    INSERT OR REPLACE INTO folders (id, name, parentId, permission, isShared, isSharedByMe, ownerUsername, is_dirty, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT OR REPLACE INTO folders (id, name, parentId, permission, isShared, isSharedByMe, isProtected, ownerUsername, is_dirty, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
   stmt.run(
     folder.id, 
@@ -172,6 +176,7 @@ ipcMain.handle('db-save-folder', async (event, folder) => {
     folder.permission || 'owner',
     folder.isShared ? 1 : 0,
     folder.isSharedByMe ? 1 : 0,
+    folder.isProtected ? 1 : 0,
     folder.ownerUsername || null,
     isDirty, 
     updatedAt

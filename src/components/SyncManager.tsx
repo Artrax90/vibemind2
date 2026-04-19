@@ -161,6 +161,7 @@ export default function SyncManager({ onSyncComplete }: SyncManagerProps) {
             permission: remoteFolder.permission,
             isShared: remoteFolder.isShared ? 1 : 0,
             isSharedByMe: remoteFolder.isSharedByMe ? 1 : 0,
+            isProtected: remoteFolder.isProtected ? 1 : 0,
             ownerUsername: remoteFolder.ownerUsername,
             is_dirty: 0,
             updated_at: remoteFolder.updated_at || new Date().toISOString()

@@ -292,9 +292,10 @@ export default function App() {
         onShareStatusChange={(isShared) => {
           if (shareModal.id) {
             if (shareModal.type === 'note') {
-              setNotes(prev => prev.map(n => n.id === shareModal.id ? { ...n, isSharedByMe: isShared } : n));
+              updateNote(shareModal.id, { isSharedByMe: isShared });
             } else if (shareModal.type === 'folder') {
               setFolders(prev => prev.map(f => f.id === shareModal.id ? { ...f, isSharedByMe: isShared } : f));
+              api.updateFolder(shareModal.id, { isSharedByMe: isShared });
             }
           }
         }}

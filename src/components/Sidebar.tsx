@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
-import { Folder, FileText, Settings as SettingsIcon, Plus, MoreVertical, Search, ChevronRight, ChevronDown, FilePlus, FolderPlus, Edit2, Trash2, Share2, FolderInput, Sparkles, X, LogOut, Pin, PinOff, RefreshCw } from 'lucide-react';
+import { Folder, FileText, Settings as SettingsIcon, Plus, MoreVertical, Search, ChevronRight, ChevronDown, FilePlus, FolderPlus, Edit2, Trash2, Share2, FolderInput, Sparkles, X, LogOut, Pin, PinOff, RefreshCw, Lock, PinIcon, ShieldCheck } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Note, Folder as FolderType } from '../types';
 import CreateFolderModal from './modals/CreateFolderModal';
+import FolderPasswordModal from './FolderPasswordModal';
 import ShareModal from './ShareModal';
 import { api } from '../api/client';
 import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors, DragEndEvent, useDroppable } from '@dnd-kit/core';
@@ -155,6 +156,7 @@ function DroppableFolder({ folder, isExpanded, isSelected, isRenaming, renameVal
               <div className="flex items-center">
                 <span className="text-sm truncate">{folder.name}</span>
                 {!!folder.isSharedByMe && <Share2 size={10} className="ml-1 text-primary opacity-70" />}
+                {folder.isProtected && <Lock size={10} className="ml-1 text-amber-500 opacity-80" />}
               </div>
               {folder.isShared && (
                 <span className="text-[10px] text-muted-foreground/60 truncate flex items-center">
@@ -204,6 +206,8 @@ export default function Sidebar({ notes, folders, activeNoteId, isLoading = fals
   const [plusMenuOpen, setPlusMenuOpen] = useState(false);
   const [selectedFolderId, setSelectedFolderId] = useState<string | undefined>(undefined);
   const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set());
+  const [unlockedFolders, setUnlockedFolders] = useState<Set<string>>(new Set());
+  const [passModal, setPassModal] = useState<{ isOpen: boolean; folderId: string; folderName: string; mode: 'set' | 'verify' } | null>(null);
   
   // Context Menu State
   const [contextMenu, setContextMenu] = useState<{ x: number, y: number, type: 'note' | 'folder', id: string } | null>(null);
@@ -225,10 +229,21 @@ export default function Sidebar({ notes, folders, activeNoteId, isLoading = fals
 
   const toggleFolder = (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
+    const folder = folders.find(f => f.id === id);
     const next = new Set(expandedFolders);
-    if (next.has(id)) next.delete(id);
-    else next.add(id);
-    setExpandedFolders(next);
+    
+    if (next.has(id)) {
+      next.delete(id);
+      setExpandedFolders(next);
+    } else {
+      // Check if protected and not unlocked
+      if (folder?.isProtected && !unlockedFolders.has(id)) {
+        setPassModal({ isOpen: true, folderId: id, folderName: folder.name, mode: 'verify' });
+      } else {
+        next.add(id);
+        setExpandedFolders(next);
+      }
+    }
     setSelectedFolderId(id);
   };
 
@@ -582,12 +597,23 @@ export default function Sidebar({ notes, folders, activeNoteId, isLoading = fals
                     const isOwner = !folder?.permission || folder.permission === 'owner';
                     if (isOwner) {
                       return (
-                        <button 
-                          onClick={() => handleShareClick('folder', contextMenu.id)}
-                          className="w-full flex items-center px-4 py-2 text-sm text-popover-foreground hover:bg-secondary hover:text-foreground transition-colors"
-                        >
-                          <Share2 size={14} className="mr-2" /> {t('sidebar.share')}
-                        </button>
+                        <>
+                          <button 
+                            onClick={() => handleShareClick('folder', contextMenu.id)}
+                            className="w-full flex items-center px-4 py-2 text-sm text-popover-foreground hover:bg-secondary hover:text-foreground transition-colors"
+                          >
+                            <Share2 size={14} className="mr-2" /> {t('sidebar.share')}
+                          </button>
+                          <button 
+                            onClick={() => {
+                              setPassModal({ isOpen: true, mode: 'set', folderId: contextMenu.id, folderName: folder?.name || '' });
+                              setContextMenu(null);
+                            }}
+                            className="w-full flex items-center px-4 py-2 text-sm text-popover-foreground hover:bg-secondary hover:text-foreground transition-colors"
+                          >
+                            <Lock size={14} className="mr-2" /> {folder?.isProtected ? t('folder.changePassword') || 'Change Password' : t('folder.setPassword') || 'Set Password'}
+                          </button>
+                        </>
                       );
                     }
                     return null;
@@ -648,6 +674,47 @@ export default function Sidebar({ notes, folders, activeNoteId, isLoading = fals
         </div>,
         document.body
       )}
+
+      <AnimatePresence>
+        {passModal && (
+          <FolderPasswordModal
+            isOpen={passModal.isOpen}
+            folderName={passModal.folderName}
+            mode={passModal.mode}
+            onClose={() => setPassModal(null)}
+            onConfirm={async (password) => {
+              if (passModal.mode === 'set') {
+                const res = await api.updateFolder(passModal.folderId, { password });
+                if (res.success || res.status === 'success') {
+                  const updatedFolders = folders.map(f => f.id === passModal.folderId ? { ...f, isProtected: !!password } : f);
+                  onFoldersChange(updatedFolders);
+                  if (password) {
+                    const nextUnlocked = new Set(unlockedFolders);
+                    nextUnlocked.add(passModal.folderId);
+                    setUnlockedFolders(nextUnlocked);
+                  }
+                  return true;
+                }
+                return false;
+              } else {
+                // Verify
+                const res = await api.verifyFolderPassword(passModal.folderId, password);
+                if (res.success) {
+                  const nextUnlocked = new Set(unlockedFolders);
+                  nextUnlocked.add(passModal.folderId);
+                  setUnlockedFolders(nextUnlocked);
+                  
+                  const nextExpanded = new Set(expandedFolders);
+                  nextExpanded.add(passModal.folderId);
+                  setExpandedFolders(nextExpanded);
+                  return true;
+                }
+                return false;
+              }
+            }}
+          />
+        )}
+      </AnimatePresence>
 
       <CreateFolderModal 
         isOpen={isCreateFolderOpen} 

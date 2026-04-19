@@ -92,6 +92,9 @@ try:
             if 'updated_at' not in actual_columns:
                 conn.execute(text('ALTER TABLE folders ADD COLUMN updated_at TEXT;'))
                 logger.info("Added updated_at to folders")
+            if 'password_hash' not in actual_columns:
+                conn.execute(text('ALTER TABLE folders ADD COLUMN password_hash TEXT;'))
+                logger.info("Added password_hash to folders")
             conn.commit()
 except Exception as e:
     logger.warning(f"Migration error: {e}")
@@ -222,11 +225,13 @@ class FolderCreate(BaseModel):
     name: str
     parentId: str | None = None
     updated_at: str | None = None
+    password: str | None = None
 
 class FolderUpdate(BaseModel):
     name: str | None = None
     parentId: str | None = None
     updated_at: str | None = None
+    password: str | None = None
 
 class ShareCreate(BaseModel):
     target_username: str | None = None
@@ -410,10 +415,18 @@ async def get_note(note_id: str, db: Session = Depends(get_db), current_user: Us
     if is_shared:
         owner = db.query(User).filter(User.id == n.user_id).first()
         owner_name = owner.username if owner else "Unknown"
+    
+    # Check if folder is protected
+    folder_is_protected = False
+    if n.folderId:
+        f = db.query(Folder).filter(Folder.id == n.folderId).first()
+        if f and f.password_hash:
+            folder_is_protected = True
         
     return {
         "id": n.id, "title": n.title, "content": n.content, "folderId": n.folderId,
-        "isPinned": bool(n.isPinned), "isShared": is_shared, "ownerUsername": owner_name
+        "isPinned": bool(n.isPinned), "isShared": is_shared, "ownerUsername": owner_name,
+        "folderIsProtected": folder_is_protected
     }
 
 @app.patch("/api/notes/{note_id}")
@@ -543,6 +556,7 @@ async def get_folders(db: Session = Depends(get_db), current_user: User = Depend
             "id": f.id, "name": f.name, "parentId": f.parentId,
             "isShared": is_shared, "ownerUsername": owner_name, 
             "permission": permission, "isSharedByMe": is_shared_by_me,
+            "isProtected": f.password_hash is not None,
             "updated_at": f.updated_at
         })
     return res
@@ -568,7 +582,11 @@ async def create_folder(f: FolderCreate, db: Session = Depends(get_db), current_
             f.id = new_id
             return f
             
-    db_f = Folder(id=f.id, name=f.name, parentId=f.parentId, user_id=current_user.id, updated_at=f.updated_at or datetime.utcnow().isoformat())
+    db_f = Folder(
+        id=f.id, name=f.name, parentId=f.parentId, user_id=current_user.id, 
+        updated_at=f.updated_at or datetime.utcnow().isoformat(),
+        password_hash=pwd_context.hash(f.password) if f.password else None
+    )
     db.add(db_f)
     db.commit()
     return f
@@ -579,9 +597,33 @@ async def patch_folder(id: str, u: FolderUpdate, db: Session = Depends(get_db), 
     if not f: raise HTTPException(status_code=404)
     if u.name is not None: f.name = u.name
     if u.parentId is not None: f.parentId = u.parentId if u.parentId else None
+    if u.password is not None:
+        f.password_hash = pwd_context.hash(u.password) if u.password else None
     f.updated_at = u.updated_at or datetime.utcnow().isoformat()
     db.commit()
     return {"status": "success"}
+
+@app.post("/api/folders/{id}/verify")
+async def verify_folder_password(id: str, req: dict, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    f = db.query(Folder).filter(Folder.id == id, Folder.user_id == current_user.id).first()
+    if not f: raise HTTPException(status_code=404)
+    if not f.password_hash: return {"success": True}
+    if pwd_context.verify(req.get("password", ""), f.password_hash):
+        return {"success": True}
+    return {"success": False}
+
+@app.post("/api/folders/verify-by-note/{note_id}")
+async def verify_folder_password_by_note(note_id: str, req: dict, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    note = db.query(Note).filter(Note.id == note_id, Note.user_id == current_user.id).first()
+    if not note: raise HTTPException(status_code=404)
+    if not note.folderId: return {"success": True}
+    
+    f = db.query(Folder).filter(Folder.id == note.folderId).first()
+    if not f or not f.password_hash: return {"success": True}
+    
+    if pwd_context.verify(req.get("password", ""), f.password_hash):
+        return {"success": True}
+    return {"success": False}
 
 @app.delete("/api/folders/{id}")
 async def delete_folder(id: str, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
@@ -638,6 +680,15 @@ async def create_share(resource_type: str, resource_id: str, s: ShareCreate, db:
     share_id = str(uuid.uuid4())
     db_share = Share(id=share_id, resource_id=resource_id, resource_type=resource_type, owner_id=current_user.id, target_user_id=target_user_id, permission=s.permission, is_public=s.is_public)
     db.add(db_share)
+    
+    # Update resource updated_at to trigger sync
+    if resource_type == "note":
+        note = db.query(Note).filter(Note.id == resource_id).first()
+        if note: note.updated_at = datetime.utcnow().isoformat()
+    elif resource_type == "folder":
+        folder = db.query(Folder).filter(Folder.id == resource_id).first()
+        if folder: folder.updated_at = datetime.utcnow().isoformat()
+        
     db.commit()
     return {
         "id": share_id, 
@@ -652,7 +703,20 @@ async def create_share(resource_type: str, resource_id: str, s: ShareCreate, db:
 async def delete_share(share_id: str, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     s = db.query(Share).filter(Share.id == share_id, Share.owner_id == current_user.id).first()
     if not s: raise HTTPException(status_code=404)
+    
+    resource_id = s.resource_id
+    resource_type = s.resource_type
+    
     db.delete(s)
+    
+    # Update resource updated_at to trigger sync
+    if resource_type == "note":
+        note = db.query(Note).filter(Note.id == resource_id).first()
+        if note: note.updated_at = datetime.utcnow().isoformat()
+    elif resource_type == "folder":
+        folder = db.query(Folder).filter(Folder.id == resource_id).first()
+        if folder: folder.updated_at = datetime.utcnow().isoformat()
+        
     db.commit()
     return {"status": "success"}
 

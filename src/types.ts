@@ -18,5 +18,6 @@ export type Folder = {
   permission?: 'owner' | 'edit' | 'read';
   isShared?: boolean;
   isSharedByMe?: boolean;
+  isProtected?: boolean;
   ownerUsername?: string;
 };

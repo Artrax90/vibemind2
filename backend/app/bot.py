@@ -200,6 +200,7 @@ bot_tasks: Dict[int, asyncio.Task] = {}
 token_to_user: Dict[str, int] = {} # token -> user_id
 user_usernames: Dict[int, str] = {}
 bot_locks: Dict[int, asyncio.Lock] = {} # Lock per user
+awaiting_passwords: Dict[str, Dict[str, Any]] = {} # chat_id -> {user_id: int, note_id: str}
 dp = Dispatcher()
 
 def get_user_lock(user_id: int) -> asyncio.Lock:
@@ -596,11 +597,19 @@ async def handle_open_note(callback: types.CallbackQuery, user_id: int):
     result = await get_note_api(user_id, note_id)
     if result.get("status") == "success":
         note = result.get("data", {})
+        
+        # Check for folder protection
+        if note.get("folderIsProtected"):
+            chat_id = str(callback.message.chat.id)
+            awaiting_passwords[chat_id] = {"user_id": user_id, "note_id": note_id}
+            await callback.message.answer("🔒 Эта заметка находится в защищенной папке. Пожалуйста, введите пароль доступа:")
+            return
+
         title_esc = html.escape(note.get("title", "Без названия"))
         content = note.get("content", "Пусто")
         content_esc = html.escape(content)
         
-        full_text = f"📝 <b>{title_esc}</b>\n\n{content_esc}"
+        full_text = f"📝 <b>{html.escape(note.get('title', ''))}</b>\n\n{content_esc}"
         
         if len(full_text) <= 4096:
             await callback.message.answer(full_text, parse_mode="HTML")
@@ -710,6 +719,40 @@ async def handle_text(message: types.Message, user_id: int, admin_id: str = None
     if admin_id and str(message.from_user.id) != str(admin_id): return
     if message.text.startswith('/'): return
     
+    chat_id = str(message.chat.id)
+    if chat_id in awaiting_passwords:
+        state = awaiting_passwords.pop(chat_id)
+        # Verify password
+        note_id = state["note_id"]
+        # We need an endpoint to verify folder password
+        # For now, we can try to fetch the note with a password param if we implemented it, 
+        # but we decided on a verify endpoint.
+        
+        url = f"http://localhost:3344/api/folders/verify-by-note/{note_id}"
+        token = await get_user_token(user_id)
+        headers = {"Authorization": f"Bearer {token}"}
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.post(url, json={"password": message.text}, headers=headers) as resp:
+                    if resp.status == 200:
+                        data = await resp.json()
+                        if data.get("success"):
+                            # Success! Load note
+                            res = await get_note_api(user_id, note_id)
+                            if res.get("status") == "success":
+                                note = res["data"]
+                                title_esc = html.escape(note.get("title", ""))
+                                content_esc = html.escape(note.get("content", ""))
+                                await send_long_message(message, f"🔓 Доступ разрешен!\n\n📝 <b>{title_esc}</b>\n\n{content_esc}")
+                                return
+                        else:
+                            await message.answer("❌ Неверный пароль. Попробуйте снова открыть заметку.")
+                            return
+        except Exception as e:
+            logger.error(f"Error verifying password: {e}")
+            await message.answer("❌ Ошибка при проверке пароля.")
+            return
+
     logger.info(f"Обработка текста от пользователя {user_id}: «{message.text}»")
     
     # Convert words to digits

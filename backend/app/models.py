@@ -36,6 +36,7 @@ class Folder(Base):
     parentId = Column(String, nullable=True)
     user_id = Column(Integer, index=True)
     updated_at = Column(String, nullable=True)
+    password_hash = Column(String, nullable=True)
 
 class Note(Base):
     __tablename__ = "notes"

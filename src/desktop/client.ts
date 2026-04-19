@@ -54,21 +54,70 @@ export const api = {
     return folders.map((f: any) => ({
       ...f,
       isShared: !!f.isShared,
-      isSharedByMe: !!f.isSharedByMe
+      isSharedByMe: !!f.isSharedByMe,
+      isProtected: !!f.isProtected
     }));
   },
   
   async deleteFolder(id: string) {
+    const baseUrl = await this.getNormalizedUrl();
+    const token = await this.getServerToken();
+    if (token && baseUrl) {
+      try {
+        await fetch(`${baseUrl}/api/folders/${id}`, {
+          method: 'DELETE',
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
+      } catch (e) {
+        console.error('Failed to delete folder on server', e);
+      }
+    }
     await dbApi.deleteFolder(id);
   },
   
   async updateFolder(id: string, updates: any) {
+    const baseUrl = await this.getNormalizedUrl();
+    const token = await this.getServerToken();
+    if (token && baseUrl) {
+      try {
+        const res = await fetch(`${baseUrl}/api/folders/${id}`, {
+          method: 'PATCH',
+          headers: { 
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`
+          },
+          body: JSON.stringify(updates)
+        });
+        if (res.ok) return await res.json();
+      } catch (e) {
+        console.error('Failed to update folder on server', e);
+      }
+    }
     const folders = await dbApi.getFolders();
     const folder = folders.find((f: any) => f.id === id);
     if (folder) {
-      await dbApi.saveFolder({ ...folder, ...updates });
+      await dbApi.saveFolder({ ...folder, ...updates, is_dirty: 1 });
     }
     return { success: true, ...updates };
+  },
+
+  async verifyFolderPassword(id: string, password: string) {
+    const baseUrl = await this.getNormalizedUrl();
+    const token = await this.getServerToken();
+    if (!token || !baseUrl) return { success: true };
+    try {
+      const res = await fetch(`${baseUrl}/api/folders/${id}/verify`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({ password })
+      });
+      return await res.json();
+    } catch (e) {
+      return { success: false };
+    }
   },
 
   async getNormalizedUrl() {
