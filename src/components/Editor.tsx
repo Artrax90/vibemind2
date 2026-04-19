@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Note } from '../App';
+import { Note } from '../types';
 import { api } from '../api/client';
 import { FileText, Eye, Edit3, Wand2, Share2, Bold, Italic, Link, Image, List, ListOrdered, Code, Table, CheckCircle, Cloud, CloudOff, Hash, Network } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
@@ -31,8 +31,7 @@ export default function Editor({ note, onUpdate, onWikilinkClick, onTagClick, is
   const [showAutocomplete, setShowAutocomplete] = useState(false);
   const [autocompleteQuery, setAutocompleteQuery] = useState('');
   const textareaRef = useRef<HTMLTextAreaElement>(null);
-
-  const isReadOnly = note.permission === 'read';
+  const isReadOnly = isPreview || (note && note.permission === 'read');
 
   useEffect(() => {
     setContent(note.content);
@@ -322,6 +321,12 @@ export default function Editor({ note, onUpdate, onWikilinkClick, onTagClick, is
             className={`text-2xl font-bold text-foreground bg-transparent outline-none flex-1 ${isReadOnly ? 'cursor-default' : ''}`}
             placeholder={t('editor.noteTitlePlaceholder')}
           />
+          {!!note.isSharedByMe && (
+            <div className="ml-2 px-2 py-1 bg-primary/10 rounded-md flex items-center text-primary" title="Shared">
+              <Share2 size={14} className="mr-1" />
+              <span className="text-[10px] font-bold uppercase tracking-wider">Shared</span>
+            </div>
+          )}
         </div>
         
         <div className="flex items-center space-x-4">

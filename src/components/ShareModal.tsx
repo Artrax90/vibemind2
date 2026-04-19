@@ -18,9 +18,10 @@ type ShareModalProps = {
   resourceType: 'note' | 'folder' | null;
   resourceName: string | null;
   baseUrl?: string;
+  onShareStatusChange?: (isShared: boolean) => void;
 };
 
-export default function ShareModal({ isOpen, onClose, resourceId, resourceType, resourceName, baseUrl }: ShareModalProps) {
+export default function ShareModal({ isOpen, onClose, resourceId, resourceType, resourceName, baseUrl, onShareStatusChange }: ShareModalProps) {
   const { t } = useLanguage();
   const [username, setUsername] = useState('');
   const [permission, setPermission] = useState<'read' | 'write'>('read');
@@ -37,6 +38,12 @@ export default function ShareModal({ isOpen, onClose, resourceId, resourceType, 
       loadShares();
     }
   }, [isOpen, resourceId, resourceType]);
+
+  useEffect(() => {
+    if (isOpen && onShareStatusChange) {
+      onShareStatusChange(shares.length > 0);
+    }
+  }, [shares, isOpen, onShareStatusChange]);
 
   const loadShares = async () => {
     if (!resourceId || !resourceType) return;

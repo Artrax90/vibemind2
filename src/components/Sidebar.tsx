@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { Folder, FileText, Settings as SettingsIcon, Plus, MoreVertical, Search, ChevronRight, ChevronDown, FilePlus, FolderPlus, Edit2, Trash2, Share2, FolderInput, Sparkles, X, LogOut, Pin, PinOff, RefreshCw } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Note, Folder as FolderType } from '../App';
+import { Note, Folder as FolderType } from '../types';
 import CreateFolderModal from './modals/CreateFolderModal';
 import ShareModal from './ShareModal';
 import { api } from '../api/client';
@@ -86,7 +86,7 @@ function SortableNoteItem({ note, activeNoteId, onSelectNote, onContextMenu, t }
         <div className="flex flex-col min-w-0">
           <div className="flex items-center">
             <span className="text-sm truncate">{note.title}</span>
-            {!!note.isSharedByMe && <Share2 size={10} className="ml-1 text-primary opacity-70" />}
+            {!!note.isSharedByMe && <Share2 size={12} className="ml-1.5 text-primary" />}
           </div>
           {note.isShared && (
             <span className="text-[10px] text-muted-foreground/60 truncate flex items-center">
@@ -403,7 +403,7 @@ export default function Sidebar({ notes, folders, activeNoteId, isLoading = fals
                     <stop offset="100%" style={{ stopColor: '#38bdf8', stopOpacity: 1 }} />
                   </linearGradient>
                 </defs>
-                <text x="50%" y="72%" fontFamily="Arial, sans-serif" fontWeight="900" fontSize="80" fill="url(#sidebar-grad)" textAnchor="middle">V</text>
+                <text x="50%" y="70%" fontFamily="Arial, sans-serif" fontWeight="900" fontSize="70" fill="url(#sidebar-grad)" textAnchor="middle">VM</text>
               </svg>
             </div>
             <h1 className="text-xl font-bold text-foreground tracking-tight">VibeMind</h1>

@@ -13,29 +13,7 @@ import { Capacitor } from '@capacitor/core';
 import { dbApi } from '../lib/db';
 import { api } from './client';
 import SyncManager from '../components/SyncManager';
-
-export type Note = {
-  id: string;
-  title: string;
-  content: string;
-  folderId?: string;
-  updatedAt?: string;
-  permission?: 'owner' | 'edit' | 'read';
-  isPinned?: boolean;
-  isShared?: boolean;
-  isSharedByMe?: boolean;
-  ownerUsername?: string;
-};
-
-export type Folder = {
-  id: string;
-  name: string;
-  parentId?: string;
-  permission?: 'owner' | 'edit' | 'read';
-  isShared?: boolean;
-  isSharedByMe?: boolean;
-  ownerUsername?: string;
-};
+import { Note, Folder } from '../types';
 
 export default function App() {
   const { t } = useLanguage();
@@ -311,6 +289,15 @@ export default function App() {
         resourceType={shareModal.type}
         resourceName={shareModal.name}
         baseUrl={baseUrl}
+        onShareStatusChange={(isShared) => {
+          if (shareModal.id) {
+            if (shareModal.type === 'note') {
+              setNotes(prev => prev.map(n => n.id === shareModal.id ? { ...n, isSharedByMe: isShared } : n));
+            } else if (shareModal.type === 'folder') {
+              setFolders(prev => prev.map(f => f.id === shareModal.id ? { ...f, isSharedByMe: isShared } : f));
+            }
+          }
+        }}
       />
 
       <AnimatePresence>

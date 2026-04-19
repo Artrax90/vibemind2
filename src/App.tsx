@@ -10,31 +10,8 @@ import Login from './pages/Login';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Network, Edit3, Eye, Search, X, Menu, Maximize2, Minimize2, Sun, Moon } from 'lucide-react';
 import { useLanguage } from './contexts/LanguageContext';
-
+import { Note, Folder } from './types';
 import { api } from './api/client';
-
-export type Note = {
-  id: string;
-  title: string;
-  content: string;
-  folderId?: string;
-  updatedAt?: string;
-  permission?: 'owner' | 'edit' | 'read';
-  isPinned?: boolean;
-  isShared?: boolean;
-  isSharedByMe?: boolean;
-  ownerUsername?: string;
-};
-
-export type Folder = {
-  id: string;
-  name: string;
-  parentId?: string;
-  permission?: 'owner' | 'edit' | 'read';
-  isShared?: boolean;
-  isSharedByMe?: boolean;
-  ownerUsername?: string;
-};
 
 export default function App() {
   const { t } = useLanguage();
@@ -337,6 +314,15 @@ export default function App() {
             resourceId={shareResource.id}
             resourceType={shareResource.type}
             resourceName={shareResource.name}
+            onShareStatusChange={(isShared) => {
+              if (shareResource.id) {
+                if (shareResource.type === 'note') {
+                  setNotes(prev => prev.map(n => n.id === shareResource.id ? { ...n, isSharedByMe: isShared } : n));
+                } else if (shareResource.type === 'folder') {
+                  setFolders(prev => prev.map(f => f.id === shareResource.id ? { ...f, isSharedByMe: isShared } : f));
+                }
+              }
+            }}
           />
         )}
       </AnimatePresence>

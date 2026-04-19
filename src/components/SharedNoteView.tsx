@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { api } from '../api/client';
 import Editor from './Editor';
 import { Loader2, AlertCircle, FileText, Folder as FolderIcon, ChevronRight } from 'lucide-react';
-import { Note } from '../App';
+import { Note } from '../types';
 
 export default function SharedNoteView({ shareId }: { shareId: string }) {
   const [loading, setLoading] = useState(true);
