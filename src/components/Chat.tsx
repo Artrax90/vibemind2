@@ -153,7 +153,7 @@ export default function Chat({ notes, folders, unlockedFolders, activeNoteId, on
           {isTyping && (
             <div className="flex items-center text-muted-foreground text-xs animate-pulse">
               <Loader2 size={14} className="mr-2 animate-spin" />
-              VibeMind is thinking...
+              {t('chat.searching', { query: [...messages].reverse().find(m => m.role === 'user')?.content || '...' })}
             </div>
           )}
         </div>

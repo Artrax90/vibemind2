@@ -221,18 +221,33 @@ export const api = {
           const context = scoredNotes.map(n => {
             const isProtected = n.isLocked;
             const content = isProtected ? 
-              "[ЗАКРЫТО ПАРОЛЕМ. Текст скрыт в целях безопасности. ВНИМАНИЕ: Поисковая система посчитала эту заметку релевантной вашему запросу! Обязательно упомяните ее и скажите пользователю снять блокировку, чтобы узнать ответ.]" : 
+              "[ЗАКРЫТО ПАРОЛЕМ. ВНИМАНИЕ: Эта заметка очень релевантна запросу! Обязательно выведи её заголовок и напиши [Содержимое защищено паролем].]" : 
               (n.content || '');
-            return `Title: ${n.title || 'Untitled'}\nContent: ${content}`;
+            return `ID: ${n.id}\nTitle: ${n.title || 'Untitled'}\nContent: ${content}`;
           }).join('\n\n');
-          prompt = `Context information is below.\n---------------------\n${context}\n---------------------\nGiven the context information, answer the query. You may use your general knowledge if the context is insufficient, but always prioritize the context. If a note says [ЗАКРЫТО ПАРОЛЕМ], mention to the user that the answer might be hidden there. Answer strictly in the language of the user's query.\nQuery: ${message}`;
+          prompt = `You are a search robot. Task: output search results from context.
+Context:
+${context}
+
+Instructions:
+1. Start with: "Вот что я нашел по запросу «${message}»:"
+2. List notes:
+   1. [Title]
+   [Content slice or "[Содержимое защищено паролем]"]
+3. If no notes found: "Я не нашел информации по запросу «${message}» в ваших заметках."
+4. Minimal fluff. No introductions.
+5. ОБЯЗАТЕЛЬНО в самом конце добавь строку "SOURCES: ID1, ID2" для всех найденных заметок.
+6. Language: same as query.
+
+Query: ${message}`;
           citations = scoredNotes.map(n => ({ id: n.id, title: n.title || 'Untitled', snippet: n.isLocked ? '[Защищено паролем]' : (n.content || '').substring(0, 100) + '...' }));
         } else {
-          prompt = `The user is asking a question about their notes, but no relevant notes were found for the query: "${message}". Please politely inform the user that you couldn't find any notes matching their request, but you can still try to answer from your general knowledge if they want. Answer strictly in the language of the user's query. If the query is in Russian, answer in Russian (Русский), NOT Ukrainian.`;
+          prompt = `Inform the user in their language that you found no notes for query: "${message}". Format: "Я не нашел информации по запросу «${message}» в ваших заметках."`;
         }
       }
       
       try {
+        let answer = '';
         if (provider.provider === 'openai' || provider.provider === 'openrouter' || provider.provider === 'ollama') {
           const apiUrl = provider.baseUrl || (provider.provider === 'openai' ? 'https://api.openai.com/v1' : 'https://openrouter.ai/api/v1');
           const res = await fetch(`${apiUrl}/chat/completions`, {
@@ -248,17 +263,34 @@ export const api = {
           });
           if (!res.ok) throw new Error('API Error');
           const data = await res.json();
-          return { answer: data.choices[0].message.content, citations };
+          answer = data.choices[0].message.content;
         } else if (provider.provider === 'gemini') {
-          const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${provider.modelName}:generateContent?key=${provider.apiKey}`, {
+          const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${provider.modelName || 'gemini-1.5-flash'}:generateContent?key=${provider.apiKey}`;
+          const res = await fetch(geminiUrl, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] })
           });
-          if (!res.ok) throw new Error('API Error');
+          if (!res.ok) throw new Error('Gemini API Error');
           const data = await res.json();
-          return { answer: data.candidates[0].content.parts[0].text, citations };
+          answer = data.candidates[0].content.parts[0].text;
         }
+
+        // Parse SOURCES
+        let usedIds: string[] = [];
+        if (answer.includes('SOURCES:')) {
+          const parts = answer.split('SOURCES:');
+          answer = parts[0].trim();
+          const idsPart = parts[1].trim();
+          usedIds = idsPart.split(',').map(id => id.trim()).filter(id => id);
+        }
+
+        // Filter citations to only those mentioned
+        const finalCitations = usedIds.length > 0 
+          ? citations.filter(c => usedIds.includes(c.id))
+          : citations;
+
+        return { answer, citations: finalCitations };
       } catch (e) {
         return { answer: 'Local AI request failed. Check your API key and settings.', citations: [] };
       }

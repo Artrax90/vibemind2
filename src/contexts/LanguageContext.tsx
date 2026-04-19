@@ -172,6 +172,7 @@ const translations: Translations = {
     'chat.backlinks': 'Backlinks',
     'chat.outgoingLinks': 'Outgoing Links',
     'chat.noBacklinks': 'No backlinks found for this note.',
+    'chat.searching': '🔍 Searching for notes: «{query}»...',
     'share.titleNote': 'Share note',
     'share.titleFolder': 'Share folder',
     'share.description': 'Share with specific users or create a public link.',
@@ -367,6 +368,7 @@ const translations: Translations = {
     'chat.backlinks': 'Обратные ссылки',
     'chat.outgoingLinks': 'Исходящие ссылки',
     'chat.noBacklinks': 'Обратных ссылок не найдено.',
+    'chat.searching': '🔍 Ищу заметки по запросу: «{query}»...',
     'share.titleNote': 'Поделиться заметкой',
     'share.titleFolder': 'Поделиться папкой',
     'share.description': 'Поделитесь с конкретными пользователями или создайте публичную ссылку.',
@@ -404,7 +406,7 @@ const translations: Translations = {
 type LanguageContextType = {
   language: Language;
   setLanguage: (lang: Language) => void;
-  t: (key: string) => string;
+  t: (key: string, params?: Record<string, string>) => string;
 };
 
 const LanguageContext = createContext<LanguageContextType | undefined>(undefined);
@@ -426,8 +428,14 @@ export const LanguageProvider = ({ children }: { children: ReactNode }) => {
     } catch (e) {}
   };
 
-  const t = (key: string) => {
-    return translations[language][key] || key;
+  const t = (key: string, params?: Record<string, string>) => {
+    let translation = translations[language][key] || key;
+    if (params) {
+      Object.entries(params).forEach(([k, v]) => {
+        translation = translation.replace(`{${k}}`, v);
+      });
+    }
+    return translation;
   };
 
   return (

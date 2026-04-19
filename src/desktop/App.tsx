@@ -33,6 +33,7 @@ export default function App() {
   const [isLoading, setIsLoading] = useState(false);
   const [showChat, setShowChat] = useState(false);
   const [baseUrl, setBaseUrl] = useState<string>('');
+  const [unlockedFolders, setUnlockedFolders] = useState<Set<string>>(new Set());
 
   // Share Modal State
   const [shareModal, setShareModal] = useState<{
@@ -182,6 +183,8 @@ export default function App() {
         <Sidebar 
           notes={notes} 
           folders={folders} 
+          unlockedFolders={unlockedFolders}
+          setUnlockedFolders={setUnlockedFolders}
           activeNoteId={activeNoteId} 
           onSelectNote={handleNoteSelect}
           onOpenSettings={() => { setShowSettings(true); setShowChat(false); }}
@@ -319,7 +322,7 @@ export default function App() {
               exit={{ x: 320 }}
               className="fixed right-0 top-0 bottom-0 z-40 shadow-2xl"
             >
-              <Chat notes={notes} activeNoteId={activeNoteId} onNoteClick={handleNoteSelect} api={api} />
+              <Chat notes={notes} folders={folders} unlockedFolders={unlockedFolders} activeNoteId={activeNoteId} onNoteClick={handleNoteSelect} api={api} />
             </motion.div>
           </>
         )}
