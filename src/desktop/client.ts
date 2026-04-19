@@ -231,15 +231,12 @@ ${context}
 
 Instructions:
 1. Start strictly with: "Вот что я нашел по запросу «${message}»:"
-2. Output list in this exact format (with newlines between lines):
-   N. [Title]
+2. Output list in this exact format (with empty lines between items):
+   1. [Title]
    [Content or "[Содержимое защищено паролем]"]
 
-   Example:
-   1. Blini
-   Recipe for blini...
-   2. Secret Note
-   [Содержимое защищено паролем]
+   2. [Title]
+   [Content or "[Содержимое защищено паролем]"]
 
 3. If no notes found: "Я не нашел информации по запросу «${message}» в ваших заметках."
 4. Minimal fluff. No introductions, no explanations.
