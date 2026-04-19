@@ -429,8 +429,9 @@ export const api = {
   },
 
   async chat(message: string, notes?: any[], unlockedFolderIds?: string[]) {
-    if (isLocalApp && (window as any).desktopApi) {
-      return await (window as any).desktopApi.chat(message, notes);
+    if (isLocalApp) {
+      const desktopApi = await import('../desktop/client');
+      return await desktopApi.default.chat(message, notes, unlockedFolderIds);
     }
     try {
       const res = await fetch(`${BASE_URL}/api/chat`, {

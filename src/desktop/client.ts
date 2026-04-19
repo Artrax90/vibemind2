@@ -221,11 +221,11 @@ export const api = {
           const context = scoredNotes.map(n => {
             const isProtected = n.isLocked;
             const content = isProtected ? 
-              "[Защищено паролем. Я не могу прочитать содержимое этой заметки. Сообщи пользователю, что он может снять блокировку для получения точного ответа.]" : 
+              "[ЗАКРЫТО ПАРОЛЕМ. Текст скрыт в целях безопасности. ВНИМАНИЕ: Поисковая система посчитала эту заметку релевантной вашему запросу! Обязательно упомяните ее и скажите пользователю снять блокировку, чтобы узнать ответ.]" : 
               (n.content || '');
             return `Title: ${n.title || 'Untitled'}\nContent: ${content}`;
           }).join('\n\n');
-          prompt = `Context information is below.\n---------------------\n${context}\n---------------------\nGiven the context information and not prior knowledge, answer the query. Answer strictly in the language of the user's query. If the query is in Russian, answer in Russian (Русский), NOT Ukrainian.\nQuery: ${message}`;
+          prompt = `Context information is below.\n---------------------\n${context}\n---------------------\nGiven the context information, answer the query. You may use your general knowledge if the context is insufficient, but always prioritize the context. If a note says [ЗАКРЫТО ПАРОЛЕМ], mention to the user that the answer might be hidden there. Answer strictly in the language of the user's query.\nQuery: ${message}`;
           citations = scoredNotes.map(n => ({ id: n.id, title: n.title || 'Untitled', snippet: n.isLocked ? '[Защищено паролем]' : (n.content || '').substring(0, 100) + '...' }));
         } else {
           prompt = `The user is asking a question about their notes, but no relevant notes were found for the query: "${message}". Please politely inform the user that you couldn't find any notes matching their request, but you can still try to answer from your general knowledge if they want. Answer strictly in the language of the user's query. If the query is in Russian, answer in Russian (Русский), NOT Ukrainian.`;
