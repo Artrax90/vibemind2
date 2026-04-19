@@ -207,7 +207,7 @@ export default function Sidebar({ notes, folders, activeNoteId, isLoading = fals
   const [selectedFolderId, setSelectedFolderId] = useState<string | undefined>(undefined);
   const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set());
   const [unlockedFolders, setUnlockedFolders] = useState<Set<string>>(new Set());
-  const [passModal, setPassModal] = useState<{ isOpen: boolean; folderId: string; folderName: string; mode: 'set' | 'verify' } | null>(null);
+  const [passModal, setPassModal] = useState<{ isOpen: boolean; folderId: string; folderName: string; mode: 'set' | 'verify' | 'change' } | null>(null);
   
   // Context Menu State
   const [contextMenu, setContextMenu] = useState<{ x: number, y: number, type: 'note' | 'folder', id: string } | null>(null);
@@ -235,6 +235,12 @@ export default function Sidebar({ notes, folders, activeNoteId, isLoading = fals
     if (next.has(id)) {
       next.delete(id);
       setExpandedFolders(next);
+      // Lock the folder again if it was unlocked (request password every time)
+      if (unlockedFolders.has(id)) {
+        const nextUnlocked = new Set(unlockedFolders);
+        nextUnlocked.delete(id);
+        setUnlockedFolders(nextUnlocked);
+      }
     } else {
       // Check if protected and not unlocked
       if (folder?.isProtected && !unlockedFolders.has(id)) {
@@ -606,7 +612,7 @@ export default function Sidebar({ notes, folders, activeNoteId, isLoading = fals
                           </button>
                           <button 
                             onClick={() => {
-                              setPassModal({ isOpen: true, mode: 'set', folderId: contextMenu.id, folderName: folder?.name || '' });
+                              setPassModal({ isOpen: true, mode: folder?.isProtected ? 'change' : 'set', folderId: contextMenu.id, folderName: folder?.name || '' });
                               setContextMenu(null);
                             }}
                             className="w-full flex items-center px-4 py-2 text-sm text-popover-foreground hover:bg-secondary hover:text-foreground transition-colors"
@@ -682,8 +688,29 @@ export default function Sidebar({ notes, folders, activeNoteId, isLoading = fals
             folderName={passModal.folderName}
             mode={passModal.mode}
             onClose={() => setPassModal(null)}
-            onConfirm={async (password) => {
-              if (passModal.mode === 'set') {
+            onConfirm={async (password, oldPassword) => {
+              if (passModal.mode === 'change') {
+                if (!oldPassword) return false;
+                const verifyRes = await api.verifyFolderPassword(passModal.folderId, oldPassword);
+                if (!verifyRes.success) return false;
+                
+                const res = await api.updateFolder(passModal.folderId, { password });
+                if (res.success || res.status === 'success') {
+                  const updatedFolders = folders.map(f => f.id === passModal.folderId ? { ...f, isProtected: !!password } : f);
+                  onFoldersChange(updatedFolders);
+                  if (password) {
+                    const nextUnlocked = new Set(unlockedFolders);
+                    nextUnlocked.add(passModal.folderId);
+                    setUnlockedFolders(nextUnlocked);
+                  } else {
+                     const nextUnlocked = new Set(unlockedFolders);
+                     nextUnlocked.delete(passModal.folderId);
+                     setUnlockedFolders(nextUnlocked);
+                  }
+                  return true;
+                }
+                return false;
+              } else if (passModal.mode === 'set') {
                 const res = await api.updateFolder(passModal.folderId, { password });
                 if (res.success || res.status === 'success') {
                   const updatedFolders = folders.map(f => f.id === passModal.folderId ? { ...f, isProtected: !!password } : f);

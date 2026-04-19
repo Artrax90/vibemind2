@@ -199,6 +199,10 @@ const translations: Translations = {
     'folder.unlock': 'Unlock',
     'folder.setDesc': 'Protect this folder with a password.',
     'folder.verifyDesc': 'This folder is protected.',
+    'folder.confirmSet': 'Set Password',
+    'folder.oldPassword': 'Old Password',
+    'folder.oldPasswordRequired': 'Old password is required',
+    'folder.confirmChange': 'Change Password',
   },
   RU: {
     'settings.title': 'Настройки',
@@ -390,6 +394,10 @@ const translations: Translations = {
     'folder.unlock': 'Разблокировать',
     'folder.setDesc': 'Защитите эту папку паролем.',
     'folder.verifyDesc': 'Эта папка защищена паролем.',
+    'folder.confirmSet': 'Установить пароль',
+    'folder.oldPassword': 'Старый пароль',
+    'folder.oldPasswordRequired': 'Старый пароль обязателен',
+    'folder.confirmChange': 'Сменить пароль',
   }
 };
 

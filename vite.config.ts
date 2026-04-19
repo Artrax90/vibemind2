@@ -5,9 +5,10 @@ import {defineConfig, loadEnv} from 'vite';
 
 export default defineConfig(({mode}) => {
   const env = loadEnv(mode, '.', '');
+  const isDesktop = env.VITE_APP_TARGET === 'desktop' || process.env.VITE_APP_TARGET === 'desktop';
   return {
     plugins: [react(), tailwindcss()],
-    base: '/',
+    base: isDesktop ? './' : '/',
     define: {
       'process.env.GEMINI_API_KEY': JSON.stringify(env.GEMINI_API_KEY),
     },
@@ -22,7 +23,7 @@ export default defineConfig(({mode}) => {
     resolve: {
       alias: {
         '@': path.resolve(__dirname, '.'),
-        ...(env.VITE_APP_TARGET === 'desktop' ? {
+        ...(env.VITE_APP_TARGET === 'desktop' || process.env.VITE_APP_TARGET === 'desktop' ? {
           '../api/client': path.resolve(__dirname, 'src/desktop/client.ts'),
           './api/client': path.resolve(__dirname, 'src/desktop/client.ts'),
         } : {})

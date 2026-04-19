@@ -22,68 +22,76 @@ let mainWindow;
 let db;
 
 function initDb() {
-  const userDataPath = app.getPath('userData');
-  const dbPath = path.join(userDataPath, 'vibemind.db');
-  
-  db = new Database(dbPath);
-  
-  // Create tables
-  db.exec(`
-    CREATE TABLE IF NOT EXISTS folders (
-      id TEXT PRIMARY KEY,
-      name TEXT NOT NULL,
-      parentId TEXT,
-      permission TEXT,
-      isShared INTEGER DEFAULT 0,
-      isSharedByMe INTEGER DEFAULT 0,
-      isProtected INTEGER DEFAULT 0,
-      ownerUsername TEXT,
-      is_dirty INTEGER DEFAULT 0,
-      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
-    );
-    
-    CREATE TABLE IF NOT EXISTS notes (
-      id TEXT PRIMARY KEY,
-      title TEXT NOT NULL,
-      content TEXT,
-      folderId TEXT,
-      isPinned INTEGER DEFAULT 0,
-      permission TEXT,
-      isShared INTEGER DEFAULT 0,
-      isSharedByMe INTEGER DEFAULT 0,
-      ownerUsername TEXT,
-      is_dirty INTEGER DEFAULT 0,
-      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-      FOREIGN KEY(folderId) REFERENCES folders(id)
-    );
-    
-    CREATE TABLE IF NOT EXISTS sync_config (
-      key TEXT PRIMARY KEY,
-      value TEXT
-    );
-  `);
-
-  // Migration: Add missing columns if they don't exist
   try {
-    const noteColumns = db.prepare("PRAGMA table_info(notes)").all();
-    if (!noteColumns.find(c => c.name === 'permission')) {
-      db.exec("ALTER TABLE notes ADD COLUMN permission TEXT");
-      db.exec("ALTER TABLE notes ADD COLUMN isShared INTEGER DEFAULT 0");
-      db.exec("ALTER TABLE notes ADD COLUMN isSharedByMe INTEGER DEFAULT 0");
-      db.exec("ALTER TABLE notes ADD COLUMN ownerUsername TEXT");
+    const userDataPath = app.getPath('userData');
+    if (!fs.existsSync(userDataPath)) {
+      fs.mkdirSync(userDataPath, { recursive: true });
     }
-    const folderColumns = db.prepare("PRAGMA table_info(folders)").all();
-    if (!folderColumns.find(c => c.name === 'permission')) {
-      db.exec("ALTER TABLE folders ADD COLUMN permission TEXT");
-      db.exec("ALTER TABLE folders ADD COLUMN isShared INTEGER DEFAULT 0");
-      db.exec("ALTER TABLE folders ADD COLUMN isSharedByMe INTEGER DEFAULT 0");
-      db.exec("ALTER TABLE folders ADD COLUMN ownerUsername TEXT");
+    const dbPath = path.join(userDataPath, 'vibemind.db');
+    console.log(`Initializing database at ${dbPath}`);
+    
+    db = new Database(dbPath);
+    
+    // Create tables
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS folders (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        parentId TEXT,
+        permission TEXT,
+        isShared INTEGER DEFAULT 0,
+        isSharedByMe INTEGER DEFAULT 0,
+        isProtected INTEGER DEFAULT 0,
+        ownerUsername TEXT,
+        is_dirty INTEGER DEFAULT 0,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      );
+      
+      CREATE TABLE IF NOT EXISTS notes (
+        id TEXT PRIMARY KEY,
+        title TEXT NOT NULL,
+        content TEXT,
+        folderId TEXT,
+        isPinned INTEGER DEFAULT 0,
+        permission TEXT,
+        isShared INTEGER DEFAULT 0,
+        isSharedByMe INTEGER DEFAULT 0,
+        ownerUsername TEXT,
+        is_dirty INTEGER DEFAULT 0,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY(folderId) REFERENCES folders(id)
+      );
+      
+      CREATE TABLE IF NOT EXISTS sync_config (
+        key TEXT PRIMARY KEY,
+        value TEXT
+      );
+    `);
+
+    // Migration: Add missing columns if they don't exist
+    try {
+      const noteColumns = db.prepare("PRAGMA table_info(notes)").all();
+      if (!noteColumns.find(c => c.name === 'permission')) {
+        db.exec("ALTER TABLE notes ADD COLUMN permission TEXT");
+        db.exec("ALTER TABLE notes ADD COLUMN isShared INTEGER DEFAULT 0");
+        db.exec("ALTER TABLE notes ADD COLUMN isSharedByMe INTEGER DEFAULT 0");
+        db.exec("ALTER TABLE notes ADD COLUMN ownerUsername TEXT");
+      }
+      const folderColumns = db.prepare("PRAGMA table_info(folders)").all();
+      if (!folderColumns.find(c => c.name === 'permission')) {
+        db.exec("ALTER TABLE folders ADD COLUMN permission TEXT");
+        db.exec("ALTER TABLE folders ADD COLUMN isShared INTEGER DEFAULT 0");
+        db.exec("ALTER TABLE folders ADD COLUMN isSharedByMe INTEGER DEFAULT 0");
+        db.exec("ALTER TABLE folders ADD COLUMN ownerUsername TEXT");
+      }
+      if (!folderColumns.find(c => c.name === 'isProtected')) {
+        db.exec("ALTER TABLE folders ADD COLUMN isProtected INTEGER DEFAULT 0");
+      }
+    } catch (e) {
+      console.error("Migration failed", e);
     }
-    if (!folderColumns.find(c => c.name === 'isProtected')) {
-      db.exec("ALTER TABLE folders ADD COLUMN isProtected INTEGER DEFAULT 0");
-    }
-  } catch (e) {
-    console.error("Migration failed", e);
+  } catch (err) {
+    console.error("CRITICAL: Failed to initialize database:", err);
   }
 }
 
@@ -100,13 +108,21 @@ function createWindow() {
     autoHideMenuBar: true
   });
 
+  mainWindow.webContents.on('did-fail-load', (event, errorCode, errorDescription) => {
+    console.error(`Window failed to load: ${errorCode} ${errorDescription}`);
+  });
+
   // In development, load from vite server
   // In production, load from dist/index-desktop.html
   const isDev = process.env.NODE_ENV === 'development';
   if (isDev) {
-    mainWindow.loadURL('http://localhost:3000/index-desktop.html');
+    mainWindow.loadURL('http://localhost:3000/index-desktop.html').catch(err => {
+      console.error("Failed to load dev URL:", err);
+    });
   } else {
-    mainWindow.loadFile(path.join(__dirname, '../dist/index-desktop.html'));
+    mainWindow.loadFile(path.join(__dirname, '../dist/index-desktop.html')).catch(err => {
+      console.error("Failed to load production file:", err);
+    });
   }
 }
 

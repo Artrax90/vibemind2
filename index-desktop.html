@@ -2,7 +2,7 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="/icon.svg" />
+    <link rel="icon" type="image/svg+xml" href="./icon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>VibeMind Desktop</title>
   </head>
@@ -26,6 +26,23 @@
           '<p><b>URL:</b> ' + url + '</p>' +
           '<p><b>Line:</b> ' + line + ', <b>Column:</b> ' + col + '</p>' +
           '<pre>' + (error && error.stack || 'No stack trace') + '</pre>';
+        document.body.appendChild(div);
+      };
+      window.onunhandledrejection = function(event) {
+        var div = document.createElement('div');
+        div.style.position = 'fixed';
+        div.style.top = '0';
+        div.style.left = '0';
+        div.style.width = '100%';
+        div.style.height = '100%';
+        div.style.backgroundColor = 'white';
+        div.style.color = 'orange';
+        div.style.padding = '20px';
+        div.style.zIndex = '99999';
+        div.style.overflow = 'auto';
+        div.innerHTML = '<h1>Unhandled Promise Rejection</h1>' +
+          '<p><b>Reason:</b> ' + event.reason + '</p>' +
+          '<pre>' + (event.reason && event.reason.stack || 'No stack trace') + '</pre>';
         document.body.appendChild(div);
       };
     </script>
