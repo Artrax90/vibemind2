@@ -1,17 +1,19 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
-import { Send, Bot, Link as LinkIcon, FileText, Loader2 } from 'lucide-react';
+import { Send, Bot, Link as LinkIcon, FileText, Loader2, Lock } from 'lucide-react';
 import { motion } from 'framer-motion';
-import { Note } from '../types';
+import { Note, Folder } from '../types';
 import { useLanguage } from '../contexts/LanguageContext';
 
 type ChatProps = {
   notes: Note[];
+  folders: Folder[];
+  unlockedFolders: Set<string>;
   activeNoteId: string | null;
   onNoteClick: (id: string) => void;
   api: any;
 };
 
-export default function Chat({ notes, activeNoteId, onNoteClick, api }: ChatProps) {
+export default function Chat({ notes, folders, unlockedFolders, activeNoteId, onNoteClick, api }: ChatProps) {
   const { t } = useLanguage();
   const [messages, setMessages] = useState([
     { 
@@ -23,6 +25,13 @@ export default function Chat({ notes, activeNoteId, onNoteClick, api }: ChatProp
   const [input, setInput] = useState('');
   const [isTyping, setIsTyping] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
+
+  const isNoteLocked = (noteId: string) => {
+    const note = notes.find(n => n.id === noteId);
+    if (!note || !note.folderId) return false;
+    const folder = folders.find(f => f.id === note.folderId);
+    return folder?.isProtected && !unlockedFolders.has(folder.id);
+  };
 
   // Auto-scroll to bottom when messages change
   useEffect(() => {
@@ -61,27 +70,27 @@ export default function Chat({ notes, activeNoteId, onNoteClick, api }: ChatProp
   const backlinks = useMemo(() => {
     if (!activeNoteId) return [];
     const activeNote = notes.find(n => n.id === activeNoteId);
-    if (!activeNote) return [];
+    if (!activeNote || !activeNote.title) return [];
 
     // Case-insensitive regex for [[Note Title]] with optional spaces
     // Escape special characters in title for regex
     const escapedTitle = activeNote.title.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     const linkPattern = new RegExp(`\\[\\[\\s*${escapedTitle}\\s*\\]\\]`, 'i');
     
-    return notes.filter(n => n.id !== activeNoteId && linkPattern.test(n.content));
+    return notes.filter(n => n.id !== activeNoteId && n.content && linkPattern.test(n.content));
   }, [notes, activeNoteId]);
 
   // Calculate outgoing links dynamically
   const outgoingLinks = useMemo(() => {
     if (!activeNoteId) return [];
     const activeNote = notes.find(n => n.id === activeNoteId);
-    if (!activeNote) return [];
+    if (!activeNote || !activeNote.content) return [];
 
     // Find all [[Note Title]] in the current note's content
     const matches = Array.from(activeNote.content.matchAll(/\[\[(.*?)\]\]/g));
     const linkedTitles = matches.map(m => m[1].trim().toLowerCase());
     
-    return notes.filter(n => n.id !== activeNoteId && linkedTitles.includes(n.title.toLowerCase()));
+    return notes.filter(n => n.id !== activeNoteId && n.title && linkedTitles.includes(n.title.toLowerCase()));
   }, [notes, activeNoteId]);
 
   return (
@@ -114,19 +123,28 @@ export default function Chat({ notes, activeNoteId, onNoteClick, api }: ChatProp
             
             {msg.citations && msg.citations.length > 0 && (
               <div className="mt-2 space-y-2 w-full pr-4">
-                {msg.citations.map((cit, idx) => (
+                {msg.citations.map((cit, idx) => {
+                  const locked = isNoteLocked(cit.id);
+                  return (
                   <div 
                     key={idx} 
                     onClick={() => onNoteClick(cit.id)}
-                    className="bg-card border border-border/50 rounded-lg p-2 text-xs cursor-pointer hover:border-primary transition-all"
+                    className="bg-card border border-border/50 rounded-lg p-2 text-xs cursor-pointer hover:border-primary transition-all relative"
                   >
-                    <div className="font-semibold text-primary flex items-center mb-1">
-                      <span className="bg-primary text-primary-foreground rounded-full w-4 h-4 flex items-center justify-center mr-1 text-[10px]">{idx + 1}</span>
-                      {cit.title}
+                    <div className={locked ? 'blur-[4px] opacity-70 select-none' : ''}>
+                      <div className="font-semibold text-primary flex items-center mb-1">
+                        <span className="bg-primary text-primary-foreground rounded-full w-4 h-4 flex items-center justify-center mr-1 text-[10px]">{idx + 1}</span>
+                        {cit.title || 'Untitled'}
+                      </div>
+                      <div className="text-muted-foreground italic line-clamp-2">"{cit.snippet || '...'}"</div>
                     </div>
-                    <div className="text-muted-foreground italic line-clamp-2">"{cit.snippet}"</div>
+                    {locked && (
+                      <div className="absolute inset-0 z-10 flex items-center justify-center pointer-events-none">
+                         <Lock size={16} className="text-foreground/50 drop-shadow-md" />
+                      </div>
+                    )}
                   </div>
-                ))}
+                )})}
               </div>
             )}
             </motion.div>
@@ -146,20 +164,29 @@ export default function Chat({ notes, activeNoteId, onNoteClick, api }: ChatProp
           </h4>
           <div className="space-y-2">
             {backlinks.length > 0 ? (
-              backlinks.map(note => (
+              backlinks.map(note => {
+                const locked = isNoteLocked(note.id);
+                return (
                 <div 
                   key={note.id}
                   onClick={() => onNoteClick(note.id)}
-                  className="bg-card p-2 rounded-lg border border-border/50 cursor-pointer hover:border-primary transition-all"
+                  className="bg-card p-2 rounded-lg border border-border/50 cursor-pointer hover:border-primary transition-all relative"
                 >
-                  <div className="text-xs font-medium text-primary mb-1 flex items-center">
-                    <FileText size={12} className="mr-1" /> {note.title}
+                  <div className={locked ? 'blur-[4px] opacity-70 select-none' : ''}>
+                    <div className="text-xs font-medium text-primary mb-1 flex items-center">
+                      <FileText size={12} className="mr-1" /> {note.title || 'Untitled'}
+                    </div>
+                    <div className="text-[10px] text-muted-foreground line-clamp-2">
+                      {note.content?.substring(0, 100) || '...'}
+                    </div>
                   </div>
-                  <div className="text-[10px] text-muted-foreground line-clamp-2">
-                    {note.content.substring(0, 100)}...
-                  </div>
+                  {locked && (
+                    <div className="absolute inset-0 z-10 flex items-center justify-center pointer-events-none">
+                       <Lock size={16} className="text-foreground/50 drop-shadow-md" />
+                    </div>
+                  )}
                 </div>
-              ))
+              )})
             ) : (
               <div className="text-xs text-muted-foreground italic">
                 {t('chat.noBacklinks')}
@@ -174,20 +201,29 @@ export default function Chat({ notes, activeNoteId, onNoteClick, api }: ChatProp
           </h4>
           <div className="space-y-2">
             {outgoingLinks.length > 0 ? (
-              outgoingLinks.map(note => (
+              outgoingLinks.map(note => {
+                const locked = isNoteLocked(note.id);
+                return (
                 <div 
                   key={note.id}
                   onClick={() => onNoteClick(note.id)}
-                  className="bg-card p-2 rounded-lg border border-border/50 cursor-pointer hover:border-primary transition-all"
+                  className="bg-card p-2 rounded-lg border border-border/50 cursor-pointer hover:border-primary transition-all relative"
                 >
-                  <div className="text-xs font-medium text-primary mb-1 flex items-center">
-                    <FileText size={12} className="mr-1" /> {note.title}
+                  <div className={locked ? 'blur-[4px] opacity-70 select-none' : ''}>
+                    <div className="text-xs font-medium text-primary mb-1 flex items-center">
+                      <FileText size={12} className="mr-1" /> {note.title || 'Untitled'}
+                    </div>
+                    <div className="text-[10px] text-muted-foreground line-clamp-2">
+                      {note.content?.substring(0, 100) || '...'}
+                    </div>
                   </div>
-                  <div className="text-[10px] text-muted-foreground line-clamp-2">
-                    {note.content.substring(0, 100)}...
-                  </div>
+                  {locked && (
+                    <div className="absolute inset-0 z-10 flex items-center justify-center pointer-events-none">
+                       <Lock size={16} className="text-foreground/50 drop-shadow-md" />
+                    </div>
+                  )}
                 </div>
-              ))
+              )})
             ) : (
               <div className="text-xs text-muted-foreground italic">
                 No outgoing links found.

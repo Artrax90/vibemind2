@@ -209,7 +209,7 @@ export const api = {
         
         const scoredNotes = notes.map(note => {
           let score = 0;
-          const text = (note.title + ' ' + note.content).toLowerCase();
+          const text = ((note.title || '') + ' ' + (note.content || '')).toLowerCase();
           keywords.forEach(kw => {
             if (text.includes(kw)) score++;
           });
@@ -217,9 +217,9 @@ export const api = {
         }).filter(n => n.score > 0).sort((a, b) => b.score - a.score).slice(0, 3);
         
         if (scoredNotes.length > 0) {
-          const context = scoredNotes.map(n => `Title: ${n.title}\nContent: ${n.content}`).join('\n\n');
+          const context = scoredNotes.map(n => `Title: ${n.title || 'Untitled'}\nContent: ${n.content || ''}`).join('\n\n');
           prompt = `Context information is below.\n---------------------\n${context}\n---------------------\nGiven the context information and not prior knowledge, answer the query. Answer strictly in the language of the user's query. If the query is in Russian, answer in Russian (Русский), NOT Ukrainian.\nQuery: ${message}`;
-          citations = scoredNotes.map(n => ({ id: n.id, title: n.title, snippet: n.content.substring(0, 100) + '...' }));
+          citations = scoredNotes.map(n => ({ id: n.id, title: n.title || 'Untitled', snippet: (n.content || '').substring(0, 100) + '...' }));
         } else {
           prompt = `The user is asking a question about their notes, but no relevant notes were found for the query: "${message}". Please politely inform the user that you couldn't find any notes matching their request, but you can still try to answer from your general knowledge if they want. Answer strictly in the language of the user's query. If the query is in Russian, answer in Russian (Русский), NOT Ukrainian.`;
         }

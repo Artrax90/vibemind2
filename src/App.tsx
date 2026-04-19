@@ -390,7 +390,7 @@ export default function App() {
 
       {/* Chat - Hidden in Focus Mode and on Mobile (unless toggled) */}
       <div className={`${isFocusMode ? 'hidden' : 'hidden lg:flex'}`}>
-        <Chat notes={availableNotes} activeNoteId={activeNoteId} onNoteClick={handleNoteSelect} api={api} />
+        <Chat notes={notes} folders={folders} unlockedFolders={unlockedFolders} activeNoteId={activeNoteId} onNoteClick={handleNoteSelect} api={api} />
       </div>
 
       {/* Global Search Modal */}
@@ -451,7 +451,8 @@ export default function App() {
                     // "в поиске заметка должна отображаться, но быть замазанной" indicates it SHOULD match.
                     // Okay, we will match the text normally.
                   }
-                  return n.title.toLowerCase().includes(searchQuery.toLowerCase()) || n.content.toLowerCase().includes(searchQuery.toLowerCase());
+                  return (n.title?.toLowerCase() || '').includes(searchQuery.toLowerCase()) || 
+                         (n.content?.toLowerCase() || '').includes(searchQuery.toLowerCase());
                 }).map(note => {
                   const isLocked = note.folderId && folders.find(f => f.id === note.folderId)?.isProtected && !unlockedFolders.has(note.folderId);
                   
