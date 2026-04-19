@@ -97,6 +97,12 @@ export default function App() {
     }
   }, [theme]);
 
+  useEffect(() => {
+    const handleCloseSidebar = () => setIsMobileMenuOpen(false);
+    document.addEventListener('close-sidebar', handleCloseSidebar);
+    return () => document.removeEventListener('close-sidebar', handleCloseSidebar);
+  }, []);
+
   const loadData = useCallback(async () => {
     setIsLoading(true);
     try {
@@ -190,7 +196,9 @@ export default function App() {
     <div className="flex h-screen w-full font-sans overflow-hidden bg-background text-foreground">
       <SyncManager onSyncComplete={loadData} />
       
-      <div className={`flex ${isMobileMenuOpen ? 'fixed inset-y-0 left-0 z-50' : 'hidden md:flex'}`}>
+      <div className={`fixed inset-0 z-40 bg-black/50 backdrop-blur-sm transition-opacity md:hidden ${isMobileMenuOpen ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'}`} onClick={() => setIsMobileMenuOpen(false)} />
+      
+      <div className={`flex ${isMobileMenuOpen ? 'fixed inset-y-0 left-0 z-50 shadow-2xl' : 'hidden md:flex'}`}>
         <Sidebar 
           notes={notes} 
           folders={folders} 
@@ -213,8 +221,15 @@ export default function App() {
       </div>
       
       <main className="flex-1 flex flex-col relative border-r min-w-0 border-border/50">
+        <button 
+          onClick={() => setIsMobileMenuOpen(true)}
+          className="md:hidden absolute top-8 left-4 z-20 p-2 bg-background/80 backdrop-blur-sm border border-border/50 rounded-lg text-foreground shadow-lg"
+        >
+          <Menu size={20} />
+        </button>
+
         {!showSettings && (
-          <div className="absolute top-8 left-1/2 -translate-x-1/2 z-10 flex items-center space-x-2 rounded-xl border border-border/50 bg-background/80 backdrop-blur-sm p-1.5 shadow-xl">
+          <div className="absolute bottom-6 md:top-8 md:bottom-auto left-1/2 -translate-x-1/2 z-10 flex items-center space-x-2 rounded-xl border border-border/50 bg-background/80 backdrop-blur-sm p-1.5 shadow-xl">
             <div className="flex items-center px-2 mr-2 border-r border-border/50 space-x-2">
               <div className="relative flex items-center justify-center">
                 {status === 'syncing' && <RefreshCw size={16} className="text-primary animate-spin" />}
@@ -236,7 +251,20 @@ export default function App() {
                 </div>
               )}
             </div>
-            <button onClick={() => setViewMode('edit')} className={`p-2 rounded-lg ${viewMode === 'edit' ? 'bg-primary/20 text-primary' : 'text-muted-foreground'}`}><Edit3 size={18} /></button>
+            <button 
+              onClick={() => {
+                if (!activeNoteId) {
+                  const newNote: Note = { id: `n${Date.now()}`, title: 'New Note', content: '', permission: 'owner' };
+                  addNote(newNote);
+                  handleNoteSelect(newNote.id, 'edit');
+                } else {
+                  setViewMode('edit');
+                }
+              }} 
+              className={`p-2 rounded-lg ${viewMode === 'edit' ? 'bg-primary/20 text-primary' : 'text-muted-foreground'}`}
+            >
+              <Edit3 size={18} />
+            </button>
             <button onClick={() => setViewMode('preview')} className={`p-2 rounded-lg ${viewMode === 'preview' ? 'bg-primary/20 text-primary' : 'text-muted-foreground'}`}><Eye size={18} /></button>
             <button onClick={() => setViewMode('graph')} className={`p-2 rounded-lg ${viewMode === 'graph' ? 'bg-primary/20 text-primary' : 'text-muted-foreground'}`}><Network size={18} /></button>
             <div className="w-px h-4 bg-border/50 mx-1" />
@@ -287,14 +315,23 @@ export default function App() {
 
       <AnimatePresence>
         {showChat && (
-          <motion.div 
-            initial={{ x: 320 }}
-            animate={{ x: 0 }}
-            exit={{ x: 320 }}
-            className="fixed right-0 top-0 bottom-0 z-40 shadow-2xl"
-          >
-            <Chat notes={notes} activeNoteId={activeNoteId} onNoteClick={handleNoteSelect} api={api} />
-          </motion.div>
+          <>
+            <motion.div 
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setShowChat(false)}
+              className="fixed inset-0 bg-black/20 backdrop-blur-sm z-30 md:hidden"
+            />
+            <motion.div 
+              initial={{ x: 320 }}
+              animate={{ x: 0 }}
+              exit={{ x: 320 }}
+              className="fixed right-0 top-0 bottom-0 z-40 shadow-2xl"
+            >
+              <Chat notes={notes} activeNoteId={activeNoteId} onNoteClick={handleNoteSelect} api={api} />
+            </motion.div>
+          </>
         )}
       </AnimatePresence>
 

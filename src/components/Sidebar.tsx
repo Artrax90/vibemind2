@@ -48,16 +48,35 @@ function SortableNoteItem({ note, activeNoteId, onSelectNote, onContextMenu, t }
   };
 
   const longPressProps = useLongPress(
-    (e) => onContextMenu(e, 'note', note.id),
-    () => onSelectNote(note.id)
+    (e) => {
+      e.preventDefault();
+      onContextMenu(e, 'note', note.id);
+    },
+    (e) => {
+      e.stopPropagation();
+      onSelectNote(note.id);
+      if (window.innerWidth < 768) {
+        document.dispatchEvent(new CustomEvent('close-sidebar'));
+      }
+    }
   );
 
   return (
     <div 
       ref={setNodeRef} style={style} {...attributes} {...listeners}
       {...longPressProps}
-      onContextMenu={(e) => onContextMenu(e, 'note', note.id)}
-      className={`flex items-center justify-between px-2 py-1.5 rounded-md cursor-pointer group transition-colors duration-200 ${activeNoteId === note.id ? 'bg-primary/10 text-primary font-medium' : 'text-muted-foreground hover:bg-secondary/60 hover:text-foreground'}`}
+      onClick={(e) => {
+        e.stopPropagation();
+        onSelectNote(note.id);
+        if (window.innerWidth < 768) {
+          document.dispatchEvent(new CustomEvent('close-sidebar'));
+        }
+      }}
+      onContextMenu={(e) => {
+        e.preventDefault();
+        onContextMenu(e, 'note', note.id);
+      }}
+      className={`flex items-center justify-between px-2 py-1.5 rounded-md cursor-pointer group transition-colors duration-200 ${activeNoteId === note.id ? 'bg-primary/10 text-primary font-medium' : 'text-muted-foreground hover:bg-secondary/60 hover:text-foreground'} relative z-10`}
     >
       <div className="flex items-center overflow-hidden flex-1">
         <div className="flex items-center flex-shrink-0 mr-2 ml-[18px]">
@@ -94,15 +113,28 @@ function DroppableFolder({ folder, isExpanded, isSelected, isRenaming, renameVal
   });
 
   const longPressProps = useLongPress(
-    (e) => handleContextMenu(e, 'folder', folder.id),
-    (e) => toggleFolder(folder.id, e)
+    (e) => {
+      e.preventDefault();
+      handleContextMenu(e, 'folder', folder.id);
+    },
+    (e) => {
+      e.stopPropagation();
+      toggleFolder(folder.id, e);
+    }
   );
 
   return (
-    <div ref={setNodeRef}>
+    <div ref={setNodeRef} className="relative z-10">
       <div 
         {...longPressProps}
-        onContextMenu={(e) => handleContextMenu(e, 'folder', folder.id)}
+        onClick={(e) => {
+          e.stopPropagation();
+          toggleFolder(folder.id, e);
+        }}
+        onContextMenu={(e) => {
+          e.preventDefault();
+          handleContextMenu(e, 'folder', folder.id);
+        }}
         className={`flex items-center justify-between px-2 py-1.5 rounded-md cursor-pointer group transition-colors duration-200 ${isOver ? 'bg-primary/20 ring-1 ring-primary' : isSelected ? 'bg-primary/10 text-primary font-medium' : 'text-muted-foreground hover:bg-secondary/60 hover:text-foreground'}`}
       >
         <div className="flex items-center flex-1 overflow-hidden">

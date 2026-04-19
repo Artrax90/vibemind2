@@ -313,7 +313,7 @@ export default function Editor({ note, onUpdate, onWikilinkClick, onTagClick, is
   return (
     <div className="flex flex-col h-full bg-background relative overflow-hidden">
       {/* Header */}
-      <div className="px-8 py-6 flex items-center justify-between border-b border-border/50">
+      <div className="pl-16 pr-4 md:px-8 py-6 flex items-center justify-between border-b border-border/50">
         <div className="flex items-center flex-1">
           <input
             value={title}
@@ -366,7 +366,7 @@ export default function Editor({ note, onUpdate, onWikilinkClick, onTagClick, is
 
       {/* Toolbar */}
       {!isPreview && !isReadOnly && (
-        <div className="px-8 py-2 flex items-center space-x-1 border-b border-border/30 bg-secondary/20">
+        <div className="pl-16 pr-4 md:px-8 py-2 flex items-center space-x-1 border-b border-border/30 bg-secondary/20 overflow-x-auto no-scrollbar">
           <button onClick={insertBold} className="p-1.5 rounded hover:bg-secondary text-muted-foreground hover:text-primary transition-colors" title="Bold"><Bold size={16} /></button>
           <button onClick={insertItalic} className="p-1.5 rounded hover:bg-secondary text-muted-foreground hover:text-primary transition-colors" title="Italic"><Italic size={16} /></button>
           <button onClick={insertLink} className="p-1.5 rounded hover:bg-secondary text-muted-foreground hover:text-primary transition-colors" title="Link"><Link size={16} /></button>

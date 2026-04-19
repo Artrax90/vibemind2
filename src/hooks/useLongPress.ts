@@ -3,13 +3,15 @@ import { useCallback, useRef } from 'react';
 export function useLongPress(
   onLongPress: (e: any) => void,
   onClick?: (e: any) => void,
-  { shouldPreventDefault = true, delay = 500 } = {}
+  { shouldPreventDefault = false, delay = 500 } = {}
 ) {
   const timeout = useRef<NodeJS.Timeout>();
   const target = useRef<EventTarget>();
+  const longPressTriggered = useRef(false);
 
   const start = useCallback(
     (event: any) => {
+      longPressTriggered.current = false;
       if (shouldPreventDefault && event.target) {
         event.target.addEventListener('touchend', preventDefault, {
           passive: false
@@ -17,6 +19,7 @@ export function useLongPress(
         target.current = event.target;
       }
       timeout.current = setTimeout(() => {
+        longPressTriggered.current = true;
         onLongPress(event);
       }, delay);
     },
@@ -26,7 +29,9 @@ export function useLongPress(
   const clear = useCallback(
     (event: any, shouldTriggerClick = true) => {
       timeout.current && clearTimeout(timeout.current);
-      shouldTriggerClick && !shouldPreventDefault && onClick && onClick(event);
+      if (shouldTriggerClick && !longPressTriggered.current && onClick) {
+        onClick(event);
+      }
       if (shouldPreventDefault && target.current) {
         target.current.removeEventListener('touchend', preventDefault);
       }

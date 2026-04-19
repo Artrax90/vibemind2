@@ -469,7 +469,7 @@ export default function Settings({ onClose, theme, setTheme }: SettingsProps) {
           <span>{toast.message}</span>
         </div>
       )}
-      <div className="px-8 py-6 border-b border-border/50 flex items-center justify-between">
+      <div className="px-4 md:px-8 pl-16 md:pl-8 py-6 border-b border-border/50 flex items-center justify-between">
         <h2 className="text-2xl font-bold text-foreground">{t('settings.title')}</h2>
         <div className="flex items-center space-x-4">
           <button onClick={handleSave} disabled={isSaving} className="flex items-center px-4 py-2 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors disabled:opacity-50">
@@ -482,31 +482,31 @@ export default function Settings({ onClose, theme, setTheme }: SettingsProps) {
         </div>
       </div>
 
-      <div className="flex flex-1 overflow-hidden">
-        <div className="w-64 border-r border-border/50 p-4 space-y-2">
-          <button onClick={() => setActiveTab('connection')} className={`w-full flex items-center px-4 py-3 rounded-lg transition-colors ${activeTab === 'connection' ? 'bg-primary/20 text-primary' : 'text-muted-foreground hover:bg-secondary hover:text-foreground'}`}>
+      <div className="flex flex-col md:flex-row flex-1 overflow-hidden">
+        <div className="w-full md:w-64 border-b md:border-b-0 md:border-r border-border/50 p-4 flex md:flex-col space-x-2 md:space-x-0 md:space-y-2 overflow-x-auto md:overflow-x-visible">
+          <button onClick={() => setActiveTab('connection')} className={`whitespace-nowrap flex-shrink-0 w-auto md:w-full flex items-center px-4 py-3 rounded-lg transition-colors ${activeTab === 'connection' ? 'bg-primary/20 text-primary' : 'text-muted-foreground hover:bg-secondary hover:text-foreground'}`}>
             <Globe size={18} className="mr-3" /> {t('settings.connection') || 'Connection'}
           </button>
-          <button onClick={() => setActiveTab('integrations')} className={`w-full flex items-center px-4 py-3 rounded-lg transition-colors ${activeTab === 'integrations' ? 'bg-primary/20 text-primary' : 'text-muted-foreground hover:bg-secondary hover:text-foreground'}`}>
+          <button onClick={() => setActiveTab('integrations')} className={`whitespace-nowrap flex-shrink-0 w-auto md:w-full flex items-center px-4 py-3 rounded-lg transition-colors ${activeTab === 'integrations' ? 'bg-primary/20 text-primary' : 'text-muted-foreground hover:bg-secondary hover:text-foreground'}`}>
             <Cpu size={18} className="mr-3" /> {t('settings.integrations')}
           </button>
-          <button onClick={() => setActiveTab('bots')} className={`w-full flex items-center px-4 py-3 rounded-lg transition-colors ${activeTab === 'bots' ? 'bg-primary/20 text-primary' : 'text-muted-foreground hover:bg-secondary hover:text-foreground'}`}>
+          <button onClick={() => setActiveTab('bots')} className={`whitespace-nowrap flex-shrink-0 w-auto md:w-full flex items-center px-4 py-3 rounded-lg transition-colors ${activeTab === 'bots' ? 'bg-primary/20 text-primary' : 'text-muted-foreground hover:bg-secondary hover:text-foreground'}`}>
             <MessageSquare size={18} className="mr-3" /> {t('settings.bots')}
           </button>
-          <button onClick={() => setActiveTab('general')} className={`w-full flex items-center px-4 py-3 rounded-lg transition-colors ${activeTab === 'general' ? 'bg-primary/20 text-primary' : 'text-muted-foreground hover:bg-secondary hover:text-foreground'}`}>
+          <button onClick={() => setActiveTab('general')} className={`whitespace-nowrap flex-shrink-0 w-auto md:w-full flex items-center px-4 py-3 rounded-lg transition-colors ${activeTab === 'general' ? 'bg-primary/20 text-primary' : 'text-muted-foreground hover:bg-secondary hover:text-foreground'}`}>
             <Globe size={18} className="mr-3" /> {t('settings.general')}
           </button>
           {currentUser?.role?.toLowerCase() === 'admin' && (
-            <button onClick={() => setActiveTab('users')} className={`w-full flex items-center px-4 py-3 rounded-lg transition-colors ${activeTab === 'users' ? 'bg-primary/20 text-primary' : 'text-muted-foreground hover:bg-secondary hover:text-foreground'}`}>
+            <button onClick={() => setActiveTab('users')} className={`whitespace-nowrap flex-shrink-0 w-auto md:w-full flex items-center px-4 py-3 rounded-lg transition-colors ${activeTab === 'users' ? 'bg-primary/20 text-primary' : 'text-muted-foreground hover:bg-secondary hover:text-foreground'}`}>
               <User size={18} className="mr-3" /> {t('settings.users') || 'Users'}
             </button>
           )}
-          <button onClick={() => setActiveTab('logs')} className={`w-full flex items-center px-4 py-3 rounded-lg transition-colors ${activeTab === 'logs' ? 'bg-primary/20 text-primary' : 'text-muted-foreground hover:bg-secondary hover:text-foreground'}`}>
+          <button onClick={() => setActiveTab('logs')} className={`whitespace-nowrap flex-shrink-0 w-auto md:w-full flex items-center px-4 py-3 rounded-lg transition-colors ${activeTab === 'logs' ? 'bg-primary/20 text-primary' : 'text-muted-foreground hover:bg-secondary hover:text-foreground'}`}>
             <Terminal size={18} className="mr-3" /> {t('settings.logs') || 'Logs'}
           </button>
         </div>
 
-        <div className="flex-1 overflow-y-auto p-8">
+        <div className="flex-1 overflow-y-auto p-4 md:p-8">
           <div className="max-w-3xl mx-auto space-y-8">
             {activeTab === 'connection' && (
               <section className="space-y-6">
@@ -534,7 +534,7 @@ export default function Settings({ onClose, theme, setTheme }: SettingsProps) {
                     <label className="block text-sm text-muted-foreground mb-1">{t('settings.serverUrl')}</label>
                     <input type="text" value={syncConfig.server_url} onChange={(e) => setSyncConfig({ ...syncConfig, server_url: e.target.value })} placeholder="https://your-server.com" className="w-full bg-background border border-border rounded-lg p-2 text-foreground outline-none" />
                   </div>
-                  <div className="grid grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div>
                       <label className="block text-sm text-muted-foreground mb-1">{t('settings.syncLogin')}</label>
                       <input type="text" value={syncConfig.username} onChange={(e) => setSyncConfig({ ...syncConfig, username: e.target.value })} placeholder="Username" className="w-full bg-background border border-border rounded-lg p-2 text-foreground outline-none" />
@@ -650,7 +650,7 @@ export default function Settings({ onClose, theme, setTheme }: SettingsProps) {
                     </div>
 
                     <div className="space-y-4 mt-2">
-                      <div className="grid grid-cols-3 gap-4">
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                         <div>
                           <label className="block text-sm text-muted-foreground mb-1">{t('settings.providerType')}</label>
                           <select 
@@ -674,7 +674,7 @@ export default function Settings({ onClose, theme, setTheme }: SettingsProps) {
                         </div>
                       </div>
 
-                      <div className="grid grid-cols-2 gap-4">
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <div>
                           <label className="block text-sm text-muted-foreground mb-1">{t('settings.baseUrl')}</label>
                           <input type="text" value={provider.baseUrl} onChange={(e) => updateProvider(provider.id, 'baseUrl', e.target.value)} placeholder="https://api.openai.com/v1" className="w-full bg-background border border-border rounded-lg p-2 text-foreground focus:border-primary focus:ring-1 focus:ring-primary outline-none transition-all" />
@@ -738,7 +738,7 @@ export default function Settings({ onClose, theme, setTheme }: SettingsProps) {
                 <div className="space-y-4">
                   <h3 className="text-lg font-semibold text-foreground">{t('settings.proxy')}</h3>
                   <div className="bg-card p-6 rounded-lg border border-border/50 space-y-4">
-                    <div className="grid grid-cols-3 gap-4">
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                       <div>
                         <label className="block text-xs uppercase text-muted-foreground mb-1">{t('settings.protocol') || 'Protocol'}</label>
                         <select value={proxyConfig.protocol} onChange={(e) => setProxyConfig({ ...proxyConfig, protocol: e.target.value })} className="w-full bg-background border border-border rounded-lg p-2 text-foreground focus:border-primary focus:ring-1 focus:ring-primary outline-none transition-all">
@@ -757,7 +757,7 @@ export default function Settings({ onClose, theme, setTheme }: SettingsProps) {
                         <input type="text" value={proxyConfig.port} onChange={(e) => setProxyConfig({ ...proxyConfig, port: e.target.value })} placeholder="8080" className="w-full bg-background border border-border rounded-lg p-2 text-foreground focus:border-primary focus:ring-1 focus:ring-primary outline-none transition-all" />
                       </div>
                     </div>
-                    <div className="grid grid-cols-2 gap-4">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                       <div>
                         <label className="block text-xs uppercase text-muted-foreground mb-1">{t('settings.usernameOptional') || 'Username (Optional)'}</label>
                         <input type="text" value={proxyConfig.username} onChange={(e) => setProxyConfig({ ...proxyConfig, username: e.target.value })} placeholder="user" className="w-full bg-background border border-border rounded-lg p-2 text-foreground focus:border-primary focus:ring-1 focus:ring-primary outline-none transition-all" />
@@ -796,7 +796,7 @@ export default function Settings({ onClose, theme, setTheme }: SettingsProps) {
 
                 <section className="space-y-4">
                   <h3 className="text-lg font-semibold text-foreground">{t('settings.dataManagement')}</h3>
-                  <div className="grid grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div className="bg-card p-4 rounded-lg border border-border/50 space-y-3">
                       <div className="flex items-center text-foreground font-medium">
                         <Download size={18} className="mr-2 text-primary" /> {t('settings.export')}
