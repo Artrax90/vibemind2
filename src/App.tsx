@@ -143,6 +143,17 @@ export default function App() {
   }, []);
 
   const handleNoteSelect = (id: string, mode: 'edit' | 'preview' = 'preview') => {
+    const note = notes.find(n => n.id === id);
+    if (!note) return;
+    
+    if (note.folderId) {
+      const folder = folders.find(f => f.id === note.folderId);
+      if (folder?.isProtected && !unlockedFolders.has(folder.id)) {
+        document.dispatchEvent(new CustomEvent('request-folder-unlock', { detail: { folderId: folder.id, noteId: id, mode } }));
+        return;
+      }
+    }
+
     setActiveNoteId(id);
     setShowSettings(false);
     setViewMode(mode);
@@ -428,16 +439,39 @@ export default function App() {
                 </button>
               </div>
               <div className="max-h-[60vh] overflow-y-auto p-2 scrollbar-thin">
-                {availableNotes.filter(n => n.title.toLowerCase().includes(searchQuery.toLowerCase()) || n.content.toLowerCase().includes(searchQuery.toLowerCase())).map(note => (
+                {notes.filter(n => {
+                  // Only match real text, don't match locked notes text
+                  const f = folders.find(f => f.id === n.folderId);
+                  const isLocked = f?.isProtected && !unlockedFolders.has(n.folderId!);
+                  if (isLocked) {
+                    // Do not search by content/title if locked, to prevent leaks
+                    // But if the folder itself matches the query, MAYBE show it? 
+                    // Let's just always show matching notes, BUT we don't want to leak content.
+                    // If we don't match text, how can user find it?
+                    // "в поиске заметка должна отображаться, но быть замазанной" indicates it SHOULD match.
+                    // Okay, we will match the text normally.
+                  }
+                  return n.title.toLowerCase().includes(searchQuery.toLowerCase()) || n.content.toLowerCase().includes(searchQuery.toLowerCase());
+                }).map(note => {
+                  const isLocked = note.folderId && folders.find(f => f.id === note.folderId)?.isProtected && !unlockedFolders.has(note.folderId);
+                  
+                  return (
                   <div 
                     key={note.id}
                     onClick={() => handleNoteSelect(note.id)}
-                    className="px-4 py-3 rounded-lg cursor-pointer flex flex-col hover:bg-secondary transition-colors"
+                    className="px-4 py-3 rounded-lg cursor-pointer flex flex-col hover:bg-secondary transition-colors relative"
                   >
-                    <span className="text-primary font-medium">{note.title}</span>
-                    <span className="text-sm text-muted-foreground line-clamp-1 mt-1">{note.content}</span>
+                    <div className={isLocked ? 'blur-[4px] opacity-70 select-none' : ''}>
+                      <span className="text-primary font-medium">{note.title || 'Untitled'}</span>
+                      <span className="text-sm text-muted-foreground line-clamp-1 mt-1">{note.content || '...'}</span>
+                    </div>
+                    {isLocked && (
+                      <div className="absolute inset-0 z-10 flex items-center justify-center pointer-events-none">
+                         <Lock size={20} className="text-foreground/50 drop-shadow-md" />
+                      </div>
+                    )}
                   </div>
-                ))}
+                )})}
               </div>
             </motion.div>
           </div>

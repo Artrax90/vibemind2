@@ -1112,12 +1112,13 @@ async def chat_with_notes(req: ChatRequest, db: Session = Depends(get_db), curre
     # 2.5 Найти защищенные папки и исключить их из поиска
     protected_folder_ids = [f.id for f in db.query(Folder.id).filter(
         Folder.user_id == current_user.id, 
-        Folder.password.is_not(None)
+        Folder.password.is_not(None),
+        Folder.password != ""
     ).all()]
 
     base_filters = [Note.user_id == current_user.id]
     if protected_folder_ids:
-        base_filters.append(~Note.folderId.in_(protected_folder_ids))
+        base_filters.append(or_(Note.folderId.notin_(protected_folder_ids), Note.folderId.is_(None)))
 
     # 3. Ключевой поиск (Keyword Search) по расширенным словам
     keyword_filters = []

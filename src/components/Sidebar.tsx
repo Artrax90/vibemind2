@@ -208,7 +208,7 @@ export default function Sidebar({ notes, folders, unlockedFolders, setUnlockedFo
   const [plusMenuOpen, setPlusMenuOpen] = useState(false);
   const [selectedFolderId, setSelectedFolderId] = useState<string | undefined>(undefined);
   const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set());
-  const [passModal, setPassModal] = useState<{ isOpen: boolean; folderId: string; folderName: string; mode: 'set' | 'verify' | 'change' } | null>(null);
+  const [passModal, setPassModal] = useState<{ isOpen: boolean; folderId: string; folderName: string; mode: 'set' | 'verify' | 'change'; pendingNoteId?: string; pendingMode?: 'edit' | 'preview' } | null>(null);
   
   // Context Menu State
   const [contextMenu, setContextMenu] = useState<{ x: number, y: number, type: 'note' | 'folder', id: string } | null>(null);
@@ -221,6 +221,19 @@ export default function Sidebar({ notes, folders, unlockedFolders, setUnlockedFo
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
     useSensor(KeyboardSensor)
   );
+
+  useEffect(() => {
+    const handleUnlockRequest = (e: Event) => {
+      const customEvent = e as CustomEvent;
+      const { folderId, noteId, mode } = customEvent.detail;
+      const folder = folders.find(f => f.id === folderId);
+      if (folder) {
+        setPassModal({ isOpen: true, folderId, folderName: folder.name, mode: 'verify', pendingNoteId: noteId, pendingMode: mode });
+      }
+    };
+    document.addEventListener('request-folder-unlock', handleUnlockRequest);
+    return () => document.removeEventListener('request-folder-unlock', handleUnlockRequest);
+  }, [folders]);
 
   useEffect(() => {
     const handleClickOutside = () => setContextMenu(null);
@@ -735,6 +748,11 @@ export default function Sidebar({ notes, folders, unlockedFolders, setUnlockedFo
                   const nextExpanded = new Set(expandedFolders);
                   nextExpanded.add(passModal.folderId);
                   setExpandedFolders(nextExpanded);
+                  
+                  if (passModal.pendingNoteId) {
+                    onSelectNote(passModal.pendingNoteId, passModal.pendingMode);
+                  }
+                  
                   return true;
                 }
                 return false;
