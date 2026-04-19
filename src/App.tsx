@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { Component, ErrorInfo, ReactNode } from 'react';
 import Sidebar from './components/Sidebar';
 import Editor from './components/Editor';
 import Chat from './components/Chat';
@@ -8,14 +9,58 @@ import ShareModal from './components/ShareModal';
 import SharedNoteView from './components/SharedNoteView';
 import Login from './pages/Login';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Network, Edit3, Eye, Search, X, Menu, Maximize2, Minimize2, Sun, Moon } from 'lucide-react';
+import { Network, Edit3, Eye, Search, X, Menu, Maximize2, Minimize2, Sun, Moon, AlertTriangle } from 'lucide-react';
 import { useLanguage } from './contexts/LanguageContext';
 import { Note, Folder } from './types';
 import { api } from './api/client';
 
+class ErrorBoundary extends Component<{ children: ReactNode }, { hasError: boolean, error: any }> {
+  constructor(props: { children: ReactNode }) {
+    super(props);
+    this.state = { hasError: false, error: null };
+  }
+
+  static getDerivedStateFromError(error: any) {
+    return { hasError: true, error };
+  }
+
+  componentDidCatch(error: Error, errorInfo: ErrorInfo) {
+    console.error("ErrorBoundary caught an error", error, errorInfo);
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="h-screen w-full flex flex-col items-center justify-center bg-background text-foreground p-6 text-center">
+          <AlertTriangle className="h-12 w-12 text-destructive mb-4" />
+          <h1 className="text-2xl font-bold mb-2">Something went wrong</h1>
+          <p className="text-muted-foreground mb-4 max-w-md">The application crashed. This might be due to a loading error or data mismatch.</p>
+          <pre className="p-4 bg-secondary/50 rounded-lg text-xs font-mono mb-4 max-w-full overflow-auto">
+            {this.state.error?.toString()}
+          </pre>
+          <button 
+            onClick={() => window.location.reload()}
+            className="px-4 py-2 bg-primary text-primary-foreground rounded-lg hover:opacity-90 transition-opacity"
+          >
+            Reload Page
+          </button>
+        </div>
+      );
+    }
+
+    return this.props.children;
+  }
+}
+
 export default function App() {
   const { t } = useLanguage();
-  const [token, setToken] = useState<string | null>(localStorage.getItem('access_token'));
+  const [token, setToken] = useState<string | null>(() => {
+    try {
+      return localStorage.getItem('access_token');
+    } catch (e) {
+      return null;
+    }
+  });
   const [notes, setNotes] = useState<Note[]>([]);
   const [folders, setFolders] = useState<Folder[]>([]);
   const [activeNoteId, setActiveNoteId] = useState<string | null>(null);
@@ -26,22 +71,36 @@ export default function App() {
   const [isFocusMode, setIsFocusMode] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [theme, setTheme] = useState<'light' | 'dark'>(() => {
-    if (typeof window !== 'undefined') {
-      return localStorage.getItem('theme') as 'light' | 'dark' || 'dark';
-    }
+    try {
+      if (typeof window !== 'undefined') {
+        return localStorage.getItem('theme') as 'light' | 'dark' || 'dark';
+      }
+    } catch (e) {}
     return 'dark';
   });
   const [isLoading, setIsLoading] = useState(false);
   const [shareModalOpen, setShareModalOpen] = useState(false);
   const [shareResource, setShareResource] = useState<{ id: string, type: 'note' | 'folder', name: string } | null>(null);
 
-  // Check for shared note in URL
-  const sharedNoteId = new URLSearchParams(window.location.search).get('share') || 
-                       window.location.pathname.match(/\/shared\/(.+)/)?.[1];
+  // Robust check for shared resource in URL
+  const sharedNoteId = (() => {
+    try {
+      const searchId = new URLSearchParams(window.location.search).get('share');
+      if (searchId) return searchId;
+      
+      const pathMatch = window.location.pathname.match(/\/shared\/([^\/\?]+)/);
+      return pathMatch ? pathMatch[1] : null;
+    } catch (e) {
+      console.error("Failed to parse share ID from URL", e);
+      return null;
+    }
+  })();
 
   const handleSetTheme = (newTheme: 'light' | 'dark') => {
     setTheme(newTheme);
-    localStorage.setItem('theme', newTheme);
+    try {
+      localStorage.setItem('theme', newTheme);
+    } catch (e) {}
   };
 
   useEffect(() => {
@@ -173,9 +232,11 @@ export default function App() {
 
   if (sharedNoteId) {
     return (
-      <div className="h-screen w-full flex flex-col bg-background">
-        <SharedNoteView shareId={sharedNoteId} />
-      </div>
+      <ErrorBoundary>
+        <div className="h-screen w-full flex flex-col bg-background">
+          <SharedNoteView shareId={sharedNoteId} />
+        </div>
+      </ErrorBoundary>
     );
   }
 

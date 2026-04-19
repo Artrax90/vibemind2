@@ -292,10 +292,9 @@ export const api = {
   async getPublicShare(shareId: string) {
     try {
       const res = await fetch(`${BASE_URL}/api/public/shares/${shareId}`);
-      if (!res.ok) throw new Error('Failed to load public share');
-      return await res.json();
+      return await handleResponse(res, null);
     } catch (e) {
-      throw e;
+      return null;
     }
   },
 
@@ -308,10 +307,9 @@ export const api = {
         },
         body: JSON.stringify(noteData)
       });
-      if (!res.ok) throw new Error('Failed to update public share');
-      return await res.json();
+      return await handleResponse(res, { success: false });
     } catch (e) {
-      throw e;
+      return { success: false };
     }
   },
 
