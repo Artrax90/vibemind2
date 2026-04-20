@@ -386,7 +386,7 @@ async def semantic_search(query: str, db: Session = Depends(get_db), current_use
     v = embedding_manager.get_vector(query)
     
     # We apply a strict threshold so we don't return garbage
-    THRESHOLD = 0.65
+    THRESHOLD = 0.40
     
     notes_with_dist = db.query(
         Note, Note.embedding.cosine_distance(v).label("d")
@@ -1157,8 +1157,8 @@ async def chat_with_notes(req: ChatRequest, db: Session = Depends(get_db), curre
     
     # 4. Семантический поиск (Semantic Search)
     query_vector = embedding_manager.get_vector(req.message)
-    # Увеличиваем порог для большего количества совпадений
-    semantic_threshold = 0.65
+    # Строгий порог
+    semantic_threshold = 0.40
     
     semantic_results = db.query(
         Note, 
