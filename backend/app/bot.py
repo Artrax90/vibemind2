@@ -798,11 +798,21 @@ async def handle_text(message: types.Message, user_id: int, admin_id: str = None
             if not query: continue
             logger.info(f"Поиск заметок по запросу: «{query}»")
             await message.answer(f"🔍 Ищу заметки по запросу: «{query}»...")
-            res = await search_api(user_id, query)
-            results = res.get("data", []) if res.get("status") == "success" else []
-            if not results:
-                res = await semantic_search_api(user_id, query)
-                results = res.get("data", []) if res.get("status") == "success" else []
+            
+            res_kw = await search_api(user_id, query)
+            results_kw = res_kw.get("data", []) if res_kw.get("status") == "success" else []
+            
+            res_sem = await semantic_search_api(user_id, query)
+            results_sem = res_sem.get("data", []) if res_sem.get("status") == "success" else []
+            
+            # Combine logic
+            combined = {r['id']: r for r in results_kw}
+            for r in results_sem:
+                if r['id'] not in combined:
+                    combined[r['id']] = r
+                    
+            results = list(combined.values())
+
             if not results:
                 await message.answer("Ничего не найдено. 😔")
                 continue
