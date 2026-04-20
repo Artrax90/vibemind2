@@ -380,35 +380,46 @@ async def search(query: str, db: Session = Depends(get_db), current_user: User =
         res.append({"id": n.id, "title": n.title, "content": n.content, "folderId": n.folderId, "folderIsProtected": is_protected})
     return res
 
+@app.get("/api/distances")
+async def get_distances(query: str, db: Session = Depends(get_db)):
+    from .utils.embeddings import embedding_manager
+    v = embedding_manager.get_vector(query)
+    notes_with_dist = db.query(Note, Note.embedding.cosine_distance(v).label("d")).filter(Note.embedding.is_not(None)).order_by("d").limit(10).all()
+    res = []
+    for n, dist in notes_with_dist:
+        res.append({"title": n.title, "content": n.content[:50] if n.content else "", "distance": float(dist)})
+    return res
+
 @app.get("/api/notes/semantic-search")
 async def semantic_search(query: str, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     from .utils.embeddings import embedding_manager
     v = embedding_manager.get_vector(query)
     
-    # We apply a strict threshold so we don't return garbage
-    THRESHOLD = 0.40
-    
     # Log all distances for debugging
     all_notes = db.query(Note, Note.embedding.cosine_distance(v).label("d")).filter(Note.user_id == current_user.id, Note.embedding.is_not(None)).order_by("d").limit(15).all()
-    print("ALL DISTANCES FOR QUERY:", query)
-    for n, d in all_notes:
-        print(f"Dist: {d} | Title: {n.title}")
 
-    notes_with_dist = db.query(
-        Note, Note.embedding.cosine_distance(v).label("d")
-    ).filter(
-        Note.user_id == current_user.id, 
-        Note.embedding.is_not(None),
-        Note.embedding.cosine_distance(v) <= THRESHOLD
-    ).order_by("d").limit(20).all()
-    
+    if not all_notes:
+        return []
+
     res = []
-    for n, dist in notes_with_dist:
+    best_dist = float(all_notes[0].d)
+    
+    for n, dist in all_notes:
+        d = float(dist)
+        
+        # Absolute ceiling: never return completely unrelated nodes
+        if d > 0.52:
+            continue
+            
+        # Dynamic ceiling: if the distance is much worse than the best hit, it's probably irrelevant context switch
+        if d > 0.35 and d > best_dist + 0.15:
+            continue
+            
         is_protected = False
         if n.folderId:
             f = db.query(Folder).filter(Folder.id == n.folderId).first()
             if f and f.password_hash: is_protected = True
-        res.append({"id": n.id, "title": n.title, "content": n.content, "distance": float(dist), "folderId": n.folderId, "folderIsProtected": is_protected})
+        res.append({"id": n.id, "title": n.title, "content": n.content, "distance": d, "folderId": n.folderId, "folderIsProtected": is_protected})
     return res
 
 @app.post("/api/notes/reindex")
@@ -1163,20 +1174,25 @@ async def chat_with_notes(req: ChatRequest, db: Session = Depends(get_db), curre
     
     # 4. Семантический поиск (Semantic Search)
     query_vector = embedding_manager.get_vector(req.message)
-    # Строгий порог
-    semantic_threshold = 0.40
     
-    semantic_results = db.query(
+    semantic_results_raw = db.query(
         Note, 
         Note.embedding.cosine_distance(query_vector).label("distance")
     ).filter(
         *base_filters,
         Note.embedding.is_not(None)
-    ).filter(
-        Note.embedding.cosine_distance(query_vector) <= semantic_threshold
     ).order_by(
         Note.embedding.cosine_distance(query_vector)
     ).limit(15).all()
+    
+    semantic_results = []
+    if semantic_results_raw:
+        best_dist = float(semantic_results_raw[0].distance)
+        for n, dist in semantic_results_raw:
+            d = float(dist)
+            if d > 0.52: continue
+            if d > 0.35 and d > best_dist + 0.15: continue
+            semantic_results.append((n, dist))
     
     # 5. Объединение и дедупликация
     combined_notes = {}
