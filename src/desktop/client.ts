@@ -225,25 +225,19 @@ export const api = {
               (n.content || '');
             return `ID: ${n.id}\nTitle: ${n.title || 'Untitled'}\nContent: ${content}`;
           }).join('\n\n');
-          prompt = `Ты — умный ИИ-помощник в приложении заметок.
-Твоя задача — дать релевантный ответ на вопрос пользователя на основе предоставленных заметок.
+          prompt = `Ты — умный ИИ-помощник в приложении заметок. Твоя задача — дать релевантный ответ на вопрос пользователя на основе предоставленных открытых заметок.
 
 ЗАМЕТКИ ИЗ БАЗЫ:
 ${context}
 
-ИНСТРУКЦИИ (ВЫПОЛНЯТЬ СТРОГО):
-1. Дай "человеческий", естественный ответ на вопрос, опираясь ТОЛЬКО на предоставленные заметки.
-2. ПРАВИЛО ЗАЩИЩЕННЫХ ЗАМЕТОК: Если релевантная заметка имеет пометку "[ЗАКРЫТО ПАРОЛЕМ. Содержимое скрыто.]", ты не видишь ее текст. ТЕБЕ ЗАПРЕЩЕНО писать от себя ("К сожалению, заметка закрыта", "Вам нужно снять блокировку", и т.д.).
-Вместо этого просто выведи:
+ИНСТРУКЦИИ:
+1. Ответь пользователю максимально естественно и подробно, используя ТОЛЬКО предоставленные открытые заметки.
+2. ИГНОРИРУЙ ЗАЩИЩЕННЫЕ ЗАМЕТКИ: Если в тексте заметки написано "[ЗАКРЫТО ПАРОЛЕМ. Содержимое скрыто.]", полностью проигнорируй её. Ни в коем случае не упоминай защищенные заметки в своем ответе (система сама добавит их позже).
+3. Если нет подходящих открытых заметок для ответа, НИЧЕГО НЕ ПИШИ в ответе (оставь текст абсолютно пустым).
+4. Обязательно в конце выведи строку "SOURCES: ID1, ID2, ...". Укажи ID тех ОТКРЫТЫХ заметок, которые ты использовал. Если ничего не нашел — "SOURCES: NONE".
 
-Вот что я нашел по запросу «${message}»:
-
-1. [Название защищенной заметки]
-[Содержимое защищено паролем]
-
-3. Если нет подходящих заметок, напиши: "Я не нашел информации по запросу «${message}» в ваших заметках."
-4. В самом конце ответа (С НОВОЙ СТРОКИ) ОБЯЗАТЕЛЬНО добавь спец-строку: "SOURCES: ID1, ID2, ..." с ID тех заметок, которые ты использовал или выдал. Если ничего не нашел — "SOURCES: NONE".`;
-          citations = scoredNotes.map(n => ({ id: n.id, title: n.title || 'Untitled', snippet: n.isLocked ? '[Защищено паролем]' : (n.content || '').substring(0, 100) + '...' }));
+ВОПРОС: "${message}"`;
+          citations = scoredNotes.map(n => ({ id: n.id, title: n.title || 'Untitled', snippet: n.isLocked ? '[Защищено паролем]' : (n.content || '').substring(0, 100) + '...', isLocked: n.isLocked }));
           
           // Full content citations meant for formatting
           (citations as any).fullContent = scoredNotes;
@@ -293,13 +287,30 @@ ${context}
             }
         }
 
-        if (!answer) {
-            answer = `Я не нашел информации по запросу «${message}» в ваших заметках.`;
+        const openNotes = citations.filter((c: any) => !c.isLocked);
+        const protectedNotes = citations.filter((c: any) => c.isLocked);
+        const relevantOpenNotes = openNotes.filter((c: any) => usedIds.includes(c.id));
+        
+        const finalRelevantNotes = [...relevantOpenNotes, ...protectedNotes];
+
+        let finalAnswer = answer.trim();
+
+        if (protectedNotes.length > 0) {
+            const telegramList = protectedNotes.map((pn: any, i: number) => `${i+1}. ${pn.title}\n[Содержимое защищено паролем]`).join('\n\n');
+            const telegramBlock = `Вот что я нашел по запросу «${message}»:\n\n${telegramList}`;
+            
+            if (finalAnswer) {
+                finalAnswer += `\n\nТакже вот что я нашел из закрытого по запросу «${message}»:\n\n${telegramList}`;
+            } else {
+                finalAnswer = telegramBlock;
+            }
+        } else {
+            if (!finalAnswer) {
+                finalAnswer = `Я не нашел информации по запросу «${message}» в ваших заметках.`;
+            }
         }
 
-        const relevantNotes = citations.filter(c => usedIds.includes(c.id));
-
-        return { answer, citations: relevantNotes };
+        return { answer: finalAnswer, citations: finalRelevantNotes };
       } catch (e) {
         return { answer: 'Local AI request failed. Check your API key and settings.', citations: [] };
       }

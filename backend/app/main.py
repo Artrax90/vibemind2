@@ -1188,25 +1188,17 @@ async def chat_with_notes(req: ChatRequest, db: Session = Depends(get_db), curre
     
     context_text = "\n\n---\n\n".join(context_parts)
     
-    # 7. Финальный запрос к LLM (Human answers, but Telegram-style for protected)
-    prompt = f"""Ты — умный ИИ-помощник в приложении заметок.
-Твоя задача — дать релевантный ответ на вопрос пользователя на основе предоставленных заметок.
+    # 7. Финальный запрос к LLM (Human answers for open notes, programmatic Telegram-style for protected)
+    prompt = f"""Ты — умный ИИ-помощник в приложении заметок. Твоя задача — дать релевантный ответ на вопрос пользователя на основе предоставленных открытых заметок.
 
 ЗАМЕТКИ ИЗ БАЗЫ:
 {context_text}
 
-ИНСТРУКЦИИ (ВЫПОЛНЯТЬ СТРОГО):
-1. Дай "человеческий", естественный и подробный ответ на вопрос, опираясь ТОЛЬКО на предоставленную открытую информацию.
-2. ПРАВИЛО ЗАЩИЩЕННЫХ ЗАМЕТОК: Если релевантная заметка помечена как "[ЗАКРЫТО ПАРОЛЕМ. Содержимое скрыто.]", ты не знаешь её текста. ТЕБЕ КАТЕГОРИЧЕСКИ ЗАПРЕЩАЕТСЯ писать от себя рассуждения ("К сожалению, заметка закрыта", "Вам нужно снять блокировку", и т.д.).
-Вместо этого, если запароленная заметка подходит под запрос, ты должен просто вывести её по шаблону:
-
-Вот что я нашел по запросу «{req.message}»:
-
-1. [Название защищенной заметки]
-[Содержимое защищено паролем]
-
-3. Если нет подходящих заметок, напиши: "Я не нашел информации по запросу «{req.message}» в ваших заметках."
-4. В самом конце ответа (С НОВОЙ СТРОКИ) ОБЯЗАТЕЛЬНО добавь спец-строку: "SOURCES: ID1, ID2, ..." — перечисли ID всех использованных или упомянутых заметок. Если ничего не нашел — "SOURCES: NONE".
+ИНСТРУКЦИИ:
+1. Ответь пользователю максимально естественно и подробно, используя ТОЛЬКО предоставленные открытые заметки.
+2. ИГНОРИРУЙ ЗАЩИЩЕННЫЕ ЗАМЕТКИ: Если в тексте заметки написано "[ЗАКРЫТО ПАРОЛЕМ. Содержимое скрыто.]", полностью проигнорируй её. Ни в коем случае не упоминай защищенные заметки в своем ответе (система сама добавит их позже).
+3. Если нет подходящих открытых заметок для ответа, НИЧЕГО НЕ ПИШИ в ответе (оставь текст абсолютно пустым).
+4. Обязательно в конце выведи строку "SOURCES: ID1, ID2, ...". Укажи ID тех ОТКРЫТЫХ заметок, которые ты использовал. Если ничего не нашел — "SOURCES: NONE".
 
 ВОПРОС: {req.message}"""
 
@@ -1235,7 +1227,7 @@ async def chat_with_notes(req: ChatRequest, db: Session = Depends(get_db), curre
                 else:
                     answer = f"Ошибка Gemini API: {response.text}"
         
-        # Parse SOURCES and filter relevant notes
+        # Parse SOURCES
         used_ids = []
         if "SOURCES:" in answer:
             parts = answer.split("SOURCES:")
@@ -1244,14 +1236,18 @@ async def chat_with_notes(req: ChatRequest, db: Session = Depends(get_db), curre
             if ids_part != "NONE" and ids_part != "":
                 used_ids = [id.strip() for id in ids_part.split(',') if id.strip()]
             answer = answer_text
-            
-        if not answer:
-            answer = f"Я не нашел информации по запросу «{req.message}» в ваших заметках."
+
+        # 1. Разобьем заметки на открытые и закрытые
+        open_notes = [n for n in final_notes if n.folderId not in protected_folder_ids]
+        protected_notes = [n for n in final_notes if n.folderId in protected_folder_ids]
         
-        relevant_notes = [note for note in final_notes if note.id in used_ids]
-        
+        # 2. Формируем цитаты
         final_citations = []
-        for note in relevant_notes:
+        relevant_open = [n for n in open_notes if n.id in used_ids]
+        
+        # Защищенные всегда считаем релевантными, если движок их отобрал
+        final_relevant_notes = relevant_open + protected_notes
+        for note in final_relevant_notes:
             snippet_short = "[Защищено паролем]" if note.folderId in protected_folder_ids else (note.content[:100] + "..." if note.content else "")
             final_citations.append({
                 "id": note.id,
@@ -1259,8 +1255,29 @@ async def chat_with_notes(req: ChatRequest, db: Session = Depends(get_db), curre
                 "snippet": snippet_short
             })
 
+        # 3. Форматируем ответ. 
+        final_answer = answer.strip()
+        
+        if protected_notes:
+            telegram_list = []
+            for i, pn in enumerate(protected_notes):
+                telegram_list.append(f"{i+1}. {pn.title}\n[Содержимое защищено паролем]")
+            
+            telegram_str = "\n\n".join(telegram_list)
+            
+            # Если есть и человеческий текст, и запароленные заметки, ставим телеграм-блок ниже
+            if final_answer:
+                telegram_block = f"Также вот что я нашел по запросу «{req.message}»:\n\n{telegram_str}"
+                final_answer += f"\n\n{telegram_block}"
+            else:
+                telegram_block = f"Вот что я нашел по запросу «{req.message}»:\n\n{telegram_str}"
+                final_answer = telegram_block
+        else:
+            if not final_answer:
+                 final_answer = f"Я не нашел информации по запросу «{req.message}» в ваших заметках."
+
         return {
-            "answer": answer,
+            "answer": final_answer,
             "citations": final_citations
         }
     except Exception as e:
