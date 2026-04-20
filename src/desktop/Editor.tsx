@@ -58,7 +58,7 @@ export default function Editor({ note, onUpdate, onWikilinkClick, onTagClick, is
   // Custom renderer for tags and wikilinks
   const renderContent = (text: string) => {
     // Replace [[wikilinks]]
-    let parsed = text.replace(/\[\[(.*?)\]\]/g, '<span class="wikilink text-primary cursor-pointer hover:underline" data-title="$1">[[$1]]</span>');
+    let parsed = text.replace(/\[\[(.*?)\]\]/g, '<span class="wikilink text-primary cursor-pointer hover:underline" data-title="$1">$1</span>');
     // Replace #tags
     parsed = parsed.replace(/(^|\s)#([^\s#]+)/g, '$1<span class="tag text-primary bg-primary/10 px-1.5 py-0.5 rounded text-sm cursor-pointer hover:bg-primary/20" data-tag="$2">#$2</span>');
     return parsed;
@@ -340,7 +340,7 @@ export default function Editor({ note, onUpdate, onWikilinkClick, onTagClick, is
 
       {/* Toolbar */}
       {!isPreview && !isReadOnly && (
-        <div className="pl-16 pr-4 md:px-8 py-2 flex items-center space-x-1 border-b border-border/30 bg-secondary/20 overflow-x-auto no-scrollbar">
+        <div className="pl-16 pr-4 md:px-8 py-2 flex items-center space-x-1 border-b border-border/30 bg-secondary/20 flex-wrap gap-y-2">
           <button onClick={insertBold} className="p-1.5 rounded hover:bg-secondary text-muted-foreground hover:text-primary transition-colors" title="Bold"><Bold size={16} /></button>
           <button onClick={insertItalic} className="p-1.5 rounded hover:bg-secondary text-muted-foreground hover:text-primary transition-colors" title="Italic"><Italic size={16} /></button>
           <button onClick={insertLink} className="p-1.5 rounded hover:bg-secondary text-muted-foreground hover:text-primary transition-colors" title="Link"><Link size={16} /></button>

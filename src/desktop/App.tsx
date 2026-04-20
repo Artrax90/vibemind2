@@ -130,6 +130,7 @@ export default function App() {
   const addNote = async (newNote: Note) => {
     setNotes(prev => [...prev, newNote]);
     await api.createNote(newNote);
+    setActiveNoteId(newNote.id);
     setViewMode('edit');
   };
 
