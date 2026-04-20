@@ -1181,26 +1181,34 @@ async def chat_with_notes(req: ChatRequest, db: Session = Depends(get_db), curre
     context_parts = []
     for i, note in enumerate(final_notes):
         if note.folderId in protected_folder_ids:
-            content = f"[ЗАКРЫТО ПАРОЛЕМ. Текст скрыт в целях безопасности. ВНИМАНИЕ: Поисковая система посчитала эту заметку релевантной вашему запросу! Обязательно упомяните ее и скажите пользователю снять блокировку, чтобы узнать ответ.]"
+            content = "[ЗАКРЫТО ПАРОЛЕМ. Содержимое скрыто.]"
         else:
             content = note.content
         context_parts.append(f"ЗАМЕТКА [{i+1}]\nID: {note.id}\nЗаголовок: {note.title}\nСодержание: {content}")
     
     context_text = "\n\n---\n\n".join(context_parts)
     
-    # 7. Финальный запрос к LLM (Telegram-bot style - AI writes preamble, backend appends list)
-    prompt = f"""Ниже представлены заметки по запросу пользователя. Ознакомься с ними и ответь на вопрос пользователя.
+    # 7. Финальный запрос к LLM (Human answers, but Telegram-style for protected)
+    prompt = f"""Ты — умный ИИ-помощник в приложении заметок.
+Твоя задача — дать релевантный ответ на вопрос пользователя на основе предоставленных заметок.
 
 ЗАМЕТКИ ИЗ БАЗЫ:
 {context_text}
 
-ИНСТРУКЦИИ:
-1. Вопрос пользователя: "{req.message}"
-2. Сформулируй краткий ответ на вопрос, опираясь ТОЛЬКО на предоставленные заметки.
-3. КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНО составлять список найденных заметок, нумеровать их или цитировать куски текста с номерами (1., 2. и т.д.). Система сама прикрепит список заметок ниже твоего ответа!
-4. В твоем ответе не должно быть фраз вроде "Вот что я нашел:", "Спиосок:", "Источники:". Просто дай содержательный ответ.
-5. Отвечай на языке запроса.
-"""
+ИНСТРУКЦИИ (ВЫПОЛНЯТЬ СТРОГО):
+1. Дай "человеческий", естественный и подробный ответ на вопрос, опираясь ТОЛЬКО на предоставленную открытую информацию.
+2. ПРАВИЛО ЗАЩИЩЕННЫХ ЗАМЕТОК: Если релевантная заметка помечена как "[ЗАКРЫТО ПАРОЛЕМ. Содержимое скрыто.]", ты не знаешь её текста. ТЕБЕ КАТЕГОРИЧЕСКИ ЗАПРЕЩАЕТСЯ писать от себя рассуждения ("К сожалению, заметка закрыта", "Вам нужно снять блокировку", и т.д.).
+Вместо этого, если запароленная заметка подходит под запрос, ты должен просто вывести её по шаблону:
+
+Вот что я нашел по запросу «{req.message}»:
+
+1. [Название защищенной заметки]
+[Содержимое защищено паролем]
+
+3. Если нет подходящих заметок, напиши: "Я не нашел информации по запросу «{req.message}» в ваших заметках."
+4. В самом конце ответа (С НОВОЙ СТРОКИ) ОБЯЗАТЕЛЬНО добавь спец-строку: "SOURCES: ID1, ID2, ..." — перечисли ID всех использованных или упомянутых заметок. Если ничего не нашел — "SOURCES: NONE".
+
+ВОПРОС: {req.message}"""
 
     try:
         answer = ""
@@ -1227,47 +1235,32 @@ async def chat_with_notes(req: ChatRequest, db: Session = Depends(get_db), curre
                 else:
                     answer = f"Ошибка Gemini API: {response.text}"
         
-        # Подчищаем возможные "косяки" ИИ, если он все-таки попытался выдать список
-        import re
-        answer = re.sub(r'(?m)^\s*\d+\.\s.*$', '', answer)
-        answer = re.sub(r'SOURCES:.*', '', answer)
-        answer = answer.strip()
-
-        # Формируем финальный список ВСЕХ найденных релевантных заметок (без фильтрации LLM)
+        # Parse SOURCES and filter relevant notes
+        used_ids = []
+        if "SOURCES:" in answer:
+            parts = answer.split("SOURCES:")
+            answer_text = parts[0].strip()
+            ids_part = parts[1].strip()
+            if ids_part != "NONE" and ids_part != "":
+                used_ids = [id.strip() for id in ids_part.split(',') if id.strip()]
+            answer = answer_text
+            
+        if not answer:
+            answer = f"Я не нашел информации по запросу «{req.message}» в ваших заметках."
+        
+        relevant_notes = [note for note in final_notes if note.id in used_ids]
+        
         final_citations = []
-        for note in final_notes:
-            snippet = "[Защищено паролем]" if note.folderId in protected_folder_ids else (note.content[:100] + "..." if note.content else "")
+        for note in relevant_notes:
+            snippet_short = "[Защищено паролем]" if note.folderId in protected_folder_ids else (note.content[:100] + "..." if note.content else "")
             final_citations.append({
                 "id": note.id,
                 "title": note.title,
-                "snippet": snippet
+                "snippet": snippet_short
             })
 
-        if not final_notes:
-            final_answer = f"Я не нашел информации по запросу «{req.message}» в ваших заметках."
-        else:
-            final_notes_list = []
-            for i, note in enumerate(final_notes):
-                # Для текста в чате берем бóльший кусок контента (до 300 символов)
-                if note.folderId in protected_folder_ids:
-                    snippet = "[Содержимое защищено паролем]"
-                else:
-                    snippet = note.content.strip()
-                    if len(snippet) > 300:
-                        snippet = snippet[:300].strip() + "..."
-                
-                final_notes_list.append(f"{i+1}. {note.title}\n{snippet}")
-            
-            formatted_notes = "\n\n".join(final_notes_list)
-            
-            # Если ИИ промолчал или выдал пустоту после чистки
-            if not answer:
-                final_answer = f"Вот что я нашел по запросу «{req.message}»:\n\n{formatted_notes}"
-            else:
-                final_answer = f"{answer}\n\nВот что я нашел по запросу «{req.message}»:\n\n{formatted_notes}"
-
         return {
-            "answer": final_answer,
+            "answer": answer,
             "citations": final_citations
         }
     except Exception as e:
