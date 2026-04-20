@@ -128,6 +128,9 @@ SYSTEM_PROMPT = """Ты — интеллектуальный парсер гол
   }
 ]
 
+❗ ВАЖНО: НИКОГДА НЕ СОЗДАВАЙ ЗАМЕТКУ, ЕСЛИ ОНА УЖЕ СУЩЕСТВУЕТ В МАССИВЕ NOTES! 
+Если пользователь говорит "добавь заметку фильмы рубли" (или "создай заметку фильмы рубли"), и в `notes` УЖЕ есть заметка с названием "фильмы" — ты ОБЯЗАН вернуть ТОЛЬКО один `UPDATE` с `note_id` этой заметки. Никаких `CREATE` для существующих названий!
+
 ---
 # 🧠 ШАГ 5. SEARCH
 1. Очисти запрос:
@@ -772,12 +775,32 @@ async def handle_text(message: types.Message, user_id: int, admin_id: str = None
         logger.info(f"Исполнение команды: {intent}, параметры: {cmd}")
         if intent == "CREATE":
             title = cmd.get("title", "Без названия")
-            result = await save_note_to_api(user_id, title, cmd.get("content", ""))
-            if result.get("status") == "success":
-                chain_note_id = result.get("note_id")
-                logger.info(f"Успешно создана заметка: {title} (ID: {chain_note_id})")
-                await message.answer(f"Создал новую заметку «{title}»! 📝")
-            else: await message.answer(f"❌ Ошибка: {result.get('message')}")
+            
+            # Anti-duplicate fallback:
+            existing_note_id = None
+            for n in notes:
+                if str(n.get("title", "")).strip().lower() == title.strip().lower():
+                    existing_note_id = n.get("id")
+                    break
+            
+            if existing_note_id:
+                logger.info(f"Заметка '{title}' уже существует (ID: {existing_note_id}). Конвертируем CREATE в апдейт ID или просто переиспользуем.")
+                chain_note_id = existing_note_id
+                
+                content_to_append = cmd.get("content", "")
+                if content_to_append:
+                    res = await patch_note_api(user_id, existing_note_id, content_to_append)
+                    if res.get("status") == "success":
+                        await message.answer(f"✅ Добавил текст в существующую заметку «{title}»!")
+                    else:
+                        await message.answer(f"❌ Ошибка при добавлении в '{title}': {res.get('message')}")
+            else:
+                result = await save_note_to_api(user_id, title, cmd.get("content", ""))
+                if result.get("status") == "success":
+                    chain_note_id = result.get("note_id")
+                    logger.info(f"Успешно создана заметка: {title} (ID: {chain_note_id})")
+                    await message.answer(f"Создал новую заметку «{title}»! 📝")
+                else: await message.answer(f"❌ Ошибка: {result.get('message')}")
         elif intent == "UPDATE":
             target_id = cmd.get("note_id") or chain_note_id
             if not target_id and cmd.get("search_query"):
