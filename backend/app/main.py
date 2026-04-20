@@ -1188,17 +1188,18 @@ async def chat_with_notes(req: ChatRequest, db: Session = Depends(get_db), curre
     
     context_text = "\n\n---\n\n".join(context_parts)
     
-    # 7. Финальный запрос к LLM (Telegram-bot style - minimal AI answer, backend handles formatting)
-    prompt = f"""Ниже представлены заметки по запросу пользователя. Выбери из них те, которые действительно релевантны.
+    # 7. Финальный запрос к LLM (Telegram-bot style - AI writes preamble, backend appends list)
+    prompt = f"""Ниже представлены заметки по запросу пользователя. Ознакомься с ними и ответь на вопрос пользователя.
 
 ЗАМЕТКИ ИЗ БАЗЫ:
 {context_text}
 
 ИНСТРУКЦИИ:
-1. Ознакомься с вопросом пользователя: "{req.message}"
-2. В ответе напиши ТОЛЬКО одно: строку "SOURCES: ID1, ID2, ..." с перечнем включенных в ответ ID.
-3. Если ни одна заметка не содержит ответа на запрос, напиши ровно: "SOURCES: NONE".
-4. Никаких вступлений, никаких рассуждений. Только список ID.
+1. Вопрос пользователя: "{req.message}"
+2. Сформулируй краткий ответ на вопрос, опираясь ТОЛЬКО на предоставленные заметки.
+3. КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНО составлять список найденных заметок, нумеровать их или цитировать куски текста с номерами (1., 2. и т.д.). Система сама прикрепит список заметок ниже твоего ответа!
+4. В твоем ответе не должно быть фраз вроде "Вот что я нашел:", "Спиосок:", "Источники:". Просто дай содержательный ответ.
+5. Отвечай на языке запроса.
 """
 
     try:
@@ -1226,19 +1227,15 @@ async def chat_with_notes(req: ChatRequest, db: Session = Depends(get_db), curre
                 else:
                     answer = f"Ошибка Gemini API: {response.text}"
         
-        # Parse SOURCES
-        used_ids = []
-        if "SOURCES:" in answer:
-            parts = answer.split("SOURCES:")
-            ids_part = parts[1].strip()
-            if ids_part != "NONE":
-                used_ids = [id.strip() for id in ids_part.split(',') if id.strip()]
-        
-        # Формируем финальный список релевантных заметок
-        relevant_notes = [note for note in final_notes if note.id in used_ids]
-        
+        # Подчищаем возможные "косяки" ИИ, если он все-таки попытался выдать список
+        import re
+        answer = re.sub(r'(?m)^\s*\d+\.\s.*$', '', answer)
+        answer = re.sub(r'SOURCES:.*', '', answer)
+        answer = answer.strip()
+
+        # Формируем финальный список ВСЕХ найденных релевантных заметок (без фильтрации LLM)
         final_citations = []
-        for note in relevant_notes:
+        for note in final_notes:
             snippet = "[Защищено паролем]" if note.folderId in protected_folder_ids else (note.content[:100] + "..." if note.content else "")
             final_citations.append({
                 "id": note.id,
@@ -1246,12 +1243,12 @@ async def chat_with_notes(req: ChatRequest, db: Session = Depends(get_db), curre
                 "snippet": snippet
             })
 
-        if not relevant_notes:
+        if not final_notes:
             final_answer = f"Я не нашел информации по запросу «{req.message}» в ваших заметках."
         else:
             final_notes_list = []
-            for i, note in enumerate(relevant_notes):
-                # Для текста в чате берем бóльший кусок контента
+            for i, note in enumerate(final_notes):
+                # Для текста в чате берем бóльший кусок контента (до 300 символов)
                 if note.folderId in protected_folder_ids:
                     snippet = "[Содержимое защищено паролем]"
                 else:
@@ -1262,7 +1259,12 @@ async def chat_with_notes(req: ChatRequest, db: Session = Depends(get_db), curre
                 final_notes_list.append(f"{i+1}. {note.title}\n{snippet}")
             
             formatted_notes = "\n\n".join(final_notes_list)
-            final_answer = f"Вот что я нашел по запросу «{req.message}»:\n\n{formatted_notes}"
+            
+            # Если ИИ промолчал или выдал пустоту после чистки
+            if not answer:
+                final_answer = f"Вот что я нашел по запросу «{req.message}»:\n\n{formatted_notes}"
+            else:
+                final_answer = f"{answer}\n\nВот что я нашел по запросу «{req.message}»:\n\n{formatted_notes}"
 
         return {
             "answer": final_answer,

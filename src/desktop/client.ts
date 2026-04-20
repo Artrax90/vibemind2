@@ -225,24 +225,22 @@ export const api = {
               (n.content || '');
             return `ID: ${n.id}\nTitle: ${n.title || 'Untitled'}\nContent: ${content}`;
           }).join('\n\n');
-          prompt = `Ниже представлены заметки по запросу пользователя. Выбери из них те, которые релевантны.
+          prompt = `Ниже представлены заметки по запросу пользователя. Ознакомься с ними и ответь на вопрос пользователя.
 
 ЗАМЕТКИ ИЗ БАЗЫ:
 ${context}
 
 ИНСТРУКЦИИ:
 1. Вопрос пользователя: "${message}"
-2. В ответе напиши ТОЛЬКО одно: строку "SOURCES: ID1, ID2, ..." с перечнем включенных в ответ ID.
-3. Если ни одна заметка не содержит ответа на запрос, напиши ровно: "SOURCES: NONE".
-4. Никаких вступлений, никаких рассуждений. Только список ID.`;
+2. Сформулируй краткий ответ на вопрос, опираясь ТОЛЬКО на предоставленные заметки.
+3. КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНО составлять список найденных заметок с номерами. Система сама прикрепит список заметок ниже твоего ответа!
+4. В ответе НИКАКИХ фраз вроде "Вот что я нашел:", "Список:" или "Источники:". Просто ответ словами.`;
           citations = scoredNotes.map(n => ({ id: n.id, title: n.title || 'Untitled', snippet: n.isLocked ? '[Защищено паролем]' : (n.content || '').substring(0, 100) + '...' }));
           
           // Full content citations meant for formatting
           (citations as any).fullContent = scoredNotes;
         } else {
-          prompt = `Ниже представлены заметки...
-ИНСТРУКЦИИ: 
-Напиши ТОЛЬКО: "SOURCES: NONE"`;
+          prompt = `Ниже нет заметок. Ответь: "Я не нашел информации по запросу в ваших заметках."`;
         }
       }
       
@@ -276,31 +274,28 @@ ${context}
           answer = data.candidates[0].content.parts[0].text;
         }
 
-        // Parse SOURCES
-        let usedIds: string[] = [];
-        if (answer.includes('SOURCES:')) {
-            const parts = answer.split('SOURCES:');
-            const idsPart = parts[1].trim();
-            if (idsPart !== 'NONE') {
-                usedIds = idsPart.split(',').map(id => id.trim()).filter(id => id);
-            }
-        }
+        // Clean up stubborn formatting
+        answer = answer.replace(/^\s*\d+\.\s.*/gm, '').replace(/SOURCES:.*/g, '').trim();
 
-        const relevantNotes = citations.filter(c => usedIds.includes(c.id));
-        const fullContentNotes = ((citations as any).fullContent || []).filter((n: any) => usedIds.includes(n.id));
+        const fullContentNotes = ((citations as any).fullContent || []);
 
         let finalAnswer = '';
-        if (relevantNotes.length === 0) {
+        if (fullContentNotes.length === 0) {
             finalAnswer = `Я не нашел информации по запросу «${message}» в ваших заметках.`;
         } else {
             const finalNotesList = fullContentNotes.map((n: any, i: number) => {
                 const snippet = n.isLocked ? '[Содержимое защищено паролем]' : (n.content && n.content.length > 300 ? n.content.substring(0, 300).trim() + '...' : (n.content || '').trim());
                 return `${i + 1}. ${n.title}\n${snippet}`;
             }).join('\n\n');
-            finalAnswer = `Вот что я нашел по запросу «${message}»:\n\n${finalNotesList}`;
+            
+            if (!answer) {
+                finalAnswer = `Вот что я нашел по запросу «${message}»:\n\n${finalNotesList}`;
+            } else {
+                finalAnswer = `${answer}\n\nВот что я нашел по запросу «${message}»:\n\n${finalNotesList}`;
+            }
         }
 
-        return { answer: finalAnswer, citations: relevantNotes };
+        return { answer: finalAnswer, citations };
       } catch (e) {
         return { answer: 'Local AI request failed. Check your API key and settings.', citations: [] };
       }
