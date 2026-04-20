@@ -408,11 +408,11 @@ async def semantic_search(query: str, db: Session = Depends(get_db), current_use
         d = float(dist)
         
         # Absolute ceiling: never return completely unrelated nodes
-        if d > 0.52:
+        if d > 0.46:
             continue
             
-        # Dynamic ceiling: if the distance is much worse than the best hit, it's probably irrelevant context switch
-        if d > 0.35 and d > best_dist + 0.15:
+        # Dynamic ceiling: tight relative clamping to drop junk
+        if d > 0.38 and d > best_dist + 0.05:
             continue
             
         is_protected = False
@@ -1190,8 +1190,8 @@ async def chat_with_notes(req: ChatRequest, db: Session = Depends(get_db), curre
         best_dist = float(semantic_results_raw[0].distance)
         for n, dist in semantic_results_raw:
             d = float(dist)
-            if d > 0.52: continue
-            if d > 0.35 and d > best_dist + 0.15: continue
+            if d > 0.46: continue
+            if d > 0.38 and d > best_dist + 0.05: continue
             semantic_results.append((n, dist))
     
     # 5. Объединение и дедупликация
