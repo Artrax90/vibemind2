@@ -384,7 +384,18 @@ async def search(query: str, db: Session = Depends(get_db), current_user: User =
 async def semantic_search(query: str, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     from .utils.embeddings import embedding_manager
     v = embedding_manager.get_vector(query)
-    notes_with_dist = db.query(Note, Note.embedding.cosine_distance(v).label("d")).filter(Note.user_id == current_user.id, Note.embedding.is_not(None)).order_by("d").limit(20).all()
+    
+    # We apply a strict threshold so we don't return garbage
+    THRESHOLD = 0.65
+    
+    notes_with_dist = db.query(
+        Note, Note.embedding.cosine_distance(v).label("d")
+    ).filter(
+        Note.user_id == current_user.id, 
+        Note.embedding.is_not(None),
+        Note.embedding.cosine_distance(v) <= THRESHOLD
+    ).order_by("d").limit(20).all()
+    
     res = []
     for n, dist in notes_with_dist:
         is_protected = False
