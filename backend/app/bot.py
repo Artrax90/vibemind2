@@ -823,21 +823,7 @@ async def handle_text(message: types.Message, user_id: int, admin_id: str = None
             await message.answer(f"🔍 Ищу заметки по запросу: «{query}»...")
             
             res_kw = await search_api(user_id, query)
-            results_kw = res_kw.get("data", []) if res_kw.get("status") == "success" else []
-            
-            res_sem = await semantic_search_api(user_id, query)
-            results_sem = res_sem.get("data", []) if res_sem.get("status") == "success" else []
-            logger.info(f"SEMANTIC RESULTS RECEIVED: {len(results_sem)}")
-            for r in results_sem:
-                logger.info(f"Dist: {r.get('distance')} | Title: {r.get('title')}")
-            
-            # Combine logic
-            combined = {r['id']: r for r in results_kw}
-            for r in results_sem:
-                if r['id'] not in combined:
-                    combined[r['id']] = r
-                    
-            results = list(combined.values())
+            results = res_kw.get("data", []) if res_kw.get("status") == "success" else []
 
             if not results:
                 await message.answer("Ничего не найдено. 😔")

@@ -1174,27 +1174,21 @@ async def chat_with_notes(req: ChatRequest, db: Session = Depends(get_db), curre
     
     # 4. Семантический поиск (Semantic Search)
     query_vector = embedding_manager.get_vector(req.message)
+    semantic_threshold = 0.40
     
-    semantic_results_raw = db.query(
+    semantic_results = db.query(
         Note, 
         Note.embedding.cosine_distance(query_vector).label("distance")
     ).filter(
         *base_filters,
         Note.embedding.is_not(None)
+    ).filter(
+        Note.embedding.cosine_distance(query_vector) <= semantic_threshold
     ).order_by(
         Note.embedding.cosine_distance(query_vector)
     ).limit(15).all()
     
-    semantic_results = []
-    if semantic_results_raw:
-        best_dist = float(semantic_results_raw[0].distance)
-        for n, dist in semantic_results_raw:
-            d = float(dist)
-            if d > 0.46: continue
-            if d > 0.38 and d > best_dist + 0.05: continue
-            semantic_results.append((n, dist))
-    
-    # 5. Объединение и дедупликация
+    # 5. Дедупликация и объединение
     combined_notes = {}
     for note in keyword_results:
         combined_notes[note.id] = note
