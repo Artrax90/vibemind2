@@ -809,7 +809,7 @@ async def handle_text(message: types.Message, user_id: int, admin_id: str = None
             from aiogram.utils.keyboard import InlineKeyboardBuilder
             builder = InlineKeyboardBuilder()
             resp = f"Вот что я нашел по запросу «{html.escape(query)}»:\n\n"
-            for i, note in enumerate(results[:5], 1):
+            for i, note in enumerate(results[:15], 1):
                 t_esc = html.escape(note.get('title', 'Без названия'))
                 if note.get('folderIsProtected'):
                     p_esc = "<i>[Содержимое защищено паролем]</i>"

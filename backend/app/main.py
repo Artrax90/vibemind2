@@ -370,7 +370,7 @@ async def import_notes(file: UploadFile = File(...), db: Session = Depends(get_d
 
 @app.get("/api/notes/search")
 async def search(query: str, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
-    notes = db.query(Note).filter(Note.user_id == current_user.id, or_(Note.title.ilike(f"%{query}%"), Note.content.ilike(f"%{query}%"))).limit(10).all()
+    notes = db.query(Note).filter(Note.user_id == current_user.id, or_(Note.title.ilike(f"%{query}%"), Note.content.ilike(f"%{query}%"))).limit(20).all()
     res = []
     for n in notes:
         is_protected = False
@@ -384,7 +384,7 @@ async def search(query: str, db: Session = Depends(get_db), current_user: User =
 async def semantic_search(query: str, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     from .utils.embeddings import embedding_manager
     v = embedding_manager.get_vector(query)
-    notes_with_dist = db.query(Note, Note.embedding.cosine_distance(v).label("d")).filter(Note.user_id == current_user.id, Note.embedding.is_not(None)).order_by("d").limit(5).all()
+    notes_with_dist = db.query(Note, Note.embedding.cosine_distance(v).label("d")).filter(Note.user_id == current_user.id, Note.embedding.is_not(None)).order_by("d").limit(20).all()
     res = []
     for n, dist in notes_with_dist:
         is_protected = False
