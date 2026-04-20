@@ -386,8 +386,14 @@ async def semantic_search(query: str, db: Session = Depends(get_db), current_use
     v = embedding_manager.get_vector(query)
     
     # We apply a strict threshold so we don't return garbage
-    THRESHOLD = 0.40
+    THRESHOLD = 0.55
     
+    # Log all distances for debugging
+    all_notes = db.query(Note, Note.embedding.cosine_distance(v).label("d")).filter(Note.user_id == current_user.id, Note.embedding.is_not(None)).order_by("d").limit(15).all()
+    print("ALL DISTANCES FOR QUERY:", query)
+    for n, d in all_notes:
+        print(f"Dist: {d} | Title: {n.title}")
+
     notes_with_dist = db.query(
         Note, Note.embedding.cosine_distance(v).label("d")
     ).filter(
@@ -1158,7 +1164,7 @@ async def chat_with_notes(req: ChatRequest, db: Session = Depends(get_db), curre
     # 4. Семантический поиск (Semantic Search)
     query_vector = embedding_manager.get_vector(req.message)
     # Строгий порог
-    semantic_threshold = 0.40
+    semantic_threshold = 0.55
     
     semantic_results = db.query(
         Note, 

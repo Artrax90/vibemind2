@@ -804,6 +804,9 @@ async def handle_text(message: types.Message, user_id: int, admin_id: str = None
             
             res_sem = await semantic_search_api(user_id, query)
             results_sem = res_sem.get("data", []) if res_sem.get("status") == "success" else []
+            logger.info(f"SEMANTIC RESULTS RECEIVED: {len(results_sem)}")
+            for r in results_sem:
+                logger.info(f"Dist: {r.get('distance')} | Title: {r.get('title')}")
             
             # Combine logic
             combined = {r['id']: r for r in results_kw}
