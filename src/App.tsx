@@ -183,8 +183,11 @@ export default function App() {
 
   const addNote = (newNote: Note) => {
     setNotes(prev => [...prev, newNote]);
-    api.createNote(newNote);
+    api.createNote(newNote).catch(console.error);
+    setActiveNoteId(newNote.id);
     setViewMode('edit');
+    setShowSearch(false);
+    setIsMobileMenuOpen(false);
   };
 
   const addFolder = (newFolder: Folder) => {

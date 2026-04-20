@@ -284,9 +284,7 @@ export default function Sidebar({ notes, folders, unlockedFolders, setUnlockedFo
     setPlusMenuOpen(false);
     const newNote: Note = { id: `n${Date.now()}`, title: 'New Note', content: '', folderId: selectedFolderId, permission: 'owner' };
     try {
-      api.createNote(newNote).catch(console.error);
       onAddNote(newNote);
-      onSelectNote(newNote.id, 'edit');
       if (selectedFolderId) {
         setExpandedFolders(new Set(expandedFolders).add(selectedFolderId));
       }

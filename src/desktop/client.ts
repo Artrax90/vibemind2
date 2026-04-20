@@ -215,7 +215,7 @@ export const api = {
             if (text.includes(kw)) score++;
           });
           return { ...note, score };
-        }).filter(n => n.score > 0).sort((a, b) => b.score - a.score).slice(0, 3);
+        }).filter(n => n.score > 0).sort((a, b) => b.score - a.score).slice(0, 15);
         
         if (scoredNotes.length > 0) {
           const context = scoredNotes.map(n => {

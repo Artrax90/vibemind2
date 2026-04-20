@@ -1142,7 +1142,7 @@ async def chat_with_notes(req: ChatRequest, db: Session = Depends(get_db), curre
         keyword_results = db.query(Note).filter(
             *base_filters,
             or_(*keyword_filters)
-        ).limit(5).all()
+        ).limit(15).all()
     
     # 4. Семантический поиск (Semantic Search)
     query_vector = embedding_manager.get_vector(req.message)
@@ -1159,7 +1159,7 @@ async def chat_with_notes(req: ChatRequest, db: Session = Depends(get_db), curre
         Note.embedding.cosine_distance(query_vector) <= semantic_threshold
     ).order_by(
         Note.embedding.cosine_distance(query_vector)
-    ).limit(5).all()
+    ).limit(15).all()
     
     # 5. Объединение и дедупликация
     combined_notes = {}
@@ -1169,7 +1169,7 @@ async def chat_with_notes(req: ChatRequest, db: Session = Depends(get_db), curre
         if note.id not in combined_notes:
             combined_notes[note.id] = note
             
-    final_notes = list(combined_notes.values())[:5]
+    final_notes = list(combined_notes.values())[:20]
     
     if not final_notes:
         return {
