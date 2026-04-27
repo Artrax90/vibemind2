@@ -202,8 +202,14 @@ export default function SyncManager({ onSyncComplete }: SyncManagerProps) {
       }
 
       // 6. Prune local data that no longer exists on server
+      // Refetch local state to get accurate is_dirty status after pushes
+      const [currentLocalNotes, currentLocalFolders] = await Promise.all([
+        dbApi.getNotes(),
+        dbApi.getFolders()
+      ]);
+
       // Prune folders
-      for (const localFolder of localFolders) {
+      for (const localFolder of currentLocalFolders) {
         const remoteFolder = remoteFolders.find((rf: any) => rf.id === localFolder.id);
         if (!remoteFolder && localFolder.is_dirty === 0) {
           await dbApi.deleteFolder(localFolder.id);
@@ -213,7 +219,7 @@ export default function SyncManager({ onSyncComplete }: SyncManagerProps) {
       }
 
       // Prune notes
-      for (const localNote of localNotes) {
+      for (const localNote of currentLocalNotes) {
         const remoteNote = remoteNotes.find((rn: any) => rn.id === localNote.id);
         if (!remoteNote && localNote.is_dirty === 0) {
           await dbApi.deleteNote(localNote.id);
@@ -222,13 +228,19 @@ export default function SyncManager({ onSyncComplete }: SyncManagerProps) {
         }
       }
 
-      if (hasChanges && onSyncComplete) {
-        onSyncComplete();
-      }
-
       setStatus('success');
       setLastSync(new Date());
       log('Sync completed.');
+      
+      // Always notify that sync is finished to alert any listeners
+      window.dispatchEvent(new CustomEvent('sync-finished'));
+      
+      if (hasChanges && onSyncComplete) {
+        // Give a small delay for DB to finalize
+        setTimeout(() => {
+          onSyncComplete();
+        }, 100);
+      }
       
       // Reset status to idle after 3 seconds
       setTimeout(() => setStatus('idle'), 3000);

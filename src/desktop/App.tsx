@@ -91,6 +91,7 @@ export default function App() {
         api.getNotes(),
         api.getFolders()
       ]);
+      console.log(`[Data] Loaded ${fetchedNotes.length} notes and ${fetchedFolders.length} folders`);
       setNotes(fetchedNotes || []);
       setFolders(fetchedFolders || []);
     } catch (err) {
@@ -146,8 +147,19 @@ export default function App() {
   };
 
   const deleteFolder = async (id: string) => {
-    setFolders(folders.filter(f => f.id !== id));
-    setNotes(notes.filter(n => n.folderId !== id));
+    const getSubfolders = (parentId: string): string[] => {
+      const children = folders.filter(f => f.parentId === parentId);
+      let ids = [parentId];
+      for (const c of children) {
+        ids = ids.concat(getSubfolders(c.id));
+      }
+      return ids;
+    };
+    
+    const allIds = getSubfolders(id);
+    
+    setFolders(folders.filter(f => !allIds.includes(f.id)));
+    setNotes(notes.filter(n => !n.folderId || !allIds.includes(n.folderId)));
     await api.deleteFolder(id);
   };
 

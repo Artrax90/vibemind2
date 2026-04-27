@@ -202,8 +202,19 @@ export default function App() {
   };
 
   const deleteFolder = (id: string) => {
-    setFolders(folders.filter(f => f.id !== id));
-    setNotes(notes.filter(n => n.folderId !== id));
+    const getSubfolders = (parentId: string): string[] => {
+      const children = folders.filter(f => f.parentId === parentId);
+      let ids = [parentId];
+      for (const c of children) {
+        ids = ids.concat(getSubfolders(c.id));
+      }
+      return ids;
+    };
+    
+    const allIds = getSubfolders(id);
+    
+    setFolders(folders.filter(f => !allIds.includes(f.id)));
+    setNotes(notes.filter(n => !n.folderId || !allIds.includes(n.folderId)));
     api.deleteFolder(id);
   };
 

@@ -264,8 +264,29 @@ async def get_me(current_user: User = Depends(get_current_user)):
 # Note Endpoints
 @app.get("/api/notes")
 async def get_notes(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    # Get all folders for the current user
+    user_folders = {f.id for f in db.query(Folder).filter(Folder.user_id == current_user.id).all()}
+    
     # Notes owned by user
     notes = db.query(Note).filter(Note.user_id == current_user.id).all()
+    
+    # Clean up orphaned notes (whose folderId refers to a deleted folder)
+    valid_notes = []
+    orphaned_notes = []
+    for n in notes:
+        if n.folderId and n.folderId not in user_folders:
+            # Check if it might be from an old bug where folder doesn't exist
+            if not db.query(Folder).filter(Folder.id == n.folderId).first():
+                orphaned_notes.append(n)
+                continue
+        valid_notes.append(n)
+        
+    if orphaned_notes:
+        for n in orphaned_notes:
+            db.delete(n)
+        db.commit()
+    
+    notes = valid_notes
     
     # Notes shared directly with user
     shared_notes = db.query(Share).filter(Share.target_user_id == current_user.id, Share.resource_type == "note").all()
@@ -671,7 +692,22 @@ async def verify_folder_password_by_note(note_id: str, req: dict, db: Session = 
 async def delete_folder(id: str, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     f = db.query(Folder).filter(Folder.id == id, Folder.user_id == current_user.id).first()
     if not f: raise HTTPException(status_code=404)
-    db.delete(f)
+    
+    def get_all_child_folders(fid: str):
+        children = db.query(Folder).filter(Folder.parentId == fid).all()
+        ids = [fid]
+        for c in children:
+            ids.extend(get_all_child_folders(c.id))
+        return ids
+    
+    all_fids = get_all_child_folders(id)
+    
+    # Delete all notes in these folders
+    db.query(Note).filter(Note.folderId.in_(all_fids)).delete(synchronize_session=False)
+    
+    # Delete the folders
+    db.query(Folder).filter(Folder.id.in_(all_fids)).delete(synchronize_session=False)
+    
     db.commit()
     return {"status": "success"}
 

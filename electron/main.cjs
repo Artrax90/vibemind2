@@ -173,7 +173,9 @@ ipcMain.handle('db-save-note', async (event, note) => {
 });
 
 ipcMain.handle('db-delete-note', async (event, id) => {
-  db.prepare('DELETE FROM notes WHERE id = ?').run(id);
+  console.log(`[DB] Deleting note: ${id}`);
+  const info = db.prepare('DELETE FROM notes WHERE id = ?').run(id);
+  console.log(`[DB] Deleted rows: ${info.changes}`);
   return { success: true };
 });
 
@@ -201,7 +203,30 @@ ipcMain.handle('db-save-folder', async (event, folder) => {
 });
 
 ipcMain.handle('db-delete-folder', async (event, id) => {
-  db.prepare('DELETE FROM folders WHERE id = ?').run(id);
+  console.log(`[DB] Deleting folder: ${id}`);
+  
+  // Recursively find all child folder IDs
+  const getSubfolders = (parentId) => {
+    const children = db.prepare('SELECT id FROM folders WHERE parentId = ?').all(parentId);
+    let ids = [parentId];
+    for (const c of children) {
+      ids = ids.concat(getSubfolders(c.id));
+    }
+    return ids;
+  };
+  
+  const allIds = getSubfolders(id);
+  
+  // Create placeholders string (?, ?, ?)
+  const placeholders = allIds.map(() => '?').join(', ');
+  
+  // Delete all notes in these folders
+  const notesInfo = db.prepare(`DELETE FROM notes WHERE folderId IN (${placeholders})`).run(...allIds);
+  console.log(`[DB] Deleted ${notesInfo.changes} notes in recursively deleted folders.`);
+  
+  // Delete the folders
+  const info = db.prepare(`DELETE FROM folders WHERE id IN (${placeholders})`).run(...allIds);
+  console.log(`[DB] Deleted rows (folders): ${info.changes}`);
   return { success: true };
 });
 
