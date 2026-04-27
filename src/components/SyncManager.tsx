@@ -201,6 +201,27 @@ export default function SyncManager({ onSyncComplete }: SyncManagerProps) {
         setProgress(totalToSync, currentSynced);
       }
 
+      // 6. Prune local data that no longer exists on server
+      // Prune folders
+      for (const localFolder of localFolders) {
+        const remoteFolder = remoteFolders.find((rf: any) => rf.id === localFolder.id);
+        if (!remoteFolder && localFolder.is_dirty === 0) {
+          await dbApi.deleteFolder(localFolder.id);
+          log(`Pruned local folder: ${localFolder.name}`);
+          hasChanges = true;
+        }
+      }
+
+      // Prune notes
+      for (const localNote of localNotes) {
+        const remoteNote = remoteNotes.find((rn: any) => rn.id === localNote.id);
+        if (!remoteNote && localNote.is_dirty === 0) {
+          await dbApi.deleteNote(localNote.id);
+          log(`Pruned local note: ${localNote.title}`);
+          hasChanges = true;
+        }
+      }
+
       if (hasChanges && onSyncComplete) {
         onSyncComplete();
       }
