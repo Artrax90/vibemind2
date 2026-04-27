@@ -174,6 +174,33 @@ export default function App() {
     });
   };
 
+  const handleQuit = async () => {
+    try {
+      const config = await dbApi.getSyncConfig();
+      if (config.server_url && config.username && config.password) {
+        // Trigger sync and wait
+        window.dispatchEvent(new CustomEvent('force-sync'));
+        
+        // Wait for sync-finished or timeout after 10 seconds
+        await new Promise<void>((resolve) => {
+          const timeout = setTimeout(() => {
+            console.log('Sync on quit timed out');
+            resolve();
+          }, 10000);
+          
+          window.addEventListener('sync-finished', () => {
+            clearTimeout(timeout);
+            resolve();
+          }, { once: true });
+        });
+      }
+    } catch (e) {
+      console.error('Error during sync on quit', e);
+    } finally {
+      dbApi.quitApp();
+    }
+  };
+
   return (
     <div className="flex h-screen w-full font-sans overflow-hidden bg-background text-foreground">
       <SyncManager onSyncComplete={loadData} />
@@ -199,7 +226,7 @@ export default function App() {
           onDeleteFolder={deleteFolder}
           onRenameFolder={renameFolder}
           onShare={handleShare}
-          onQuit={!Capacitor.isNativePlatform() ? () => dbApi.quitApp() : undefined}
+          onQuit={!Capacitor.isNativePlatform() ? handleQuit : undefined}
           onClose={() => setIsMobileMenuOpen(false)}
         />
       </div>

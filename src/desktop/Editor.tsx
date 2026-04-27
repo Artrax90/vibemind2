@@ -77,8 +77,10 @@ export default function Editor({ note, onUpdate, onWikilinkClick, onTagClick, is
 
   const handlePaste = async (e: React.ClipboardEvent) => {
     const items = e.clipboardData.items;
+    let imagePasted = false;
     for (let i = 0; i < items.length; i++) {
       if (items[i].type.indexOf('image') !== -1) {
+        imagePasted = true;
         const blob = items[i].getAsFile();
         if (!blob) continue;
         
@@ -86,14 +88,22 @@ export default function Editor({ note, onUpdate, onWikilinkClick, onTagClick, is
         formData.append('file', blob, 'pasted_image.png');
 
         try {
+          if (!serverUrl) {
+            alert('Чтобы загружать изображения, подключитесь к серверу в настройках синхронизации.');
+            return;
+          }
           const response = await api.uploadFile(formData);
           if (response.url) {
             insertMarkdown(`![pasted image](`, `${response.url})`);
           }
         } catch (error) {
           console.error('Paste upload failed:', error);
+          alert('Ошибка при загрузке изображения. Проверьте соединение с сервером.');
         }
       }
+    }
+    if (imagePasted) {
+      e.preventDefault();
     }
   };
 
@@ -115,15 +125,45 @@ export default function Editor({ note, onUpdate, onWikilinkClick, onTagClick, is
           formData.append('file', file);
           
           try {
+            if (!serverUrl) {
+              alert('Чтобы загружать изображения, подключитесь к серверу в настройках синхронизации.');
+              return;
+            }
             const response = await api.uploadFile(formData);
             if (response.url) {
               insertMarkdown(`![${file.name}](`, `${response.url})`);
             }
           } catch (error) {
             console.error('Drop upload failed:', error);
+            alert('Ошибка при загрузке изображения. Проверьте соединение с сервером.');
           }
         }
       }
+    }
+  };
+
+  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const formData = new FormData();
+    formData.append('file', file);
+
+    try {
+      if (!serverUrl) {
+        alert('Чтобы загружать изображения, подключитесь к серверу в настройках синхронизации.');
+        return;
+      }
+      const response = await api.uploadFile(formData);
+      if (response.url) {
+        insertMarkdown(`![${file.name}](`, `${response.url})`);
+      }
+    } catch (error) {
+      console.error('Image upload failed:', error);
+      alert('Ошибка при загрузке изображения. Проверьте соединение с сервером.');
+    } finally {
+      // Clear input so same file can be selected again
+      e.target.value = '';
     }
   };
 
@@ -192,17 +232,21 @@ export default function Editor({ note, onUpdate, onWikilinkClick, onTagClick, is
     if (!textareaRef.current) return;
     const start = textareaRef.current.selectionStart;
     const end = textareaRef.current.selectionEnd;
-    const selection = content.substring(start, end);
-    const newContent = content.substring(0, start) + prefix + selection + suffix + content.substring(end);
-    setContent(newContent);
     
-    setTimeout(() => {
-      if (textareaRef.current) {
-        const newPos = start + prefix.length + selection.length + suffix.length;
-        textareaRef.current.setSelectionRange(newPos, newPos);
-        textareaRef.current.focus();
-      }
-    }, 0);
+    setContent(prev => {
+      const selection = prev.substring(start, end);
+      const newContent = prev.substring(0, start) + prefix + selection + suffix + prev.substring(end);
+      
+      setTimeout(() => {
+        if (textareaRef.current) {
+          const newPos = start + prefix.length + selection.length + suffix.length;
+          textareaRef.current.setSelectionRange(newPos, newPos);
+          textareaRef.current.focus();
+        }
+      }, 0);
+      
+      return newContent;
+    });
   };
 
   const insertTable = () => {

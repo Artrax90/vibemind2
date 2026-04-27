@@ -222,9 +222,10 @@ export default function SyncManager({ onSyncComplete }: SyncManagerProps) {
   useEffect(() => {
     performSync();
 
-    const handleForceSync = () => {
+    const handleForceSync = async () => {
       log('Force sync requested');
-      performSync();
+      await performSync();
+      window.dispatchEvent(new CustomEvent('sync-finished'));
     };
 
     window.addEventListener('force-sync', handleForceSync);

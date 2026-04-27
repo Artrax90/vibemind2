@@ -49,8 +49,7 @@ export const initDB = async () => {
           isSharedByMe INTEGER DEFAULT 0,
           ownerUsername TEXT,
           is_dirty INTEGER DEFAULT 0,
-          updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-          FOREIGN KEY(folderId) REFERENCES folders(id)
+          updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
         );
         
         CREATE TABLE IF NOT EXISTS sync_config (
