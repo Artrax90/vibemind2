@@ -66,6 +66,10 @@ function initDb() {
         key TEXT PRIMARY KEY,
         value TEXT
       );
+      CREATE TABLE IF NOT EXISTS deleted_items (
+        id TEXT PRIMARY KEY,
+        type TEXT NOT NULL
+      );
     `);
 
     // Migration: Add missing columns if they don't exist
@@ -175,6 +179,7 @@ ipcMain.handle('db-save-note', async (event, note) => {
 ipcMain.handle('db-delete-note', async (event, id) => {
   console.log(`[DB] Deleting note: ${id}`);
   const info = db.prepare('DELETE FROM notes WHERE id = ?').run(id);
+  db.prepare('INSERT OR IGNORE INTO deleted_items (id, type) VALUES (?, ?)').run(id, 'note');
   console.log(`[DB] Deleted rows: ${info.changes}`);
   return { success: true };
 });
@@ -220,13 +225,32 @@ ipcMain.handle('db-delete-folder', async (event, id) => {
   // Create placeholders string (?, ?, ?)
   const placeholders = allIds.map(() => '?').join(', ');
   
+// Note: Track all deleted items
+  const notesIds = db.prepare(`SELECT id FROM notes WHERE folderId IN (${placeholders})`).all(...allIds);
+  for (const row of notesIds) {
+    db.prepare('INSERT OR IGNORE INTO deleted_items (id, type) VALUES (?, ?)').run(row.id, 'note');
+  }
+  
   // Delete all notes in these folders
   const notesInfo = db.prepare(`DELETE FROM notes WHERE folderId IN (${placeholders})`).run(...allIds);
   console.log(`[DB] Deleted ${notesInfo.changes} notes in recursively deleted folders.`);
   
+  for (const fid of allIds) {
+    db.prepare('INSERT OR IGNORE INTO deleted_items (id, type) VALUES (?, ?)').run(fid, 'folder');
+  }
+
   // Delete the folders
   const info = db.prepare(`DELETE FROM folders WHERE id IN (${placeholders})`).run(...allIds);
   console.log(`[DB] Deleted rows (folders): ${info.changes}`);
+  return { success: true };
+});
+
+ipcMain.handle('db-get-deleted-items', async () => {
+  return db.prepare('SELECT * FROM deleted_items').all();
+});
+
+ipcMain.handle('db-remove-deleted-item', async (event, id) => {
+  db.prepare('DELETE FROM deleted_items WHERE id = ?').run(id);
   return { success: true };
 });
 
@@ -234,6 +258,7 @@ ipcMain.handle('db-clear-data', async () => {
   db.prepare('DELETE FROM notes').run();
   db.prepare('DELETE FROM folders').run();
   db.prepare('DELETE FROM sync_config').run();
+  db.prepare('DELETE FROM deleted_items').run();
   return { success: true };
 });
 

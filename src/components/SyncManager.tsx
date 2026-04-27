@@ -58,14 +58,15 @@ export default function SyncManager({ onSyncComplete }: SyncManagerProps) {
       log('Authentication successful. Starting background sync...');
       
       // 1. Get local data
-      const [localNotes, localFolders] = await Promise.all([
+      const [localNotes, localFolders, deletedItems] = await Promise.all([
         dbApi.getNotes(),
-        dbApi.getFolders()
+        dbApi.getFolders(),
+        dbApi.getDeletedItems ? dbApi.getDeletedItems() : Promise.resolve([])
       ]);
       
       const dirtyNotes = localNotes.filter((n: any) => n.is_dirty === 1);
       const dirtyFolders = localFolders.filter((f: any) => f.is_dirty === 1);
-      log(`Found ${dirtyNotes.length} notes and ${dirtyFolders.length} folders to push.`);
+      log(`Found ${dirtyNotes.length} notes, ${dirtyFolders.length} folders, and ${deletedItems.length} deleted items to push.`);
 
       // 2. Pull updates from server
       log('Fetching remote data...');
@@ -80,9 +81,40 @@ export default function SyncManager({ onSyncComplete }: SyncManagerProps) {
       const remoteNotes = await notesRes.json();
       const remoteFolders = await foldersRes.json();
 
-      const totalToSync = dirtyNotes.length + dirtyFolders.length + remoteNotes.length + remoteFolders.length;
+      const totalToSync = deletedItems.length + dirtyNotes.length + dirtyFolders.length + remoteNotes.length + remoteFolders.length;
       let currentSynced = 0;
       setProgress(totalToSync, 0);
+
+      // Filter out items we just successfully deleted so we don't pull them back right away
+      let finalRemoteNotes = remoteNotes;
+      let finalRemoteFolders = remoteFolders;
+      
+      // 2.5 Process Deletions
+      for (const delItem of deletedItems) {
+        try {
+          const endpoint = delItem.type === 'folder' ? 'folders' : 'notes';
+          const res = await fetch(`${baseUrl}/api/${endpoint}/${delItem.id}`, {
+            method: 'DELETE',
+            headers: { 'Authorization': `Bearer ${access_token}` }
+          });
+          
+          if (res.ok || res.status === 404) {
+            await dbApi.removeDeletedItem(delItem.id);
+            log(`Pushed deletion for ${delItem.type} ${delItem.id}`);
+            if (delItem.type === 'note') {
+              finalRemoteNotes = finalRemoteNotes.filter((n: any) => n.id !== delItem.id);
+            } else if (delItem.type === 'folder') {
+              finalRemoteFolders = finalRemoteFolders.filter((f: any) => f.id !== delItem.id);
+            }
+          } else {
+            log(`Failed to push deletion for ${delItem.type} ${delItem.id}: ${res.status}`, true);
+          }
+        } catch (e) {
+          log(`Error deleting ${delItem.type} ${delItem.id}: ${e}`, true);
+        }
+        currentSynced++;
+        setProgress(totalToSync, currentSynced);
+      }
 
       // 3. Push dirty folders first
       for (const folder of dirtyFolders) {
@@ -148,7 +180,7 @@ export default function SyncManager({ onSyncComplete }: SyncManagerProps) {
       let hasChanges = false;
 
       // Pull folders first
-      for (const remoteFolder of remoteFolders) {
+      for (const remoteFolder of finalRemoteFolders) {
         const localFolder = localFolders.find((f: any) => f.id === remoteFolder.id);
         const remoteDate = remoteFolder.updated_at ? new Date(remoteFolder.updated_at) : new Date(0);
         const localDate = localFolder?.updated_at ? new Date(localFolder.updated_at) : new Date(0);
@@ -174,7 +206,7 @@ export default function SyncManager({ onSyncComplete }: SyncManagerProps) {
       }
 
       // Pull notes
-      for (const remoteNote of remoteNotes) {
+      for (const remoteNote of finalRemoteNotes) {
         const localNote = localNotes.find((n: any) => n.id === remoteNote.id);
         
         const remoteDate = remoteNote.updated_at ? new Date(remoteNote.updated_at) : new Date(0);
@@ -210,7 +242,7 @@ export default function SyncManager({ onSyncComplete }: SyncManagerProps) {
 
       // Prune folders
       for (const localFolder of currentLocalFolders) {
-        const remoteFolder = remoteFolders.find((rf: any) => rf.id === localFolder.id);
+        const remoteFolder = finalRemoteFolders.find((rf: any) => rf.id === localFolder.id);
         if (!remoteFolder && localFolder.is_dirty === 0) {
           await dbApi.deleteFolder(localFolder.id);
           log(`Pruned local folder: ${localFolder.name}`);
@@ -220,7 +252,7 @@ export default function SyncManager({ onSyncComplete }: SyncManagerProps) {
 
       // Prune notes
       for (const localNote of currentLocalNotes) {
-        const remoteNote = remoteNotes.find((rn: any) => rn.id === localNote.id);
+        const remoteNote = finalRemoteNotes.find((rn: any) => rn.id === localNote.id);
         if (!remoteNote && localNote.is_dirty === 0) {
           await dbApi.deleteNote(localNote.id);
           log(`Pruned local note: ${localNote.title}`);

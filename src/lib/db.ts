@@ -56,6 +56,11 @@ export const initDB = async () => {
           key TEXT PRIMARY KEY,
           value TEXT
         );
+        
+        CREATE TABLE IF NOT EXISTS deleted_items (
+          id TEXT PRIMARY KEY,
+          type TEXT NOT NULL
+        );
       `;
       await db.execute(query);
     } catch (err) {
@@ -121,11 +126,15 @@ export const dbApi = {
   async deleteNote(id: string) {
     if (isElectron) return (window as any).electronAPI.deleteNote(id);
     if (isNative && db) {
+      await db.run('INSERT OR IGNORE INTO deleted_items (id, type) VALUES (?, ?)', [id, 'note']);
       await db.run('DELETE FROM notes WHERE id = ?', [id]);
       return;
     }
     const notes = await this.getNotes();
     localStorage.setItem('notes', JSON.stringify(notes.filter((n: any) => n.id !== id)));
+    const delItems = JSON.parse(localStorage.getItem('deleted_items') || '[]');
+    delItems.push({id, type: 'note'});
+    localStorage.setItem('deleted_items', JSON.stringify(delItems));
   },
 
   async getFolders() {
@@ -158,11 +167,53 @@ export const dbApi = {
   async deleteFolder(id: string) {
     if (isElectron) return (window as any).electronAPI.deleteFolder(id);
     if (isNative && db) {
-      await db.run('DELETE FROM folders WHERE id = ?', [id]);
+      await db.run('INSERT OR IGNORE INTO deleted_items (id, type) VALUES (?, ?)', [id, 'folder']);
+      // For recursive deletion in SQLite native:
+      const getSubfoldersNative = async (parentId: string): Promise<string[]> => {
+        const res = await db.query('SELECT id FROM folders WHERE parentId = ?', [parentId]);
+        let ids = [parentId];
+        for (const row of res.values || []) {
+          ids = ids.concat(await getSubfoldersNative(row.id));
+        }
+        return ids;
+      };
+      
+      const allIds = await getSubfoldersNative(id);
+      for (const fid of allIds) {
+        await db.run('INSERT OR IGNORE INTO deleted_items (id, type) VALUES (?, ?)', [fid, 'folder']);
+        const notesRes = await db.query('SELECT id FROM notes WHERE folderId = ?', [fid]);
+        for (const row of notesRes.values || []) {
+          await db.run('INSERT OR IGNORE INTO deleted_items (id, type) VALUES (?, ?)', [row.id, 'note']);
+        }
+        await db.run('DELETE FROM notes WHERE folderId = ?', [fid]);
+        await db.run('DELETE FROM folders WHERE id = ?', [fid]);
+      }
       return;
     }
     const folders = await this.getFolders();
     localStorage.setItem('folders', JSON.stringify(folders.filter((f: any) => f.id !== id)));
+    const delItems = JSON.parse(localStorage.getItem('deleted_items') || '[]');
+    delItems.push({id, type: 'folder'});
+    localStorage.setItem('deleted_items', JSON.stringify(delItems));
+  },
+
+  async getDeletedItems() {
+    if (isElectron) return (window as any).electronAPI.getDeletedItems();
+    if (isNative && db) {
+      const res = await db.query('SELECT * FROM deleted_items');
+      return res.values || [];
+    }
+    return JSON.parse(localStorage.getItem('deleted_items') || '[]');
+  },
+
+  async removeDeletedItem(id: string) {
+    if (isElectron) return (window as any).electronAPI.removeDeletedItem(id);
+    if (isNative && db) {
+      await db.run('DELETE FROM deleted_items WHERE id = ?', [id]);
+      return;
+    }
+    const delItems = JSON.parse(localStorage.getItem('deleted_items') || '[]');
+    localStorage.setItem('deleted_items', JSON.stringify(delItems.filter((item: any) => item.id !== id)));
   },
 
   async clearData() {
@@ -171,6 +222,7 @@ export const dbApi = {
       await db.run('DELETE FROM notes');
       await db.run('DELETE FROM folders');
       await db.run('DELETE FROM sync_config');
+      await db.run('DELETE FROM deleted_items');
       return;
     }
     localStorage.clear();
