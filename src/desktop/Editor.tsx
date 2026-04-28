@@ -480,7 +480,7 @@ export default function Editor({ note, onUpdate, onWikilinkClick, onTagClick, is
                   }
                 }}
               >
-                {content.replace(/\n{2,}/g, (match) => '\n\n' + '\u00A0\n\n'.repeat(match.length - 2))}
+                {(content || '').replace(/\n{2,}/g, (match) => '\n\n' + '\u00A0\n\n'.repeat(match.length - 2))}
               </ReactMarkdown>
             </div>
           ) : (
@@ -509,7 +509,7 @@ export default function Editor({ note, onUpdate, onWikilinkClick, onTagClick, is
                     <span className="text-sm font-bold text-foreground group-hover:text-primary transition-colors truncate">{rn.title}</span>
                     <FileText size={14} className="text-muted-foreground group-hover:text-primary transition-colors" />
                   </div>
-                  <p className="text-xs text-muted-foreground line-clamp-2 leading-relaxed">{rn.content.replace(/[#*`[\]]/g, '')}</p>
+                  <p className="text-xs text-muted-foreground line-clamp-2 leading-relaxed">{(rn.content || '').replace(/[#*`[\]]/g, '')}</p>
                 </div>
               ))}
             </div>
