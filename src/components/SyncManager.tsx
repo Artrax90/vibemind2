@@ -116,6 +116,7 @@ export default function SyncManager({ onSyncComplete }: SyncManagerProps) {
         setProgress(totalToSync, currentSynced);
       }
 
+      const pushedFolderIds = new Set<string>();
       // 3. Push dirty folders first
       for (const folder of dirtyFolders) {
         try {
@@ -135,6 +136,7 @@ export default function SyncManager({ onSyncComplete }: SyncManagerProps) {
 
           if (res.ok) {
             await dbApi.saveFolder({ ...folder, is_dirty: 0 });
+            pushedFolderIds.add(folder.id);
             log(`Pushed folder: ${folder.name}`);
           }
           currentSynced++;
@@ -144,6 +146,7 @@ export default function SyncManager({ onSyncComplete }: SyncManagerProps) {
         }
       }
 
+      const pushedNoteIds = new Set<string>();
       // 4. Push dirty notes
       for (const note of dirtyNotes) {
         try {
@@ -165,6 +168,7 @@ export default function SyncManager({ onSyncComplete }: SyncManagerProps) {
 
           if (res.ok) {
             await dbApi.saveNote({ ...note, is_dirty: 0 });
+            pushedNoteIds.add(note.id);
             log(`Pushed note: ${note.title}`);
           } else {
             log(`Failed to push note ${note.title}: ${res.status}`, true);
@@ -242,6 +246,7 @@ export default function SyncManager({ onSyncComplete }: SyncManagerProps) {
 
       // Prune folders
       for (const localFolder of currentLocalFolders) {
+        if (pushedFolderIds.has(localFolder.id)) continue;
         const remoteFolder = finalRemoteFolders.find((rf: any) => rf.id === localFolder.id);
         if (!remoteFolder && localFolder.is_dirty === 0) {
           await dbApi.deleteFolder(localFolder.id);
@@ -252,6 +257,7 @@ export default function SyncManager({ onSyncComplete }: SyncManagerProps) {
 
       // Prune notes
       for (const localNote of currentLocalNotes) {
+        if (pushedNoteIds.has(localNote.id)) continue;
         const remoteNote = finalRemoteNotes.find((rn: any) => rn.id === localNote.id);
         if (!remoteNote && localNote.is_dirty === 0) {
           await dbApi.deleteNote(localNote.id);

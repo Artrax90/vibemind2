@@ -163,8 +163,8 @@ ipcMain.handle('db-save-note', async (event, note) => {
   stmt.run(
     note.id, 
     note.title, 
-    note.content, 
-    note.folderId, 
+    note.content || null, 
+    note.folderId || null, 
     note.isPinned ? 1 : 0, 
     note.permission || 'owner',
     note.isShared ? 1 : 0,
@@ -195,7 +195,7 @@ ipcMain.handle('db-save-folder', async (event, folder) => {
   stmt.run(
     folder.id, 
     folder.name, 
-    folder.parentId, 
+    folder.parentId || null, 
     folder.permission || 'owner',
     folder.isShared ? 1 : 0,
     folder.isSharedByMe ? 1 : 0,
