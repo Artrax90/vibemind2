@@ -174,7 +174,8 @@ export default function App() {
 
   const updateNote = (id: string, updates: Partial<Note>) => {
     setNotes(prev => {
-      const newNotes = prev.map(n => n.id === id ? { ...n, ...updates } : n);
+      const now = new Date().toISOString();
+      const newNotes = prev.map(n => n.id === id ? { ...n, ...updates, updated_at: now } : n);
       const updatedNote = newNotes.find(n => n.id === id);
       if (updatedNote) api.createNote(updatedNote);
       return newNotes;
@@ -221,7 +222,7 @@ export default function App() {
   const renameFolder = (id: string, newName: string) => {
     setFolders(folders.map(f => {
       if (f.id === id) {
-        const updated = { ...f, name: newName };
+        const updated = { ...f, name: newName, updated_at: new Date().toISOString() };
         api.createFolder(updated);
         return updated;
       }

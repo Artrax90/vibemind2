@@ -57,7 +57,7 @@ export default function Settings({ onClose, theme, setTheme }: SettingsProps) {
       const zip = new JSZip();
       
       notes.forEach((note: any) => {
-        const safeTitle = note.title.replace(/[/\\?%*:|"<>]/g, '-') || 'untitled';
+        const safeTitle = (note.title || 'untitled').replace(/[/\\?%*:|"<>]/g, '-') || 'untitled';
         zip.file(`${safeTitle}.md`, `# ${note.title}\n\n${note.content || ''}`);
       });
       

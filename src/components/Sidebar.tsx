@@ -302,10 +302,11 @@ export default function Sidebar({ notes, folders, unlockedFolders, setUnlockedFo
 
       if (overData?.type === 'folder') {
         // Dropped a note onto a folder
-        const updatedNotes = notes.map(n => n.id === active.id ? { ...n, folderId: over.id as string } : n);
+        const updated_at = new Date().toISOString();
+        const updatedNotes = notes.map(n => n.id === active.id ? { ...n, folderId: over.id as string, updated_at } : n);
         onNotesChange(updatedNotes);
         // Persist the change
-        api.updateNote(active.id as string, { folderId: over.id as string }).catch(console.error);
+        api.updateNote(active.id as string, { folderId: over.id as string, updated_at }).catch(console.error);
       } else {
         // Basic reordering logic
         const oldIndex = notes.findIndex(n => n.id === active.id);
@@ -336,10 +337,11 @@ export default function Sidebar({ notes, folders, unlockedFolders, setUnlockedFo
 
   const handleMoveNote = (folderId: string | undefined) => {
     if (movingNoteId) {
-      const updatedNotes = notes.map(n => n.id === movingNoteId ? { ...n, folderId } : n);
+      const updated_at = new Date().toISOString();
+      const updatedNotes = notes.map(n => n.id === movingNoteId ? { ...n, folderId, updated_at } : n);
       onNotesChange(updatedNotes);
       // Persist the change
-      api.updateNote(movingNoteId, { folderId }).catch(console.error);
+      api.updateNote(movingNoteId, { folderId, updated_at }).catch(console.error);
       setMovingNoteId(null);
     }
   };
@@ -352,9 +354,10 @@ export default function Sidebar({ notes, folders, unlockedFolders, setUnlockedFo
   const handleTogglePin = (noteId: string) => {
     const note = notes.find(n => n.id === noteId);
     if (note) {
-      const updatedNotes = notes.map(n => n.id === noteId ? { ...n, isPinned: !n.isPinned } : n);
+      const updated_at = new Date().toISOString();
+      const updatedNotes = notes.map(n => n.id === noteId ? { ...n, isPinned: !n.isPinned, updated_at } : n);
       onNotesChange(updatedNotes);
-      api.updateNote(noteId, { isPinned: !note.isPinned }).catch(console.error);
+      api.updateNote(noteId, { isPinned: !note.isPinned, updated_at }).catch(console.error);
     }
     setContextMenu(null);
   };

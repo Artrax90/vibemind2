@@ -75,7 +75,7 @@ export default function Chat({ notes, folders, unlockedFolders, activeNoteId, on
 
     // Case-insensitive regex for [[Note Title]] with optional spaces
     // Escape special characters in title for regex
-    const escapedTitle = activeNote.title.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const escapedTitle = (activeNote.title || '').trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     const linkPattern = new RegExp(`\\[\\[\\s*${escapedTitle}\\s*\\]\\]`, 'i');
     
     return notes.filter(n => n.id !== activeNoteId && n.content && linkPattern.test(n.content));

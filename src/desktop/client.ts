@@ -38,6 +38,8 @@ export const api = {
   async updateNote(id: string, updates: any) {
     const notes = await dbApi.getNotes();
     const note = notes.find((n: any) => n.id === id);
+    const updated_at = new Date().toISOString();
+    Object.assign(updates, { updated_at });
     if (note) {
       await dbApi.saveNote({ ...note, ...updates, is_dirty: 1 });
     }
@@ -76,25 +78,10 @@ export const api = {
   },
   
   async updateFolder(id: string, updates: any) {
-    const baseUrl = await this.getNormalizedUrl();
-    const token = await this.getServerToken();
-    if (token && baseUrl) {
-      try {
-        const res = await fetch(`${baseUrl}/api/folders/${id}`, {
-          method: 'PATCH',
-          headers: { 
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${token}`
-          },
-          body: JSON.stringify(updates)
-        });
-        if (res.ok) return await res.json();
-      } catch (e) {
-        console.error('Failed to update folder on server', e);
-      }
-    }
     const folders = await dbApi.getFolders();
     const folder = folders.find((f: any) => f.id === id);
+    const updated_at = new Date().toISOString();
+    Object.assign(updates, { updated_at });
     if (folder) {
       await dbApi.saveFolder({ ...folder, ...updates, is_dirty: 1 });
     }

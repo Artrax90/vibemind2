@@ -124,8 +124,10 @@ export default function App() {
   const activeNote = notes.find(n => n.id === activeNoteId);
 
   const updateNote = async (id: string, updates: Partial<Note>) => {
-    setNotes(prev => prev.map(n => n.id === id ? { ...n, ...updates } : n));
-    await api.updateNote(id, updates);
+    const updated_at = new Date().toISOString();
+    const finalUpdates = { ...updates, updated_at };
+    setNotes(prev => prev.map(n => n.id === id ? { ...n, ...finalUpdates } : n));
+    await api.updateNote(id, finalUpdates);
   };
 
   const addNote = async (newNote: Note) => {
@@ -164,8 +166,9 @@ export default function App() {
   };
 
   const renameFolder = async (id: string, newName: string) => {
-    setFolders(folders.map(f => f.id === id ? { ...f, name: newName } : f));
-    await api.updateFolder(id, { name: newName });
+    const updated_at = new Date().toISOString();
+    setFolders(folders.map(f => f.id === id ? { ...f, name: newName, updated_at } : f));
+    await api.updateFolder(id, { name: newName, updated_at });
   };
 
   const handleWikilinkClick = (title: string) => {
